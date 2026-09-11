@@ -103,3 +103,25 @@ connectsphere-g8t6/
 ├── tsconfig.json                   # TypeScript config (if using TS)
 └── README.md                       # Frontend documentation
 ```
+
+## 🌿 Branching Strategy & Standard Operating Procedure (SOP)
+
+To maintain clean repository history and smooth collaboration, follow these branching rules:
+
+### Branch Naming Convention
+
+Format: `<type>/<ticket-id>-<short-description>` or `<type>/<short-description>`
+
+- **`feature/`**: For new features or updates (e.g., `feature/SPM-54-react-boilerplate` or `feature/user-authentication`)
+- **`fix/`** or **`bugfix/`**: For bug fixes (e.g., `fix/SPM-58-cors-issue` or `fix/header-overflow`)
+- **`refactor/`**: For code refactoring without behavior changes (e.g., `refactor/api-routes`)
+- **`docs/`**: For documentation updates (e.g., `docs/update-readme`)
+- **`chore/`**: For maintenance, dependency updates, or config changes (e.g., `chore/bump-nextjs`)
+
+### Branching Workflow (SOP)
+
+1. **Pull the latest changes** from the main development branch before creating a new branch:
+   ```bash
+   git checkout main
+   git pull origin main
+   ```
