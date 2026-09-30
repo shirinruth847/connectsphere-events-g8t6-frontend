@@ -1,12 +1,25 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const hankenGrotesk = Hanken_Grotesk({
+  variable: "--font-hanken-grotesk",
+  subsets: ["latin"],
+});
 
-export const metadata: Metadata = { title: "ConnectSphere — Find your next meaningful moment", description: "Discover events and experiences designed to bring people closer." };
+export const metadata: Metadata = {
+  title: {
+    template: "%s · ConnectSphere",
+    default: "ConnectSphere",
+  },
+  description:
+    "Plan, review and discover events across ConnectSphere venues and teams.",
+};
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}><body>{children}</body></html>;
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html lang="en" className={`${hankenGrotesk.variable} h-full`}>
+      <body className="flex min-h-full flex-col">{children}</body>
+    </html>
+  );
 }
