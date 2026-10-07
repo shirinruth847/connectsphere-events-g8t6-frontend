@@ -111,8 +111,9 @@ export default function EventQueuePage() {
           const result = await getCurrentUser(session.access_token);
           setAccessToken(session.access_token);
           setUserName(result.user.name);
-          setAuthState(result.user.role === "COORDINATOR_LEAD" ? "ready" : "forbidden");
-          if (result.user.role === "COORDINATOR_LEAD") await loadData(session.access_token);
+          const canManageRequests = result.user.role === "COORDINATOR" || result.user.role === "COORDINATOR_LEAD";
+          setAuthState(canManageRequests ? "ready" : "forbidden");
+          if (canManageRequests) await loadData(session.access_token);
         } catch (loadError) {
           const typedError = loadError as Error & { status?: number };
           if (typedError.status === 401) {
@@ -153,7 +154,7 @@ export default function EventQueuePage() {
       const { data, error: signInError } = await getSupabaseBrowserClient().auth.signInWithPassword({ email, password });
       if (signInError || !data.session) throw signInError ?? new Error("Sign-in did not return an active session.");
       const result = await getCurrentUser(data.session.access_token);
-      if (result.user.role !== "COORDINATOR_LEAD") {
+      if (result.user.role !== "COORDINATOR" && result.user.role !== "COORDINATOR_LEAD") {
         setAuthState("forbidden");
         return;
       }
@@ -194,14 +195,14 @@ export default function EventQueuePage() {
 
   if (authState === "loading") return <main className="access-denied"><div className="access-card"><h1>Loading ConnectSphere</h1><p>Checking your authenticated session.</p></div></main>;
   if (authState === "configuration-error") return <main className="access-denied"><div className="access-card"><h1>Supabase setup required</h1><p>{error}</p></div></main>;
-  if (authState === "signed-out") return <main className="access-denied"><div className="access-card"><span className="eyebrow">CONNECTSPHERE AUTHENTICATION</span><h1>Sign in to event operations</h1><p>Use an Event Coordinator Lead account to view and assign submitted event requests.</p><form onSubmit={signIn}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <div className="error-alert" role="alert"><span>{error}</span></div>}<button className="button button-primary" type="submit">Sign in</button></form></div></main>;
-  if (authState === "forbidden") return <main className="access-denied"><div className="access-card"><span className="eyebrow">COORDINATOR LEAD OPERATIONS</span><h1>Unassigned request queue</h1><p>This queue is restricted to Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</p><button className="button button-secondary" onClick={() => getSupabaseBrowserClient().auth.signOut()}>Sign out</button></div></main>;
+  if (authState === "signed-out") return <main className="access-denied"><div className="access-card"><span className="eyebrow">CONNECTSPHERE AUTHENTICATION</span><h1>Sign in to event operations</h1><p>Use an Event Coordinator account to view and assign submitted event requests.</p><form onSubmit={signIn}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <div className="error-alert" role="alert"><span>{error}</span></div>}<button className="button button-primary" type="submit">Sign in</button></form></div></main>;
+  if (authState === "forbidden") return <main className="access-denied"><div className="access-card"><span className="eyebrow">EVENT COORDINATOR OPERATIONS</span><h1>Unassigned request queue</h1><p>This queue is restricted to Event Coordinators. Your current account does not have permission to view or assign submitted requests.</p><button className="button button-secondary" onClick={() => getSupabaseBrowserClient().auth.signOut()}>Sign out</button></div></main>;
   if (authState === "error") return <main className="access-denied"><div className="access-card"><h1>Unable to load event requests</h1><p>{error}</p><button className="button button-primary" onClick={() => loadData(accessToken)}>Retry</button></div></main>;
 
   return (
     <main className="console-shell">
-      <header className="top-nav"><a className="brand" href="/events"><span className="brand-mark">C</span><span>ConnectSphere</span></a><nav aria-label="Primary navigation"><a className="nav-link active" href="/events">Event requests</a><a className="nav-link" href="#calendar">Coordinator calendar</a></nav><div className="profile"><span className="avatar">{userName.slice(0, 2).toUpperCase()}</span><span><strong>{userName}</strong><small>Event Coordinator Lead</small></span><button className="role-switch" onClick={() => getSupabaseBrowserClient().auth.signOut()}>Sign out</button></div></header>
-      <div className="content"><section className="page-header"><div><span className="eyebrow"><span className="status-dot" /> COORDINATOR LEAD CONTROL CENTER</span><h1>Unassigned event requests</h1><p>Review newly submitted requests and assign each one to the right Event Coordinator.</p></div><div className="header-actions"><div className="stat-chip"><strong>{unassigned.length}</strong><span>Awaiting assignment</span></div><button className="button button-secondary" onClick={() => loadData(accessToken)} disabled={loading}>{loading ? "Refreshing…" : "Refresh data"}</button></div></section>
+      <header className="top-nav"><a className="brand" href="/events"><span className="brand-mark">C</span><span>ConnectSphere</span></a><nav aria-label="Primary navigation"><a className="nav-link active" href="/events">Event requests</a><a className="nav-link" href="#calendar">Coordinator calendar</a></nav><div className="profile"><span className="avatar">{userName.slice(0, 2).toUpperCase()}</span><span><strong>{userName}</strong><small>Event Coordinator</small></span><button className="role-switch" onClick={() => getSupabaseBrowserClient().auth.signOut()}>Sign out</button></div></header>
+      <div className="content"><section className="page-header"><div><span className="eyebrow"><span className="status-dot" /> COORDINATOR CONTROL CENTER</span><h1>Unassigned event requests</h1><p>Review newly submitted requests and assign each one to the right Event Coordinator.</p></div><div className="header-actions"><div className="stat-chip"><strong>{unassigned.length}</strong><span>Awaiting assignment</span></div><button className="button button-secondary" onClick={() => loadData(accessToken)} disabled={loading}>{loading ? "Refreshing…" : "Refresh data"}</button></div></section>
         {feedback && <div className="success-banner" role="status">{feedback}<button onClick={() => setFeedback("")} aria-label="Dismiss">×</button></div>}
         {error && <div className="error-alert" role="alert"><strong>Request failed</strong><span>{error}</span></div>}
         <section className="section-heading"><div><h2>{viewMode === "list" ? "Assignment queue" : "Coordinator availability"}</h2><p>{viewMode === "list" ? "Only submitted requests without an assigned coordinator appear here." : "Review each coordinator's scheduled events before assigning a request."}</p></div><div className="view-toggle" role="group" aria-label="Queue view"><button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>Unassigned requests</button><button className={viewMode === "calendar" ? "active" : ""} onClick={() => setViewMode("calendar")}>Calendar</button></div></section>
