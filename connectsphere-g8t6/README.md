@@ -32,6 +32,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon/publishable key from the Supabase dashboard>
 - `/login` signs in with Supabase Auth in the browser, then calls `GET /api/auth/me`; the backend's `role` and `home_path` decide where the user lands. A valid same-origin `?next=` takes priority.
 - Every route under `app/(portal)/` is protected by `components/layout/PortalGate.tsx`, which renders nothing protected until `/api/auth/me` succeeds and redirects to `/login?next=…` otherwise.
 - Logout calls `POST /api/auth/logout`, then `supabase.auth.signOut({ scope: "local" })`.
+- `/signup` (SPM-123) lets visitors register as an Attendee or Event Organiser only (`SIGNUP_ACCOUNT_TYPES` in `lib/validation/signup.ts`). It calls `POST /api/auth/signup`, which returns no session, then signs in through the same `useAuth().signIn` flow as `/login`, so the landing page comes from `/api/auth/me`. Email verification is deferred.
 - Code layout: `lib/api` (single backend client), `lib/auth` (session, provider, guard, `next=` handling), `lib/permissions` (presentation-only role helpers), `lib/validation`, `components/dashboard` (one replaceable component per role).
 
 Then, run the development server:

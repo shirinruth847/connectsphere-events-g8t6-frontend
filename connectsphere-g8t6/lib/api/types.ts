@@ -12,6 +12,23 @@ export type AuthenticatedUser = {
   home_path: string;
 };
 
+// POST /api/auth/signup (SPM-123). Staff roles are never self-registered, and
+// the backend rejects any field outside these four.
+export type SignupAccountType = Extract<Role, "ATTENDEE" | "ORGANISER">;
+
+export type SignupRequest = {
+  accountType: SignupAccountType;
+  name: string;
+  email: string;
+  password: string;
+};
+
+// No session comes back: the browser signs in afterwards, exactly as for login.
+export type SignupResponse = {
+  message: string;
+  user: AuthenticatedUser;
+};
+
 export type Page = {
   limit: number;
   offset: number;

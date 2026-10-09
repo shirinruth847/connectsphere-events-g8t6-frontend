@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertBanner } from "@/components/ui/AlertBanner";
 import { Button } from "@/components/ui/Button";
@@ -143,6 +144,16 @@ export function LoginForm() {
             {submitting ? "Logging in…" : "Log in"}
           </Button>
         </form>
+
+        <p className="text-center text-sm text-ink-muted">
+          New to ConnectSphere?{" "}
+          <Link
+            href="/signup"
+            className="font-semibold text-brand underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
+            Create an account
+          </Link>
+        </p>
       </div>
     </Card>
   );

@@ -46,6 +46,8 @@ type RequestOptions = {
   accessToken?: string;
   // Suppresses the global 401 handler (used while signing in or out).
   silentUnauthorized?: boolean;
+  // Sent as JSON. Callers pass only the fields the endpoint accepts.
+  body?: unknown;
   signal?: AbortSignal;
 };
 
@@ -58,7 +60,7 @@ const codeForStatus = (status: number): ApiErrorCode => {
 };
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", auth = true, accessToken, silentUnauthorized = false, signal } = options;
+  const { method = "GET", auth = true, accessToken, silentUnauthorized = false, body: requestBody, signal } = options;
 
   if (!BACKEND_URL) {
     throw new ApiError(0, "CONFIG_ERROR", "The application is not configured to reach the server.");
@@ -73,11 +75,20 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     }
     headers.Authorization = `Bearer ${token}`;
   }
+  if (requestBody !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
 
   let response: Response;
   try {
     // Private data must never come from the HTTP cache after logout.
-    response = await fetch(`${BACKEND_URL}${path}`, { method, headers, cache: "no-store", signal });
+    response = await fetch(`${BACKEND_URL}${path}`, {
+      method,
+      headers,
+      body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
+      cache: "no-store",
+      signal,
+    });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiError(0, "NETWORK_ERROR", "We couldn't reach the server. Check your connection and try again.");
