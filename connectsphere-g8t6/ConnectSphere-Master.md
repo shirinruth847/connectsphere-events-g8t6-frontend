@@ -431,6 +431,9 @@ BACKEND_URL=http://localhost:8000
 | Variable | Required | Read by | Notes |
 | --- | --- | --- | --- |
 | `BACKEND_URL` | Yes | `api/events.tsx` | Base URL of the running backend, without a trailing slash. Read on the server by `app/page.tsx` (a server component), so it has no `NEXT_PUBLIC_` prefix. |
+| `NEXT_PUBLIC_BACKEND_URL` | Yes | `lib/api/client.ts` | Same backend URL for browser requests (SPM-32). |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | `lib/auth/session.ts` | Supabase project URL for browser Auth sessions (SPM-32). |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | `lib/auth/session.ts` | Public anon/publishable key only; never the service-role key (SPM-32). |
 
 A variable that must reach browser code needs the Next.js `NEXT_PUBLIC_` prefix and is then visible to every user. It must never contain a service-role key, database password or private MCP credential. `.env*` files are ignored by `.gitignore`; never commit them. Next.js reads `.env.local` at startup, so restart the dev server after editing it. When a work item introduces a new frontend variable, add it to this table and the frontend README in the same work item.
 
