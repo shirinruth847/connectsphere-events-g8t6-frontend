@@ -20,6 +20,7 @@ const safeNextPath = (value: string | null) => {
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const reason = params.get("reason");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -43,6 +44,8 @@ export function LoginForm() {
   };
 
   return <form onSubmit={submit} className="space-y-5">
+    {reason === "login-required" ? <AlertBanner tone="info">Please log in to access this page.</AlertBanner> : null}
+    {reason === "session-expired" ? <AlertBanner tone="warning">Your session expired. Please log in again.</AlertBanner> : null}
     {error ? <AlertBanner tone="error">{error}</AlertBanner> : null}
     <div><FormLabel htmlFor="email" required>Email</FormLabel><input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} className={fieldClasses} /></div>
     <div><FormLabel htmlFor="password" required>Password</FormLabel><input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className={fieldClasses} /></div>

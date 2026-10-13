@@ -138,11 +138,55 @@ export const STATUS_PRESENTATION: Record<
   },
 };
 
-export const displayEventStatus = (status: EventStatus, isAssignedToCoordinator = false): EventStatus => {
-  if (status === "AWAITING_CLARIFICATION" || (status === "SUBMITTED" && isAssignedToCoordinator)) {
-    return "UNDER_REVIEW";
+export const displayEventStatus = (status: EventStatus): EventStatus =>
+  status === "AWAITING_CLARIFICATION" ? "UNDER_REVIEW" : status;
+
+export const eventStatusLabel = (event: Pick<EventListItem, "status" | "statusLabel">) =>
+  event.statusLabel || STATUS_PRESENTATION[displayEventStatus(event.status)].label;
+
+export const validateEventStep = (values: EventFormValues, index: number, requireStepFields = false) => {
+  const errors: Record<string, string> = {};
+  if (index === 0) {
+    if (!values.title.trim()) errors.title = "Enter an event title.";
+    if (values.title.trim().length > 200) errors.title = "The title must be 200 characters or fewer.";
+    if (requireStepFields && !values.purpose.trim()) errors.purpose = "Enter the event purpose.";
+    if (values.purpose.length > 2000) errors.purpose = "Purpose must be 2,000 characters or fewer.";
+    if (requireStepFields && !values.description.trim()) errors.description = "Enter an event description.";
+    if (values.description.length > 5000) errors.description = "Description must be 5,000 characters or fewer.";
   }
-  return status;
+  if (index === 1) {
+    if (requireStepFields && !values.startDatetime) errors.startDatetime = "Choose a start date and time.";
+    if (requireStepFields && !values.endDatetime) errors.endDatetime = "Choose an end date and time.";
+    if (values.startDatetime && values.endDatetime && new Date(values.endDatetime) <= new Date(values.startDatetime)) errors.endDatetime = "End time must be after the start time.";
+    if (requireStepFields && !values.expectedAttendance.trim()) errors.expectedAttendance = "Enter the expected attendance.";
+    if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1)) errors.expectedAttendance = "Enter a whole number greater than zero.";
+  }
+  if (index === 3 && values.accessibilityNotes.length > 200) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
+  if (index === 5 && values.isRegistrationEnabled && requireStepFields && !values.registrationCapacity.trim()) errors.registrationCapacity = "Enter a registration capacity.";
+  if (index === 5 && values.isRegistrationEnabled && values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1)) errors.registrationCapacity = "Enter a whole number greater than zero.";
+  return errors;
+};
+
+export const submitEventRequest = async (
+  request: (path: string, init?: RequestInit) => Promise<unknown>,
+  eventId: number | null,
+  payload: EventRequestPayload,
+  idempotencyKey: string,
+) => {
+  const body = JSON.stringify(payload);
+  if (eventId) {
+    await request(`/events/${eventId}/draft`, {
+      method: "PUT",
+      body: JSON.stringify({ ...payload, isAutoSave: false }),
+    });
+    return request(`/events/${eventId}/submit`, { method: "PUT", body });
+  }
+
+  return request("/events", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body,
+  });
 };
 
 export const EVENT_STATUS_ORDER: EventStatus[] = [

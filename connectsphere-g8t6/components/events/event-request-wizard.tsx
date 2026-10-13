@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertBanner, Button, FormLabel, SectionCard, fieldClasses } from "@/components/shared/primitives";
 import { apiRequest, ApiError } from "@/lib/api";
-import { ACCESSIBILITY_OPTIONS, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, toPayload } from "@/lib/events";
+import { ACCESSIBILITY_OPTIONS, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, submitEventRequest, toPayload, validateEventStep } from "@/lib/events";
 
 const steps = [
   "Event Identity & Core Purpose",
@@ -132,31 +132,13 @@ export function EventRequestWizard() {
   };
 
   const validate = (index: number, complete = false) => {
-    const errors: Record<string, string> = {};
-    if (index === 0) {
-      if (!values.title.trim()) errors.title = "Enter an event title.";
-      if (values.title.trim().length > 200) errors.title = "The title must be 200 characters or fewer.";
-      if (complete && !values.purpose.trim()) errors.purpose = "Enter the event purpose.";
-      if (values.purpose.length > 2000) errors.purpose = "Purpose must be 2,000 characters or fewer.";
-      if (complete && !values.description.trim()) errors.description = "Enter an event description.";
-      if (values.description.length > 5000) errors.description = "Description must be 5,000 characters or fewer.";
-    }
-    if (index === 1) {
-      if (complete && !values.startDatetime) errors.startDatetime = "Choose a start date and time.";
-      if (complete && !values.endDatetime) errors.endDatetime = "Choose an end date and time.";
-      if (values.startDatetime && values.endDatetime && new Date(values.endDatetime) <= new Date(values.startDatetime)) errors.endDatetime = "End time must be after the start time.";
-      if (complete && !values.expectedAttendance.trim()) errors.expectedAttendance = "Enter the expected attendance.";
-      if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1)) errors.expectedAttendance = "Enter a whole number greater than zero.";
-    }
-    if (index === 3 && values.accessibilityNotes.length > 200) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
-    if (index === 5 && values.isRegistrationEnabled && complete && !values.registrationCapacity.trim()) errors.registrationCapacity = "Enter a registration capacity.";
-    if (index === 5 && values.isRegistrationEnabled && values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1)) errors.registrationCapacity = "Enter a whole number greater than zero.";
+    const errors = validateEventStep(values, index, complete);
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const advance = () => {
-    if (!validate(step)) return;
+    if (!validate(step, true)) return;
     setStep((current) => Math.min(steps.length - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -177,14 +159,10 @@ export function EventRequestWizard() {
     setSaving(true); setError("");
     try {
       const payload = toPayload(values);
-      if (eventId) {
-        await apiRequest(`/events/${eventId}/draft`, { method: "PUT", body: JSON.stringify({ ...payload, isAutoSave: false }) });
-        await apiRequest(`/events/${eventId}/submit`, { method: "PUT", body: JSON.stringify(payload) });
-      } else {
-        await apiRequest("/events", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(payload) });
-      }
+      const result = await submitEventRequest(apiRequest, eventId, payload, crypto.randomUUID()) as { event?: Pick<EventRequest, "requestId"> };
       changedRef.current = false;
-      router.push("/dashboard?submitted=1");
+      const requestId = result.event?.requestId;
+      router.push(`/dashboard?submitted=1${requestId ? `&requestId=${encodeURIComponent(requestId)}` : ""}`);
     } catch (caught) {
       if (caught instanceof ApiError) { setError(caught.message); setFieldErrors(caught.fields); }
       else setError(caught instanceof Error ? caught.message : "The event request could not be submitted.");
