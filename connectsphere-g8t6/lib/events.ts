@@ -147,7 +147,7 @@ export const eventStatusLabel = (event: Pick<EventListItem, "status" | "statusLa
 export const validateEventStep = (values: EventFormValues, index: number, requireStepFields = false) => {
   const errors: Record<string, string> = {};
   if (index === 0) {
-    if (!values.title.trim()) errors.title = "Enter an event title.";
+    if (!values.title.trim()) errors.title = "Event Title is required.";
     if (values.title.trim().length > 200) errors.title = "The title must be 200 characters or fewer.";
     if (requireStepFields && !values.purpose.trim()) errors.purpose = "Enter the event purpose.";
     if (values.purpose.length > 2000) errors.purpose = "Purpose must be 2,000 characters or fewer.";
@@ -158,7 +158,7 @@ export const validateEventStep = (values: EventFormValues, index: number, requir
     if (requireStepFields && !values.startDatetime) errors.startDatetime = "Choose a start date and time.";
     if (requireStepFields && !values.endDatetime) errors.endDatetime = "Choose an end date and time.";
     if (values.startDatetime && values.endDatetime && new Date(values.endDatetime) <= new Date(values.startDatetime)) errors.endDatetime = "End time must be after the start time.";
-    if (requireStepFields && !values.expectedAttendance.trim()) errors.expectedAttendance = "Enter the expected attendance.";
+    if (requireStepFields && !values.expectedAttendance.trim()) errors.expectedAttendance = "Expected Attendance is required for submission.";
     if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1)) errors.expectedAttendance = "Enter a whole number greater than zero.";
   }
   if (index === 3 && values.accessibilityNotes.length > 200) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
