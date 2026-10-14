@@ -16,6 +16,11 @@ export type CoordinatorAvailability = {
   events: ApiEvent[];
 };
 
+export type LeadAssignment = ApiEvent & {
+  coordinatorId: number;
+  coordinatorName: string;
+};
+
 type ApiError = Error & { status?: number; code?: string; fields?: Record<string, string> };
 
 function getBackendUrl() {
@@ -59,10 +64,21 @@ export function getCoordinatorAvailability(accessToken: string) {
   );
 }
 
+export function getLeadAssignments(accessToken: string) {
+  return request<{ assignments: LeadAssignment[] }>("/api/events/assignments", accessToken);
+}
+
 export function assignCoordinator(eventId: number, coordinatorId: number, accessToken: string) {
   return request<{ event: ApiEvent }>(`/api/events/${eventId}/coordinator`, accessToken, {
-    method: "PATCH",
+    method: "POST",
     body: JSON.stringify({ coordinatorId }),
+  });
+}
+
+export function reassignCoordinator(eventId: number, coordinatorId: number, expectedCoordinatorId: number, accessToken: string) {
+  return request<{ event: ApiEvent }>(`/api/events/${eventId}/coordinator`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify({ coordinatorId, expectedCoordinatorId }),
   });
 }
 
