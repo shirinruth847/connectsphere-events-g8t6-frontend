@@ -3,7 +3,7 @@
 import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useOrganiserProfile } from "@/components/auth/organiser-gate";
+import { useOrganiserProfile, type OrganiserProfile } from "@/components/auth/organiser-gate";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 type NavIconName = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "logout" | "plus" | "menu" | "close";
@@ -36,9 +36,11 @@ const groups: Array<{ title: string; items: Array<{ title: string; icon: NavIcon
   { title: "Account Management", items: [{ title: "Settings", icon: "settings" }] },
 ];
 
-export function OrganiserShell({ children }: { children: ReactNode }) {
+// `profile` is passed by pages behind SessionGate; pages behind OrganiserGate get it from context.
+export function OrganiserShell({ children, profile: profileOverride }: { children: ReactNode; profile?: OrganiserProfile }) {
   const [open, setOpen] = useState(false);
-  const profile = useOrganiserProfile();
+  const contextProfile = useOrganiserProfile();
+  const profile = profileOverride ?? contextProfile;
   const pathname = usePathname();
   const router = useRouter();
   const logout = async () => {
@@ -58,7 +60,7 @@ export function OrganiserShell({ children }: { children: ReactNode }) {
       <h2 className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">{group.title}</h2>
       <nav aria-label={group.title} className="space-y-1">
         {group.items.map((item) => {
-          const active = item.title === "My Requests" && pathname === "/dashboard";
+          const active = item.title === "My Requests" && (pathname === "/dashboard" || /^\/events\/\d+/.test(pathname));
           const className = `flex min-h-11 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition ${active ? "bg-[#6366f1] text-white shadow-sm" : item.href ? "text-white/80 hover:bg-white/10 hover:text-white" : "cursor-default text-white/55"}`;
           return item.href
             ? <Link key={item.title} href={item.href} onClick={closeMenu} aria-current={active ? "page" : undefined} className={className}><NavIcon name={item.icon} />{item.title}</Link>

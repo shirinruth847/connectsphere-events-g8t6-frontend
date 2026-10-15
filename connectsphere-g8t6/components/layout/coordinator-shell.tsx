@@ -30,18 +30,50 @@ function ChevronIcon() {
   );
 }
 
-const groups: Array<{ title: string; items: Array<{ title: string; icon: NavIconName; href?: string }> }> = [
-  { title: "Main Navigation", items: [
-    { title: "Unassigned Queue", icon: "event", href: "/events" },
-    { title: "Assignments", icon: "assignments", href: "/assignments" },
-    { title: "Calendar", icon: "calendar", href: "/calendar" },
-  ] },
-  { title: "Account", items: [
-    { title: "Settings", icon: "settings", href: "/settings" },
-  ] },
-];
+type NavGroup = { title: string; items: Array<{ title: string; icon: NavIconName; href?: string; activePattern?: RegExp }> };
 
-export function CoordinatorShell({ children, userName, userEmail }: { children: ReactNode; userName: string; userEmail?: string }) {
+const accountGroup: NavGroup = { title: "Account", items: [
+  { title: "Settings", icon: "settings", href: "/settings" },
+] };
+
+// Each staff role sees only its own destinations.
+const NAVIGATION: Record<"lead" | "coordinator", { home: string; caption: string; groups: NavGroup[] }> = {
+  lead: {
+    home: "/events",
+    caption: "Event Coordinator Lead",
+    groups: [
+      { title: "Main Navigation", items: [
+        { title: "Unassigned Queue", icon: "event", href: "/events" },
+        { title: "Assignments", icon: "assignments", href: "/assignments" },
+        { title: "Calendar", icon: "calendar", href: "/calendar" },
+      ] },
+      accountGroup,
+    ],
+  },
+  coordinator: {
+    home: "/dashboard",
+    caption: "Event Coordinator",
+    groups: [
+      { title: "Main Navigation", items: [
+        { title: "My Assigned Events", icon: "event", href: "/dashboard", activePattern: /^\/events\/\d+/ },
+      ] },
+      accountGroup,
+    ],
+  },
+};
+
+export function CoordinatorShell({
+  children,
+  userName,
+  userEmail,
+  navigation = "lead",
+}: {
+  children: ReactNode;
+  userName: string;
+  userEmail?: string;
+  navigation?: "lead" | "coordinator";
+}) {
+  const { home, caption, groups } = NAVIGATION[navigation];
   const [open, setOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ "Main Navigation": true, Account: true });
   const pathname = usePathname();
@@ -57,7 +89,7 @@ export function CoordinatorShell({ children, userName, userEmail }: { children: 
 
   const sidebar = (
     <aside className="sidebar sidebar--sticky" aria-label="Main navigation">
-      <Link href="/events" className="sidebar-brand" onClick={closeMenu} aria-label="ConnectSphere home">
+      <Link href={home} className="sidebar-brand" onClick={closeMenu} aria-label="ConnectSphere home">
         <span className="sidebar-logo" aria-hidden="true">
           <span className="text-[22px] font-extrabold text-[#4f46e5]">C</span>
         </span>
@@ -77,7 +109,7 @@ export function CoordinatorShell({ children, userName, userEmail }: { children: 
           </button>
           <ul className="sidebar-links" hidden={!expandedSections[group.title]}>
             {group.items.map((item) => {
-              const active = pathname === item.href;
+              const active = pathname === item.href || Boolean(item.activePattern?.test(pathname));
               return item.href ? (
                 <li key={item.title}>
                   <Link
@@ -114,7 +146,7 @@ export function CoordinatorShell({ children, userName, userEmail }: { children: 
           </div>
           <div className="sidebar-user-details">
             <span className="sidebar-user-name">{userName}</span>
-            <span className="sidebar-user-role">{userEmail || "Event Coordinator Lead"}</span>
+            <span className="sidebar-user-role">{userEmail || caption}</span>
           </div>
         </div>
         <button onClick={logout} className="sidebar-signout" type="button">
@@ -128,7 +160,7 @@ export function CoordinatorShell({ children, userName, userEmail }: { children: 
   return (
     <div className="min-h-screen bg-[#f7f8fc] lg:flex">
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-[#4f46e5] px-4 text-white shadow-sm lg:hidden">
-        <Link className="font-extrabold tracking-tight" href="/events">ConnectSphere</Link>
+        <Link className="font-extrabold tracking-tight" href={home}>ConnectSphere</Link>
         <button aria-label={open ? "Close menu" : "Open menu"} className="rounded-lg p-2 hover:bg-white/10" onClick={() => setOpen(!open)}>
           <NavIcon name={open ? "close" : "menu"} />
         </button>

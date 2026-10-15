@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 import type { EventStatus } from "@/lib/events";
 import { STATUS_PRESENTATION } from "@/lib/events";
 
@@ -13,7 +13,8 @@ export const buttonClasses = (variant: "primary" | "secondary" | "danger" | "qui
   return `inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-4 py-2 text-sm font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-55 ${variants[variant]}`;
 };
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+// Includes `ref`, which React 19 passes through as a prop (e.g. to return focus to a button).
+interface ButtonProps extends ComponentPropsWithRef<"button"> {
   variant?: "primary" | "secondary" | "danger" | "quiet";
   fullWidth?: boolean;
 }
@@ -92,10 +93,13 @@ export function AlertBanner({
   children,
   tone = "info",
   title,
+  live = true,
 }: {
   children: ReactNode;
   tone?: "info" | "success" | "warning" | "error";
   title?: string;
+  // Set false when a surrounding aria-live region already announces the banner.
+  live?: boolean;
 }) {
   const tones = {
     info: "border-primary/20 bg-primary-fixed text-on-surface",
@@ -104,7 +108,7 @@ export function AlertBanner({
     error: "border-error/25 bg-error-container text-on-error-container",
   };
   return (
-    <div className={`rounded-control border p-3 text-sm leading-relaxed ${tones[tone]}`} role={tone === "error" ? "alert" : "status"}>
+    <div className={`rounded-control border p-3 text-sm leading-relaxed ${tones[tone]}`} role={!live ? undefined : tone === "error" ? "alert" : "status"}>
       {title ? <p className="mb-1 font-semibold">{title}</p> : null}
       {children}
     </div>
