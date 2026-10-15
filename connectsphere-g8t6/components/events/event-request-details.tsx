@@ -87,6 +87,11 @@ export function EventRequestDetails({ event }: { event: EventView }) {
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <ReferenceIdTag value={event.requestId} />
         <span className="text-sm text-on-surface-variant">{formatEventWindow(event.startDatetime, event.endDatetime)}</span>
+        {event.statusNote ? (
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
+            <Icon name="schedule" size={16} />{event.statusNote}
+          </span>
+        ) : null}
         {isMember ? (
           <PermissionPill tone="read-only">Organisation-wide • Read-only</PermissionPill>
         ) : event.status === "DRAFT" ? (

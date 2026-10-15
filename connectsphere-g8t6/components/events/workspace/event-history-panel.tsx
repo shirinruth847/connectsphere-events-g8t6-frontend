@@ -3,6 +3,7 @@
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { PermissionPill } from "@/components/shared/permission-pill";
+import { getStatusPresentation } from "@/components/shared/status-chip";
 import { SectionHeading } from "@/components/shared/section-heading";
 import type { EventHistoryEntry, EventView } from "@/lib/api/event-workspace";
 import { formatTimestamp } from "@/lib/datetime";
@@ -30,8 +31,9 @@ const ROLE_LABELS: Record<string, string> = {
 const actionLabel = (entry: EventHistoryEntry) =>
   ACTION_LABELS[entry.action] ?? entry.summary ?? entry.action;
 
-const formatValue = (value: unknown) => {
+const formatValue = (field: string, value: unknown) => {
   if (value === null || value === undefined || value === "") return "—";
+  if (field === "status" && typeof value === "string") return getStatusPresentation(value).label;
   if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "object") return JSON.stringify(value);
@@ -67,8 +69,8 @@ function HistoryItem({ entry }: { entry: EventHistoryEntry }) {
             <div key={change.field} className="text-xs">
               <dt className="font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{fieldLabel(change.field)}</dt>
               <dd className="mt-1 grid gap-0.5 text-on-surface">
-                <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {formatValue(change.before)}</span>
-                <span className="line-clamp-3"><span className="font-semibold">To:</span> {formatValue(change.after)}</span>
+                <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {formatValue(change.field, change.before)}</span>
+                <span className="line-clamp-3"><span className="font-semibold">To:</span> {formatValue(change.field, change.after)}</span>
               </dd>
             </div>
           ))}

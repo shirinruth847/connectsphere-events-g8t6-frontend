@@ -6,6 +6,7 @@ import { formatDuration, formatEventWindow } from "@/lib/datetime";
 // describe an event the same way.
 
 export const FIELD_LABELS: Record<string, string> = {
+  status: "Status",
   title: "Title",
   purpose: "Purpose",
   description: "Description",

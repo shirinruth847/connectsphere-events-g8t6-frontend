@@ -32,6 +32,8 @@ export interface EventView {
   // frontend does not know (e.g. APPROVED); render those as unknown, never guess.
   status: string;
   statusLabel: string;
+  // What the request is waiting for, e.g. "Waiting for a coordinator".
+  statusNote?: string | null;
   title: string;
   purpose: string | null;
   description: string | null;
