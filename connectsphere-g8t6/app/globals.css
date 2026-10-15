@@ -83,13 +83,16 @@
   --color-outline-variant: var(--outline-variant);
   --font-sans-legacy: "Hanken Grotesk", Arial, sans-serif;
   --font-mono-legacy: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --radius-panel: 1rem;
-  --radius-control: 0.625rem;
-  --radius-chip: 0.5rem;
+  /* Corner radii from the revised Figma screens (SPM file, "NEW" area). */
+  --radius-panel: 1.25rem; /* cards and page panels: 20px */
+  --radius-control: 0.25rem; /* buttons, inputs, inset detail panels: 4px */
+  --radius-chip: 0.125rem; /* status chips: 2px */
   --radius-pill: 9999px;
-  --radius-tag: 0.375rem;
-  --shadow-elevation-1:
-    0 1px 3px rgb(13 28 46 / 8%), 0 1px 2px rgb(13 28 46 / 4%);
+  --radius-tag: 0.125rem; /* reference ID tags: 2px */
+  /* Card shadow from the revised Figma screens. */
+  --shadow-elevation-1: 0 4px 2px rgb(0 0 0 / 6%);
+  --shadow-elevation-2: 0 1px 8px rgb(0 0 0 / 4%), 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-elevation-4: 0 20px 25px rgb(0 0 0 / 10%);
   --tracking-label: 0.08em;
 }
 
@@ -176,7 +179,7 @@ select:focus-visible {
   color: white;
   background: var(--primary);
 }
-nav {
+.top-nav nav {
   display: flex;
   gap: 26px;
   flex: 1;
@@ -1173,7 +1176,7 @@ label {
     gap: 12px 24px;
     padding: 14px 24px;
   }
-  nav {
+  .top-nav nav {
     order: 3;
     flex-basis: 100%;
   }
