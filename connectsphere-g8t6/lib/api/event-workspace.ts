@@ -97,18 +97,6 @@ export interface AssignedEvent {
 
 export type IdentityChanges = Partial<Record<IdentityField, string>>;
 
-// Error codes the save can return, in the backend's check order.
-export type EventEditErrorCode =
-  | "UNAUTHENTICATED"
-  | "EVENT_NOT_FOUND"
-  | "EDIT_REQUIRES_CHANGE_REQUEST"
-  | "EVENT_READ_ONLY"
-  | "EVENT_NOT_EDITABLE_IN_STATUS"
-  | "FIELD_NOT_EDITABLE"
-  | "VALIDATION_FAILED"
-  | "EVENT_VERSION_CONFLICT"
-  | "IDEMPOTENCY_KEY_REUSED";
-
 // accessibility_needs is stored as text: a JSON list when saved through the event
 // forms, but older rows hold plain text or null, which the API passes through.
 type RawEventView = Omit<EventView, "accessibilityNeeds"> & { accessibilityNeeds: string[] | string | null };
