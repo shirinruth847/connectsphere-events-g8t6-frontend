@@ -7,7 +7,7 @@ import { DiscoveryDetailsPanel, type DiscoveryDetailRow } from "./discovery-deta
 import { DiscoveryIcon } from "./discovery-icon";
 import { VENUE_PENDING_LABEL } from "./event-discovery-card";
 import { formatEventDate, formatEventTime, formatTimestamp } from "./format-event-time";
-import { isRegistrationEnabled } from "./registration-availability";
+import { getRegistrationAction, isRegistrationEnabled } from "./registration-availability";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
 import { useDiscoveryEvent } from "./use-discovery-event";
 
@@ -131,12 +131,40 @@ function EventDetailsContent({
         {state.status === "ready" ? <EventDetailsBody event={state.event} /> : null}
       </div>
 
-      <footer className="flex justify-end border-t border-outline-variant/60 px-5 py-4">
-        <Button variant="secondary" className="w-full max-lg:min-h-11 sm:w-auto" onClick={onClose}>
-          Close
-        </Button>
-      </footer>
+      {state.status === "ready" ? <RegistrationActionFooter event={state.event} /> : null}
     </>
+  );
+}
+
+const ACTION_TONES = {
+  primary: "bg-primary text-on-primary",
+  tertiary: "bg-tertiary text-on-primary",
+  tonal: "bg-surface-container-low text-primary",
+} as const;
+
+// Shows the one registration action for this event, as unavailable: there are
+// no register, waitlist or notify endpoints yet (separate ticket). It uses
+// aria-disabled rather than disabled so keyboard and screen-reader users can
+// still reach it and hear why it is unavailable. It has no click handler.
+function RegistrationActionFooter({ event }: { event: AttendeeEventDetail }) {
+  const helperId = useId();
+  const action = getRegistrationAction(event);
+  if (!action) return null;
+
+  return (
+    <footer className="flex flex-col gap-2 border-t border-outline-variant/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
+      <p id={helperId} className="text-xs text-on-surface-variant sm:order-first">
+        Registration coming soon
+      </p>
+      <button
+        type="button"
+        aria-disabled="true"
+        aria-describedby={helperId}
+        className={`inline-flex min-h-10 w-full cursor-not-allowed items-center justify-center rounded-control px-4 py-2 text-sm font-semibold opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-lg:min-h-11 sm:w-auto ${ACTION_TONES[action.tone]}`}
+      >
+        {action.label}
+      </button>
+    </footer>
   );
 }
 

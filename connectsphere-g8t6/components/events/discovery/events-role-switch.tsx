@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { apiRequest, ApiError } from "@/lib/api";
 import { getSupabaseBrowserClient, SupabaseConfigurationError } from "@/lib/supabase";
-import { ATTENDEE_SIGN_IN_PATH, type AttendeeProfile } from "./attendee-event-discovery";
+import { ATTENDEE_SIGN_IN_PATH, type AttendeeProfile } from "./attendee-session";
 
 type SwitchState =
   | { status: "loading" }

@@ -1,4 +1,4 @@
-import type { RegistrationAvailability } from "@/lib/api/discovery";
+import type { AttendeeEventDetail, RegistrationAvailability } from "@/lib/api/discovery";
 
 // The one map from the backend's registrationAvailability to its presentation.
 // The chip, its dot and the card's top border all read from here.
@@ -41,3 +41,31 @@ export function getAvailabilityPresentation(value: string): AvailabilityPresenta
 }
 
 export const isRegistrationEnabled = (value: string) => value !== "NOT_ENABLED";
+
+export interface RegistrationAction {
+  label: string;
+  tone: "primary" | "tertiary" | "tonal";
+}
+
+// The one action the event details offer for each availability. Registering,
+// waitlisting and notifications have no backend endpoints yet, so callers
+// render the action as unavailable.
+export function getRegistrationAction(
+  event: Pick<AttendeeEventDetail, "registrationAvailability" | "registrationOpenAt">,
+  now: Date = new Date(),
+): RegistrationAction | null {
+  switch (event.registrationAvailability) {
+    case "OPEN":
+      return { label: "Register Now", tone: "primary" };
+    case "FULL_WAITLIST":
+      return { label: "Join Waitlist", tone: "tertiary" };
+    case "CLOSED": {
+      // Closed because the window has not opened yet, as opposed to having ended.
+      const opensAt = event.registrationOpenAt ? new Date(event.registrationOpenAt).getTime() : Number.NaN;
+      return opensAt > now.getTime() ? { label: "Notify when registration opens", tone: "tonal" } : null;
+    }
+    default:
+      // NOT_ENABLED, or a value the backend adds later: no action.
+      return null;
+  }
+}

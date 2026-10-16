@@ -11,7 +11,6 @@ const PATHS = {
   registration: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h4" /></>,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
-  logout: <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type DiscoveryIconName = keyof typeof PATHS;

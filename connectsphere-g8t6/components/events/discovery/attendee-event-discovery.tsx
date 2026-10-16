@@ -4,27 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertBanner, Button, EmptyState, PageHeader, Skeleton } from "@/components/shared/primitives";
 import type { AttendeeEventSummary } from "@/lib/api/discovery";
-import { getSupabaseBrowserClient } from "@/lib/supabase";
-import { DiscoveryIcon } from "./discovery-icon";
+import { ATTENDEE_SIGN_IN_PATH, type AttendeeProfile } from "./attendee-session";
+import { AttendeeShell } from "./attendee-shell";
 import { EventDetailsDialog } from "./event-details-dialog";
 import { EventDiscoveryCard } from "./event-discovery-card";
 import { useDiscoveryEvents } from "./use-discovery-events";
 
-export interface AttendeeProfile {
-  name: string;
-  email: string;
-}
-
-export const ATTENDEE_SIGN_IN_PATH = `/login?next=${encodeURIComponent("/events")}`;
-
 // Attendee Event Discovery at /events (SPM-34), from the "Event Discovery"
-// Figma frame. Search, filters, capacity and registration actions are not
-// built: the backend does not provide them yet.
+// Figma frame, inside the attendee sidebar shell. Search, filters, capacity and
+// working registration actions are not built: the backend does not provide
+// them yet.
 export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }) {
   const router = useRouter();
   const discovery = useDiscoveryEvents();
   const [selected, setSelected] = useState<AttendeeEventSummary | null>(null);
-  const [signingOut, setSigningOut] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
   const sessionExpired = discovery.status === "error" && discovery.error?.status === 401;
@@ -32,15 +25,6 @@ export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }
   useEffect(() => {
     if (sessionExpired) router.replace(ATTENDEE_SIGN_IN_PATH);
   }, [sessionExpired, router]);
-
-  const signOut = async () => {
-    setSigningOut(true);
-    try {
-      await getSupabaseBrowserClient().auth.signOut();
-    } finally {
-      router.replace(ATTENDEE_SIGN_IN_PATH);
-    }
-  };
 
   const openDetails = (event: AttendeeEventSummary, button: HTMLButtonElement) => {
     trigger.current = button;
@@ -56,23 +40,11 @@ export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }
   const countText = `Showing ${discovery.events.length} ${discovery.events.length === 1 ? "event" : "events"}${discovery.nextCursor ? " · more available" : ""}`;
 
   return (
-    <main className="mx-auto w-full max-w-[1232px] flex-1 px-4 py-6 sm:px-6 sm:py-8">
+    <AttendeeShell profile={profile}>
       <PageHeader
         eyebrow="Attendee experience portal"
         title="Event Discovery"
         description="Browse confirmed events open to attendees. Open an event to see its full details and registration availability."
-        action={
-          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
-            <span className="flex min-w-0 flex-col text-left sm:text-right">
-              <span className="truncate text-sm font-semibold text-on-surface">{profile.name}</span>
-              <span className="text-xs text-on-surface-variant">Attendee</span>
-            </span>
-            <Button variant="danger" onClick={signOut} disabled={signingOut} className="max-lg:min-h-11">
-              <DiscoveryIcon name="logout" />
-              {signingOut ? "Logging out…" : "Log out"}
-            </Button>
-          </div>
-        }
       />
 
       <section aria-labelledby="discovery-list-heading" className="flex flex-col gap-4">
@@ -181,6 +153,6 @@ export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }
         onLoaded={discovery.patchEvent}
         onNotFound={discovery.removeEvent}
       />
-    </main>
+    </AttendeeShell>
   );
 }
