@@ -36,8 +36,8 @@ const initialState: DiscoveryState = {
   loadMoreError: null,
 };
 
-// Keyset pages are ordered by last update, so an event edited between two page
-// requests can come back twice. Keep the first copy.
+// Keyset pages are ordered by start_datetime, then event_id, so an event
+// rescheduled between two page requests can come back twice. Keep the first copy.
 const appendUnique = (current: AttendeeEventSummary[], next: AttendeeEventSummary[]) => {
   const seen = new Set(current.map((event) => event.eventId));
   return [...current, ...next.filter((event) => !seen.has(event.eventId))];

@@ -57,7 +57,7 @@ export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }
               tabIndex={-1}
               className="text-xl font-semibold tracking-[-0.01em] text-on-surface focus:outline-none"
             >
-              Upcoming events
+              Available events
             </h2>
           </div>
           {discovery.status === "ready" && discovery.events.length > 0 ? (

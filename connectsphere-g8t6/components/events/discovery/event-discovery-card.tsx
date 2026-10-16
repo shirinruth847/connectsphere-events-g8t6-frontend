@@ -5,7 +5,9 @@ import { formatDateTile, formatEventDate, formatEventTime } from "./format-event
 import { getAvailabilityPresentation } from "./registration-availability";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
 
-export const VENUE_PENDING_LABEL = "Venue to be confirmed";
+// The backend does not expose the primary venue yet, so location is null; this
+// says nothing about whether the venue itself is confirmed.
+export const LOCATION_PENDING_LABEL = "Location details coming soon";
 
 interface EventDiscoveryCardProps {
   event: AttendeeEventSummary;
@@ -30,7 +32,7 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
           <span className="inline-flex items-center gap-1 rounded-tag bg-surface-container-high px-2 py-0.5 text-[11px] font-bold leading-[14px] tracking-[0.04em] text-primary">
             <DiscoveryIcon name="venue" size={16} />
             <span className="sr-only">Location: </span>
-            {event.location ?? VENUE_PENDING_LABEL}
+            {event.location ?? LOCATION_PENDING_LABEL}
           </span>
         </div>
         <span className="inline-flex items-center gap-1 text-[11px] font-bold leading-[14px] tracking-[0.04em] text-on-surface-variant">
@@ -44,7 +46,7 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
         {/* Gradient stand-in for an event photo; the backend returns no images. */}
         <div
           aria-hidden="true"
-          className="relative flex aspect-[3/2] w-full shrink-0 items-center justify-center overflow-hidden rounded-control bg-gradient-to-br from-primary-fixed to-tertiary-fixed sm:aspect-auto sm:h-32 sm:w-44"
+          className="flex aspect-[3/2] w-full shrink-0 items-center justify-center overflow-hidden rounded-control bg-gradient-to-br from-primary-fixed to-tertiary-fixed sm:aspect-auto sm:h-32 sm:w-44"
         >
           {tile ? (
             <span className="flex flex-col items-center leading-none text-primary">
@@ -52,9 +54,6 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
               <span className="mt-1 text-[32px] font-extrabold tracking-tight">{tile.day}</span>
             </span>
           ) : null}
-          <span className="absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate rounded-tag bg-on-surface/80 px-1.5 py-0.5 text-[11px] font-bold tracking-[0.04em] text-surface backdrop-blur-[2px]">
-            {event.location ?? "Venue TBC"}
-          </span>
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-2">

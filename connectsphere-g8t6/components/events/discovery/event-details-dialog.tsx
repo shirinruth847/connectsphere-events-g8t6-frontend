@@ -5,7 +5,7 @@ import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import type { AttendeeEventDetail, AttendeeEventSummary } from "@/lib/api/discovery";
 import { DiscoveryDetailsPanel, type DiscoveryDetailRow } from "./discovery-details-panel";
 import { DiscoveryIcon } from "./discovery-icon";
-import { VENUE_PENDING_LABEL } from "./event-discovery-card";
+import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
 import { formatEventDate, formatEventTime, formatTimestamp } from "./format-event-time";
 import { getRegistrationAction, isRegistrationEnabled } from "./registration-availability";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
@@ -172,7 +172,7 @@ function EventDetailsBody({ event }: { event: AttendeeEventDetail }) {
   const rows: DiscoveryDetailRow[] = [
     { label: "Date", icon: "calendar", value: formatEventDate(event.startDatetime, event.endDatetime) },
     { label: "Time", icon: "schedule", value: formatEventTime(event.startDatetime, event.endDatetime) },
-    { label: "Location", icon: "venue", value: event.location ?? VENUE_PENDING_LABEL },
+    { label: "Location", icon: "venue", value: event.location ?? LOCATION_PENDING_LABEL },
   ];
   if (event.organisationName) {
     rows.push({ label: "Organised by", icon: "organisation", value: event.organisationName });

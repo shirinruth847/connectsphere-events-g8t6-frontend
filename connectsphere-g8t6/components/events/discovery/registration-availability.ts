@@ -40,7 +40,9 @@ export function getAvailabilityPresentation(value: string): AvailabilityPresenta
     : null;
 }
 
-export const isRegistrationEnabled = (value: string) => value !== "NOT_ENABLED";
+// True only for the mapped values (OPEN, FULL_WAITLIST, CLOSED), so NOT_ENABLED
+// and any unknown value show no registration wording.
+export const isRegistrationEnabled = (value: string) => getAvailabilityPresentation(value) !== null;
 
 export interface RegistrationAction {
   label: string;
