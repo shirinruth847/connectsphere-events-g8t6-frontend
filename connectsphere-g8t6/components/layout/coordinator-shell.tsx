@@ -143,7 +143,7 @@ export function CoordinatorShell({
     try {
       await getSupabaseBrowserClient().auth.signOut();
     } finally {
-      router.replace("/");
+      router.replace("/login");
     }
   };
 

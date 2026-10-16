@@ -6,7 +6,7 @@ import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/share
 import { getSupabaseBrowserClient, SupabaseConfigurationError } from "@/lib/supabase";
 
 const safeNextPath = (value: string | null) => {
-  if (!value) return "/dashboard";
+  if (!value) return "/";
   try {
     const target = new URL(value, window.location.origin);
     return target.origin === window.location.origin
