@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
-type NavIconName = "dashboard" | "event" | "assignments" | "calendar" | "logout" | "menu" | "close" | "settings";
+type NavIconName = "dashboard" | "event" | "assignments" | "calendar" | "venue" | "logout" | "menu" | "close" | "settings";
 
 function NavIcon({ name, className = "" }: { name: NavIconName; className?: string }) {
   const common = { className, width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true as const };
@@ -14,6 +14,7 @@ function NavIcon({ name, className = "" }: { name: NavIconName; className?: stri
     event: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="m9 15 2 2 4-4" /></>,
     assignments: <><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9l2 2 4-4" /></>,
     calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
+    venue: <><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01" /></>,
     logout: <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.8-.7a7 7 0 0 1-1.7 1l-.3 1.9h-2.8l-.3-1.9a7 7 0 0 1-1.7-1l-1.8.7-1.4-2.4 1.5-1.2a7 7 0 0 1 0-2l-1.5-1.2 1.4-2.4 1.8.7a7 7 0 0 1 1.7-1l.3-1.9h2.8l.3 1.9a7 7 0 0 1 1.7 1l1.8-.7 1.4 2.4-1.5 1.2a7 7 0 0 1 0 2Z" transform="translate(-1 -1) scale(1.08)" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
@@ -35,6 +36,7 @@ const groups: Array<{ title: string; items: Array<{ title: string; icon: NavIcon
     { title: "Unassigned Queue", icon: "event", href: "/events" },
     { title: "Assignments", icon: "assignments", href: "/assignments" },
     { title: "Calendar", icon: "calendar", href: "/calendar" },
+    { title: "Venue Catalogue", icon: "venue", href: "/venues" },
   ] },
   { title: "Account", items: [
     { title: "Settings", icon: "settings", href: "/settings" },
