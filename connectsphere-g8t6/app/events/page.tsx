@@ -13,6 +13,8 @@ import {
 import { AvailabilityMatrix } from "@/components/assignments/availability-matrix";
 import { CalendarView, type CalendarEvent } from "@/components/calendar/calendar-view";
 import { CoordinatorShell } from "@/components/layout/coordinator-shell";
+import { AttendeeEventDiscovery } from "@/components/events/discovery/attendee-event-discovery";
+import { EventsRoleSwitch } from "@/components/events/discovery/events-role-switch";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type ViewMode = "list" | "calendar";
@@ -275,10 +277,17 @@ function EventQueueContent() {
   );
 }
 
-export default function EventQueuePage() {
+// /events is role-scoped: attendees see Event Discovery (SPM-34); every other
+// role keeps the Coordinator Lead queue and its own access check.
+export default function EventsPage() {
   return (
-    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
-      <EventQueueContent />
-    </CoordinatorShell>
+    <EventsRoleSwitch
+      lead={
+        <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
+          <EventQueueContent />
+        </CoordinatorShell>
+      }
+      attendee={(profile) => <AttendeeEventDiscovery profile={profile} />}
+    />
   );
 }
