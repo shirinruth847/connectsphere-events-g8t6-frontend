@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertBanner, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { apiRequest } from "@/lib/api";
-import { displayEventStatus, EVENT_STATUS_ORDER, EventListItem, EventStatus, STATUS_PRESENTATION, formatDateRange } from "@/lib/events";
+import { displayEventStatus, eventStatusLabel, EVENT_STATUS_ORDER, EventListItem, EventStatus, STATUS_PRESENTATION, formatDateRange } from "@/lib/events";
 
 type ListResponse = { events?: EventListItem[]; nextCursor?: string | null };
 type StatusSelection = EventStatus | "ALL";
@@ -34,7 +34,7 @@ export function EventRequestDashboard() {
   const notice = params.get("saved") === "draft"
     ? "Draft saved. You can resume it from My Requests."
     : params.get("submitted")
-      ? "Your event request was submitted successfully."
+      ? `Event request${params.get("requestId") ? ` ${params.get("requestId")}` : ""} submitted successfully. Status: Submitted.`
       : "";
 
   const load = useCallback(async () => {
@@ -65,13 +65,13 @@ export function EventRequestDashboard() {
     const needle = query.trim().toLowerCase();
     const filtered = events.filter((event) => {
       const matchesQuery = !needle || `${event.title} ${event.requestId}`.toLowerCase().includes(needle);
-      const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);
+      const displayStatus = displayEventStatus(event.status);
       const matchesStatus = statusSelection === "ALL" || displayStatus === statusSelection;
       return matchesQuery && matchesStatus;
     });
     return filtered.sort((left, right) => {
-      const leftStatus = displayEventStatus(left.status, left.isAssignedToCoordinator);
-      const rightStatus = displayEventStatus(right.status, right.isAssignedToCoordinator);
+      const leftStatus = displayEventStatus(left.status);
+      const rightStatus = displayEventStatus(right.status);
       const statusDifference = EVENT_STATUS_ORDER.indexOf(leftStatus) - EVENT_STATUS_ORDER.indexOf(rightStatus);
       return statusDifference || (left.startDatetime || "").localeCompare(right.startDatetime || "");
     });
@@ -116,14 +116,14 @@ export function EventRequestDashboard() {
         : <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visible.map((event) => {
-              const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);
+              const displayStatus = displayEventStatus(event.status);
               const statusStyle = STATUS_PRESENTATION[displayStatus];
               const isDraft = event.status === "DRAFT";
               const href = isDraft ? `/events/new?draft=${event.eventId}` : `/events/${event.eventId}`;
               return <article key={event.eventId} className={`flex min-h-[206px] flex-col rounded-[12px] border border-[#E5E7EB] border-t-4 ${statusStyle.border} bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]`}>
                 <div className="flex items-start justify-between gap-3">
                   <h2 className="line-clamp-2 text-base font-semibold text-[#1F2937]">{event.title || "Untitled draft"}</h2>
-                  <StatusChip status={displayStatus} />
+                  <StatusChip status={displayStatus} label={eventStatusLabel(event)} />
                 </div>
                 <p className="mt-3 text-sm text-[#6B7280]">{formatDateRange(event.startDatetime, event.endDatetime)}</p>
                 {event.expectedAttendance ? <p className="mt-1 text-sm text-[#6B7280]">{event.expectedAttendance.toLocaleString()} expected attendees</p> : null}

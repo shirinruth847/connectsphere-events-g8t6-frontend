@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertBanner, Button, FormLabel, SectionCard, fieldClasses } from "@/components/shared/primitives";
 import { apiRequest, ApiError } from "@/lib/api";
-import { ACCESSIBILITY_OPTIONS, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, toPayload } from "@/lib/events";
+import { ACCESSIBILITY_OPTIONS, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, submitEventRequest, toPayload, validateEventStep } from "@/lib/events";
 
 const steps = [
   "Event Identity & Core Purpose",
@@ -43,6 +43,7 @@ export function EventRequestWizard() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
+  const [lastSaveWasAuto, setLastSaveWasAuto] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
@@ -50,6 +51,7 @@ export function EventRequestWizard() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const changedRef = useRef(false);
   const editRevision = useRef(0);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (!draftId) return;
@@ -68,7 +70,7 @@ export function EventRequestWizard() {
       const target = event.target;
       if (!(target instanceof Element)) return;
       const anchor = target.closest("a[href]");
-      if (anchor && changedRef.current && !window.confirm("You have unsaved changes. Leave this request? Your last autosave may not include them.")) event.preventDefault();
+      if (anchor && changedRef.current && !window.confirm("You have unsaved event changes. Are you sure you want to leave?")) event.preventDefault();
     };
     document.addEventListener("click", confirmNavigation, true);
     return () => { window.removeEventListener("beforeunload", warn); document.removeEventListener("click", confirmNavigation, true); };
@@ -92,7 +94,10 @@ export function EventRequestWizard() {
       }
       const savedEvent = result.event;
       if (savedEvent) setEventId(savedEvent.eventId);
-      if (result.savedAt) setSavedAt(result.savedAt);
+      if (result.savedAt) {
+        setSavedAt(result.savedAt);
+        setLastSaveWasAuto(auto);
+      }
       if (!auto) {
         if (revisionAtStart === editRevision.current) {
           setDirty(false);
@@ -132,37 +137,20 @@ export function EventRequestWizard() {
   };
 
   const validate = (index: number, complete = false) => {
-    const errors: Record<string, string> = {};
-    if (index === 0) {
-      if (!values.title.trim()) errors.title = "Enter an event title.";
-      if (values.title.trim().length > 200) errors.title = "The title must be 200 characters or fewer.";
-      if (complete && !values.purpose.trim()) errors.purpose = "Enter the event purpose.";
-      if (values.purpose.length > 2000) errors.purpose = "Purpose must be 2,000 characters or fewer.";
-      if (complete && !values.description.trim()) errors.description = "Enter an event description.";
-      if (values.description.length > 5000) errors.description = "Description must be 5,000 characters or fewer.";
-    }
-    if (index === 1) {
-      if (complete && !values.startDatetime) errors.startDatetime = "Choose a start date and time.";
-      if (complete && !values.endDatetime) errors.endDatetime = "Choose an end date and time.";
-      if (values.startDatetime && values.endDatetime && new Date(values.endDatetime) <= new Date(values.startDatetime)) errors.endDatetime = "End time must be after the start time.";
-      if (complete && !values.expectedAttendance.trim()) errors.expectedAttendance = "Enter the expected attendance.";
-      if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1)) errors.expectedAttendance = "Enter a whole number greater than zero.";
-    }
-    if (index === 3 && values.accessibilityNotes.length > 200) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
-    if (index === 5 && values.isRegistrationEnabled && complete && !values.registrationCapacity.trim()) errors.registrationCapacity = "Enter a registration capacity.";
-    if (index === 5 && values.isRegistrationEnabled && values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1)) errors.registrationCapacity = "Enter a whole number greater than zero.";
+    const errors = validateEventStep(values, index, complete);
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const advance = () => {
-    if (!validate(step)) return;
+    if (!validate(step, true)) return;
     setStep((current) => Math.min(steps.length - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submittingRef.current) return;
     if (!steps.every((_, index) => validate(index, true))) {
       const firstInvalid = steps.findIndex((_, index) => !validate(index, true));
       setStep(Math.max(0, firstInvalid));
@@ -171,25 +159,22 @@ export function EventRequestWizard() {
     const start = values.startDatetime ? new Date(values.startDatetime).getTime() : NaN;
     const earliest = Date.now() + 48 * 60 * 60 * 1000;
     if (Number.isFinite(start) && start < earliest) {
-      setFieldErrors({ startDatetime: "Choose a start time at least 48 hours from now." });
+      setFieldErrors({ startDatetime: "Event date must be at least 48 hours in advance." });
       setStep(1); return;
     }
+    submittingRef.current = true;
     setSaving(true); setError("");
     try {
       const payload = toPayload(values);
-      if (eventId) {
-        await apiRequest(`/events/${eventId}/draft`, { method: "PUT", body: JSON.stringify({ ...payload, isAutoSave: false }) });
-        await apiRequest(`/events/${eventId}/submit`, { method: "PUT", body: JSON.stringify(payload) });
-      } else {
-        await apiRequest("/events", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(payload) });
-      }
+      const result = await submitEventRequest(apiRequest, eventId, payload, crypto.randomUUID()) as { event?: Pick<EventRequest, "requestId"> };
       changedRef.current = false;
-      router.push("/dashboard?submitted=1");
+      const requestId = result.event?.requestId;
+      router.push(`/dashboard?submitted=1${requestId ? `&requestId=${encodeURIComponent(requestId)}` : ""}`);
     } catch (caught) {
       if (caught instanceof ApiError) { setError(caught.message); setFieldErrors(caught.fields); }
       else setError(caught instanceof Error ? caught.message : "The event request could not be submitted.");
       setStep(0);
-    } finally { setSaving(false); }
+    } finally { submittingRef.current = false; setSaving(false); }
   };
 
   if (loading) return <SectionCard><p className="text-sm text-on-surface-variant">Loading draft…</p></SectionCard>;
@@ -253,7 +238,7 @@ export function EventRequestWizard() {
             <p className="mt-3 text-[13px] leading-5 text-on-surface-variant">Event Title must be entered before any draft can be saved. No other field is compulsory for a draft.</p>
             <div className="my-3 border-t border-[#e2e5f1]" />
             <p className="text-[13px] leading-5 text-on-surface-variant">All remaining required fields must be completed for final submission. <span className="text-error">*</span> marks required fields.</p>
-            {savedAt && <p className="mt-3 text-xs font-semibold text-success">Last saved at {formatSavedTime(savedAt)}</p>}
+            {savedAt && <p className="mt-3 text-xs font-semibold text-success">{lastSaveWasAuto ? "Last auto-saved at" : "Last saved at"} {formatSavedTime(savedAt)}</p>}
           </section>
           <section className="rounded-lg bg-[#e6eeff] p-5">
             <h3 className="flex items-center gap-2 text-sm font-bold text-primary"><span aria-hidden="true" className="grid size-[18px] place-items-center rounded-full border border-primary text-[11px]">i</span>{guidance[step].title}</h3>
@@ -268,7 +253,7 @@ export function EventRequestWizard() {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button type="button" onClick={() => void saveDraft(false)} disabled={saving || !values.title.trim()} className="inline-flex h-11 items-center gap-2 rounded-[2px] bg-[#e6eeff] px-5 text-sm font-medium text-on-surface disabled:cursor-not-allowed disabled:opacity-50"><span aria-hidden="true">♧</span>{saving ? "Saving…" : "Save Draft"}</button>
             <Button type="button" variant="secondary" disabled={step === 0 || saving} onClick={() => setStep((current) => current - 1)} className="h-11 rounded-[2px] px-5">Back</Button>
-            {step < steps.length - 1 ? <Button type="button" onClick={advance} className="h-11 rounded-[2px] px-5">Next <span aria-hidden="true">→</span></Button> : <Button type="submit" disabled={saving} className="h-11 rounded-[2px] px-5">{saving ? "Submitting…" : "Submit request"}</Button>}
+            {step < steps.length - 1 ? <Button key="next" type="button" onClick={advance} className="h-11 rounded-[2px] px-5">Next <span aria-hidden="true">→</span></Button> : <Button key="submit" type="submit" disabled={saving} className="h-11 rounded-[2px] px-5">{saving ? "Submitting…" : "Submit request"}</Button>}
           </div>
         </div>
       </footer>

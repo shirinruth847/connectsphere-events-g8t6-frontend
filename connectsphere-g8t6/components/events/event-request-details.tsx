@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertBanner, PageHeader, ReferenceIdTag, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { apiRequest } from "@/lib/api";
-import { displayEventStatus, EventRequest, formatDateRange } from "@/lib/events";
+import { displayEventStatus, eventStatusLabel, EventRequest, formatDateRange } from "@/lib/events";
 
 type InfoIconName = "calendar" | "venue" | "approval" | "organisation" | "coordinator" | "attendees" | "registration" | "info";
 
@@ -62,7 +62,7 @@ export function EventRequestDetails() {
     : typeof event.accessibilityNeeds === "string" && event.accessibilityNeeds.trim()
       ? [event.accessibilityNeeds]
       : [];
-  const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);
+  const displayStatus = displayEventStatus(event.status);
   const attendance = event.expectedAttendance ?? 0;
   const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
   const capacityPercent = capacity > 0 && attendance > 0 ? Math.round((attendance / capacity) * 100) : 0;
@@ -72,7 +72,7 @@ export function EventRequestDetails() {
 
   return <div className="space-y-5">
     <Link href="/dashboard" className="inline-flex text-sm font-semibold text-primary hover:underline">← Back to My Events</Link>
-    <PageHeader eyebrow="Event request" title={event.title || "Untitled draft"} description={event.description || "Review the details and current status of this event request."} action={<StatusChip status={displayStatus} />} />
+    <PageHeader eyebrow="Event request" title={event.title || "Untitled draft"} description={event.description || "Review the details and current status of this event request."} action={<StatusChip status={displayStatus} label={eventStatusLabel(event)} />} />
     <div className="flex flex-wrap items-center gap-3"><ReferenceIdTag value={event.requestId} /><span className="text-sm text-on-surface-variant">{formatDateRange(event.startDatetime, event.endDatetime)}</span></div>
     <div className="grid items-stretch gap-4 lg:grid-cols-2">
       <section className="rounded-[14px] bg-[#F0EFFF] p-5 sm:p-6" aria-labelledby="event-planning-heading">
@@ -80,7 +80,7 @@ export function EventRequestDetails() {
         <div className="space-y-4">
           <InfoRow icon="calendar" label="Date" value={formatDateRange(event.startDatetime, event.endDatetime)} />
           <InfoRow icon="venue" label="Venue" value={venueSummary} />
-          <InfoRow icon="approval" label="Approval stage" value={<StatusChip status={displayStatus} />} />
+          <InfoRow icon="approval" label="Approval stage" value={<StatusChip status={displayStatus} label={eventStatusLabel(event)} />} />
         </div>
         <div className="mt-6 flex gap-2.5 rounded-lg bg-[#E1EAFE] p-3.5 text-xs leading-relaxed text-[#4B5563]">
           <InfoIcon name="info" />

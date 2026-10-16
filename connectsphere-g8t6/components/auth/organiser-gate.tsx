@@ -34,7 +34,7 @@ export function OrganiserGate({ children }: { children: ReactNode }) {
         if (sessionError) throw sessionError;
         const session = data.session;
         if (!session) {
-          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+          router.replace(`/login?next=${encodeURIComponent(pathname)}&reason=login-required`);
           return;
         }
         let response: Response;
@@ -52,7 +52,7 @@ export function OrganiserGate({ children }: { children: ReactNode }) {
         const body = await response.json().catch(() => ({})) as AuthMeResponse;
         if (response.status === 401 || response.status === 403) {
           await client.auth.signOut();
-          router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+          router.replace(`/login?next=${encodeURIComponent(pathname)}&reason=session-expired`);
           return;
         }
         if (!response.ok) throw new Error(body.error || "Could not verify your ConnectSphere profile.");
