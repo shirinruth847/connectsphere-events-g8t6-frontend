@@ -110,3 +110,24 @@ passed on the existing development server, which was left running untouched.
 Login, draft persistence, submission and role routing implementations are
 unchanged by this styling repair. Future feature styling belongs in scoped
 CSS modules or component utilities rather than global element selectors.
+
+## Shared workspace for the team
+
+All six roles now render the same `DashboardShell`, extracted from the
+restored organiser sidebar. `lib/navigation.ts` supplies each role's tabs;
+`lib/auth.ts` owns role labels, route constants and login-return policy.
+The organiser-only create shortcut is hidden for other roles. My Drafts
+correctly becomes the active item when its query filter is selected.
+
+New protected pages use `DashboardWorkspace` and `PageContent`. Existing
+organiser/staff shell imports remain compatibility aliases; there is no
+second sidebar implementation. Staff/attendee pages use the common heading
+and content spacing. Existing role restrictions and API scoping remain intact.
+
+All 29 browser tests pass, now checking common desktop sidebar geometry,
+role-specific navigation, active items, mobile menu/Escape and logout for
+every role, alongside existing event/draft journeys. Eight helper tests,
+lint and production build/type checks also pass. The team guide and starter
+page are in `docs/team-ui-workflow.md`, accompanied by a PR template and a
+prepared GitHub checks workflow. Its YAML parses locally; it has not run on
+GitHub, and required checks/reviewer settings have not been enabled remotely.

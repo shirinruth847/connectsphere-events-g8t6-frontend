@@ -35,6 +35,10 @@ by the application. Do not suppress hydration diagnostics globally to hide it.
 
 ## Checks
 
+Team members: read [the shared UI workflow](docs/team-ui-workflow.md) before
+adding a dashboard page, role navigation item or custom styling. It includes
+the starter page, route/API agreement and PR checks.
+
 - `npm run lint`
 - `npx tsc --noEmit`
 - `npm run build`
