@@ -28,6 +28,7 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  await expect(navigation.getByRole('link',{name:'My Drafts',exact:true})).toBeVisible();
  await navigation.getByRole('link',{name:'My Drafts',exact:true}).click();
  await expect(page).toHaveURL(/status=DRAFT/);
+ await expect(navigation.getByRole('link',{name:'My Drafts',exact:true})).toHaveAttribute('aria-current','page');
  await expect(page.getByRole('button',{name:'Open menu',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -38,6 +39,25 @@ for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event
   await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible();
   if(role==='ATTENDEE') {await expect(page.getByText('Registered attendee event')).toBeVisible();await expect(page.getByText('Assigned coordinator event')).toHaveCount(0);}
   if(role==='COORDINATOR') await expect(page.getByText('Assigned coordinator event')).toBeVisible();
+  const shell=page.locator('[data-dashboard-shell]');
+  await expect(shell).toHaveAttribute('data-dashboard-shell',role);
+  expect((await shell.locator('aside').boundingBox()).width).toBe(225);
+  const nav=page.getByRole('navigation',{name:'Main Navigation',exact:true});
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+  if(role!=='ORGANISER') {
+   await expect(nav.getByRole('link',{name:'My Requests',exact:true})).toHaveCount(0);
+   await expect(page.getByRole('link',{name:'Add Quick Event',exact:false})).toHaveCount(0);
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'Open menu',exact:true}).click();
+  await expect.poll(async()=>Math.round((await shell.locator('aside').boundingBox()).x)).toBe(0);
+  await expect(nav.locator('[aria-current="page"]')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button',{name:'Open menu',exact:true})).toHaveAttribute('aria-expanded','false');
+  await page.getByRole('button',{name:'Open menu',exact:true}).click();
+  await page.getByRole('button',{name:'Logout',exact:true}).click();
+  await expect(page).toHaveURL(/\/login/);
  });
 }
 test('[SPM-32 TC-008–010] blank login fields show inline errors', async ({page}) => {

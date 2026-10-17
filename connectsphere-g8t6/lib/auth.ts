@@ -1,5 +1,14 @@
 export type UserRole = "ORGANISER" | "COORDINATOR" | "COORDINATOR_LEAD" | "VENUE_STAFF" | "TECH_SUPPORT" | "ATTENDEE";
-export type SessionUser = { user_id: number; name: string; email: string; role: UserRole; home_path?: string; authId?: string };
+export type SessionUser = { user_id: number; name: string; email: string; role: UserRole; home_path?: string; authId?: string; avatarUrl?: string };
+
+export const ROUTES = {
+  login: "/login",
+  dashboard: "/dashboard",
+  registrations: "/my-registrations",
+  newEvent: "/events/new",
+  createEvent: "/events/create",
+  drafts: "/dashboard?status=DRAFT#my-drafts",
+} as const;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   ORGANISER: "Event Organiser", COORDINATOR: "Event Coordinator",
@@ -8,7 +17,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export function homeForRole(role: UserRole) {
-  return role === "ATTENDEE" ? "/my-registrations" : "/dashboard";
+  return role === "ATTENDEE" ? ROUTES.registrations : ROUTES.dashboard;
 }
 
 export function safeNextPath(value: string | null): string | null {
@@ -23,8 +32,8 @@ export function safeNextPath(value: string | null): string | null {
 
 export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
-  if (pathname === "/dashboard") return role !== "ATTENDEE";
-  if (pathname === "/my-registrations") return role === "ATTENDEE";
+  if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
+  if (pathname === ROUTES.registrations) return role === "ATTENDEE";
   if (/^\/events\/(new|create|\d+)$/.test(pathname)) return role === "ORGANISER";
   return false;
 }
@@ -35,5 +44,5 @@ export function postLoginPath(user: SessionUser, next: string | null) {
 }
 
 export function loginUrl(path: string) {
-  return `/login?next=${encodeURIComponent(path)}&reason=required`;
+  return `${ROUTES.login}?next=${encodeURIComponent(path)}&reason=required`;
 }
