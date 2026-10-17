@@ -5,7 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertBanner, Button, FormLabel, SectionCard, fieldClasses } from "@/components/shared/primitives";
 import { apiRequest, ApiError } from "@/lib/api";
-import { ACCESSIBILITY_OPTIONS, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, toPayload } from "@/lib/events";
+import { useSessionUser } from "@/components/auth/auth-gate";
+import { useNavigationGuard } from "@/components/shared/navigation-guard";
+import { SESSION_EXPIRED } from "@/lib/session";
+import { ACCESSIBILITY_OPTIONS, validateEventStep, fieldStep, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, toPayload } from "@/lib/events";
 
 const steps = [
   "Event Identity & Core Purpose",
@@ -26,173 +29,195 @@ const stepDescriptions = [
 const guidance = [
   { title: "Event identity & purpose", body: "A clear title and concise event scope help your coordinator understand the request. The title is the only field required to save a draft." },
   { title: "Attendance & scheduling", body: "Submit at least 48 hours before the proposed start. Your end time must follow the start time; attendance is used during coordinator review." },
-  { title: "Venue coordination", body: "Venue and layout catalogues are not connected yet. This request will not reserve a room or create a venue hold." },
+  { title: "Venue coordination", body: "Choose venue preferences and a supported layout. Preferences do not reserve or hold a venue." },
   { title: "Accessibility planning", body: "Share the access arrangements your attendees need. The event team can follow up if more detail is required." },
-  { title: "Equipment planning", body: "Equipment selection is not connected yet. Equipment requirements will be left empty in this request." },
+  { title: "Equipment planning", body: "Equipment requests are managed separately. Any requirements already saved with this draft are preserved." },
   { title: "Registration", body: "You can enable registration and set a capacity. Access controls and waitlists are not supported by this request API." },
 ];
 type SaveResponse = { event?: EventRequest; savedAt?: string };
 
 export function EventRequestWizard() {
-  const router = useRouter();
-  const params = useSearchParams();
+  const router = useRouter(); const params = useSearchParams();
+  const user = useSessionUser();
+  const { setBlocked, allowNavigation } = useNavigationGuard();
   const draftId = params.get("draft");
+  const initialId = draftId && /^\d+$/.test(draftId) && Number(draftId) > 0 && Number(draftId) <= 2147483647 ? Number(draftId) : null;
   const [values, setValues] = useState<EventFormValues>(EMPTY_EVENT_FORM);
-  const [step, setStep] = useState(0);
-  const [loading, setLoading] = useState(Boolean(draftId));
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState("");
-  const [error, setError] = useState("");
+  const [step, setStep] = useState(0); const [loading, setLoading] = useState(Boolean(draftId));
+  const [dirty, setDirty] = useState(false); const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false); const [locked, setLocked] = useState(false);
+  const [savedAt, setSavedAt] = useState(""); const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
-  const [eventId, setEventId] = useState<number | null>(draftId ? Number(draftId) : null);
+  const [options, setOptions] = useState<{ venues: Array<{venueId: number; name: string}>; layouts: string[] }>({ venues: [], layouts: ["NO_PREFERENCE"] });
+  const [optionsError, setOptionsError] = useState("");
+  const valuesRef = useRef(values); const idRef = useRef<number | null>(initialId);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const changedRef = useRef(false);
-  const editRevision = useRef(0);
+  const changedRef = useRef(false); const revision = useRef(0);
+  const inFlight = useRef<Promise<void> | null>(null);
+  const createAttempt = useRef<{ key: string; payload: ReturnType<typeof toPayload>; revision: number } | null>(null);
+  const recoveryKey = `connectsphere:recovery:${user?.authId ?? user?.user_id}:${draftId ?? "new"}`;
+  const replaceValues = useCallback((next: EventFormValues) => { valuesRef.current = next; setValues(next); }, []);
 
+  useEffect(() => { setBlocked(dirty); return () => setBlocked(false); }, [dirty, setBlocked]);
   useEffect(() => {
-    if (!draftId) return;
-    let active = true;
-    void apiRequest<{ event?: EventRequest }>(`/events/${draftId}`).then((result) => {
-      if (active && result.event) { setValues(formValuesFromEvent(result.event)); setEventId(result.event.eventId); setDirty(false); }
-    }).catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Could not load this draft."); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [draftId]);
-
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (changedRef.current) { event.preventDefault(); event.returnValue = ""; } };
-    window.addEventListener("beforeunload", warn);
-    const confirmNavigation = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const anchor = target.closest("a[href]");
-      if (anchor && changedRef.current && !window.confirm("You have unsaved changes. Leave this request? Your last autosave may not include them.")) event.preventDefault();
+    let alive = true;
+    const restore = () => {
+      try {
+        const raw = sessionStorage.getItem(recoveryKey);
+        if (!raw) return;
+        const recovery = JSON.parse(raw);
+        sessionStorage.removeItem(recoveryKey);
+        if (Date.now() - recovery.at > 30 * 60 * 1000 || typeof recovery.values?.title !== "string") return;
+        replaceValues({ ...EMPTY_EVENT_FORM, ...recovery.values });
+        if (recovery.eventId) idRef.current = recovery.eventId;
+        revision.current += 1; changedRef.current = true; setDirty(true);
+        setNotice("Your unsaved changes were restored. Please review and save them.");
+      } catch { sessionStorage.removeItem(recoveryKey); }
     };
-    document.addEventListener("click", confirmNavigation, true);
-    return () => { window.removeEventListener("beforeunload", warn); document.removeEventListener("click", confirmNavigation, true); };
+    const load = async () => {
+      if (draftId) {
+        if (!initialId) { setLocked(true); setError("This draft could not be found."); return; }
+        const result = await apiRequest<{ event: EventRequest }>(`/events/${initialId}`);
+        if (!alive) return;
+        if (result.event.status !== "DRAFT" || result.event.isOwner === false) {
+          setLocked(true); setError("This request is not an editable draft. Open its event details instead."); return;
+        }
+        replaceValues(formValuesFromEvent(result.event));
+        idRef.current = result.event.eventId;
+      }
+      restore();
+    };
+    void load().catch(caught => { if (alive) { setLocked(true); setError(caught.message || "Could not load this draft."); } }).finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [draftId, initialId, recoveryKey, replaceValues]);
+
+  useEffect(() => {
+    let alive = true;
+    void apiRequest<typeof options>("/events/request-options").then(result => { if (alive) setOptions(result); }).catch(() => { if (alive) setOptionsError("Venue choices could not be loaded. You can retry by reloading, or save your draft and return later."); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    const preserve = () => {
+      if (changedRef.current) {
+        sessionStorage.setItem(recoveryKey, JSON.stringify({ values: valuesRef.current, eventId: idRef.current, at: Date.now() }));
+      }
+      allowNavigation();
+    };
+    window.addEventListener(SESSION_EXPIRED, preserve);
+    return () => window.removeEventListener(SESSION_EXPIRED, preserve);
+  }, [allowNavigation, recoveryKey]);
+
+  const showFailure = useCallback((caught: unknown) => {
+    if (caught instanceof ApiError) {
+      setError(caught.message); setFieldErrors(caught.fields);
+      const field = Object.keys(caught.fields)[0];
+      if (field) setStep(fieldStep(field));
+      if ([403, 404, 409].includes(caught.status)) setLocked(true);
+    } else setError(caught instanceof Error ? caught.message : "Could not save your request.");
   }, []);
 
   const saveDraft = useCallback(async (auto = false) => {
-    if (!values.title.trim()) return;
-    const revisionAtStart = editRevision.current;
-    setSaving(true); setError(""); setFieldErrors({});
-    try {
-      const payload = toPayload(values);
-      let result: SaveResponse;
-      if (eventId) {
-        result = await apiRequest<SaveResponse>(`/events/${eventId}/draft`, {
-          method: "PUT", body: JSON.stringify({ ...payload, isAutoSave: auto }),
-        });
-      } else {
-        result = await apiRequest<SaveResponse>("/events/drafts", {
-          method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(payload),
-        });
-      }
-      const savedEvent = result.event;
-      if (savedEvent) setEventId(savedEvent.eventId);
-      if (result.savedAt) setSavedAt(result.savedAt);
-      if (!auto) {
-        if (revisionAtStart === editRevision.current) {
-          setDirty(false);
-          changedRef.current = false;
-          const id = savedEvent?.eventId ?? eventId;
-          router.push(`/dashboard?saved=draft${id ? `&draft=${id}` : ""}`);
+    if (inFlight.current) {
+      await inFlight.current;
+      if (auto) return;
+    }
+    const snapshot = valuesRef.current;
+    if (!snapshot.title.trim() || locked || submitting) return;
+    const invalid = Object.assign({}, ...steps.map((_, i) => validateEventStep(snapshot, i, false)));
+    if (Object.keys(invalid).length) { setFieldErrors(invalid); setStep(fieldStep(Object.keys(invalid)[0])); return; }
+    if (timer.current) clearTimeout(timer.current);
+    const operation = async () => {
+      const atStart = revision.current;
+      setSaving(true); setError(""); setFieldErrors({});
+      try {
+        let result: SaveResponse;
+        let savedRevision = atStart;
+        if (idRef.current) {
+          result = await apiRequest(`/events/${idRef.current}/draft`, { method: "PUT", body: JSON.stringify({ ...toPayload(snapshot), isAutoSave: auto }) });
         } else {
-          setDirty(true);
-          changedRef.current = true;
-          setNotice("The draft saved, and newer edits are still waiting to be saved.");
+          createAttempt.current ??= { key: crypto.randomUUID(), payload: toPayload(snapshot), revision: atStart };
+          const attempt = createAttempt.current;
+          result = await apiRequest("/events/drafts", { method: "POST", headers: { "Idempotency-Key": attempt.key }, body: JSON.stringify(attempt.payload) });
+          savedRevision = attempt.revision;
+          if (!result.event?.eventId) throw new Error("The save response did not include a draft ID.");
+          idRef.current = result.event.eventId; createAttempt.current = null;
+          // A retry of an uncertain POST uses its original payload/key, then
+          // persists the current edits with PUT instead of creating another row.
+          if (savedRevision !== atStart) {
+            result = await apiRequest(`/events/${idRef.current}/draft`, { method: "PUT", body: JSON.stringify({ ...toPayload(snapshot), isAutoSave: auto }) });
+            savedRevision = atStart;
+          }
         }
-      } else if (revisionAtStart === editRevision.current) {
-        setDirty(false);
-        changedRef.current = false;
-      } else {
-        setDirty(true);
-        changedRef.current = true;
-      }
-    } catch (caught) {
-      if (caught instanceof ApiError) { setError(caught.message); setFieldErrors(caught.fields); }
-      else setError(caught instanceof Error ? caught.message : "Draft could not be saved.");
-    } finally { setSaving(false); }
-  }, [eventId, router, values]);
+        if (result.savedAt && auto) setSavedAt(result.savedAt);
+        if (savedRevision === revision.current) {
+          changedRef.current = false; setDirty(false); sessionStorage.removeItem(recoveryKey);
+          if (!auto) {
+            allowNavigation(); sessionStorage.setItem("connectsphere:notice", "Draft saved successfully.");
+            router.push("/dashboard?status=DRAFT#my-drafts");
+          }
+        } else {
+          setDirty(true); changedRef.current = true;
+          setNotice("The draft saved. Your newer edits are still waiting to be saved.");
+        }
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500) createAttempt.current = null;
+        showFailure(caught);
+      } finally { setSaving(false); }
+    };
+    const work = operation(); inFlight.current = work;
+    try { await work; } finally { if (inFlight.current === work) inFlight.current = null; }
+  }, [allowNavigation, locked, recoveryKey, router, showFailure, submitting]);
 
   useEffect(() => {
-    if (!dirty || !values.title.trim() || loading) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => { void saveDraft(true); }, 30_000);
-    return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [dirty, loading, saveDraft, values]);
+    const arm = () => {
+      if (timer.current) clearTimeout(timer.current);
+      if (dirty && valuesRef.current.title.trim() && !loading && !saving && !submitting && !locked) timer.current = setTimeout(() => { void saveDraft(true); }, 30_000);
+    };
+    arm();
+    for (const event of ["keydown", "mousedown", "mousemove", "touchstart"]) window.addEventListener(event, arm, { passive: true });
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      for (const event of ["keydown", "mousedown", "mousemove", "touchstart"]) window.removeEventListener(event, arm);
+    };
+  }, [dirty, loading, locked, saveDraft, saving, submitting, values]);
 
-  const update = (key: keyof EventFormValues, value: string | boolean | string[]) => {
-    editRevision.current += 1;
-    setValues((current) => ({ ...current, [key]: value }));
-    setDirty(true); changedRef.current = true;
-    setNotice(""); setError("");
+  const update = (key: keyof EventFormValues, value: string | boolean | string[] | number[]) => {
+    revision.current += 1;
+    replaceValues({ ...valuesRef.current, [key]: value });
+    setDirty(true); changedRef.current = true; setNotice(""); setError("");
   };
-
-  const validate = (index: number, complete = false) => {
-    const errors: Record<string, string> = {};
-    if (index === 0) {
-      if (!values.title.trim()) errors.title = "Enter an event title.";
-      if (values.title.trim().length > 200) errors.title = "The title must be 200 characters or fewer.";
-      if (complete && !values.purpose.trim()) errors.purpose = "Enter the event purpose.";
-      if (values.purpose.length > 2000) errors.purpose = "Purpose must be 2,000 characters or fewer.";
-      if (complete && !values.description.trim()) errors.description = "Enter an event description.";
-      if (values.description.length > 5000) errors.description = "Description must be 5,000 characters or fewer.";
-    }
-    if (index === 1) {
-      if (complete && !values.startDatetime) errors.startDatetime = "Choose a start date and time.";
-      if (complete && !values.endDatetime) errors.endDatetime = "Choose an end date and time.";
-      if (values.startDatetime && values.endDatetime && new Date(values.endDatetime) <= new Date(values.startDatetime)) errors.endDatetime = "End time must be after the start time.";
-      if (complete && !values.expectedAttendance.trim()) errors.expectedAttendance = "Enter the expected attendance.";
-      if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1)) errors.expectedAttendance = "Enter a whole number greater than zero.";
-    }
-    if (index === 3 && values.accessibilityNotes.length > 200) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
-    if (index === 5 && values.isRegistrationEnabled && complete && !values.registrationCapacity.trim()) errors.registrationCapacity = "Enter a registration capacity.";
-    if (index === 5 && values.isRegistrationEnabled && values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1)) errors.registrationCapacity = "Enter a whole number greater than zero.";
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
   const advance = () => {
-    if (!validate(step)) return;
-    setStep((current) => Math.min(steps.length - 1, current + 1));
+    const invalid = validateEventStep(valuesRef.current, step, true);
+    setFieldErrors(invalid);
+    if (Object.keys(invalid).length) return;
+    setStep(current => Math.min(steps.length - 1, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!steps.every((_, index) => validate(index, true))) {
-      const firstInvalid = steps.findIndex((_, index) => !validate(index, true));
-      setStep(Math.max(0, firstInvalid));
-      return;
-    }
-    const start = values.startDatetime ? new Date(values.startDatetime).getTime() : NaN;
-    const earliest = Date.now() + 48 * 60 * 60 * 1000;
-    if (Number.isFinite(start) && start < earliest) {
-      setFieldErrors({ startDatetime: "Choose a start time at least 48 hours from now." });
-      setStep(1); return;
-    }
-    setSaving(true); setError("");
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    if (step !== steps.length - 1 || submitter?.id !== "submit-request" || submitting || locked) return;
+    if (timer.current) clearTimeout(timer.current);
+    if (inFlight.current) await inFlight.current;
+    const invalid = Object.assign({}, ...steps.map((_, i) => validateEventStep(valuesRef.current, i, true)));
+    setFieldErrors(invalid);
+    if (Object.keys(invalid).length) { setStep(fieldStep(Object.keys(invalid)[0])); return; }
+    setSubmitting(true); setError("");
     try {
-      const payload = toPayload(values);
-      if (eventId) {
-        await apiRequest(`/events/${eventId}/draft`, { method: "PUT", body: JSON.stringify({ ...payload, isAutoSave: false }) });
-        await apiRequest(`/events/${eventId}/submit`, { method: "PUT", body: JSON.stringify(payload) });
-      } else {
-        await apiRequest("/events", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(payload) });
-      }
-      changedRef.current = false;
-      router.push("/dashboard?submitted=1");
-    } catch (caught) {
-      if (caught instanceof ApiError) { setError(caught.message); setFieldErrors(caught.fields); }
-      else setError(caught instanceof Error ? caught.message : "The event request could not be submitted.");
-      setStep(0);
-    } finally { setSaving(false); }
+      const payload = toPayload(valuesRef.current);
+      if (idRef.current) await apiRequest(`/events/${idRef.current}/submit`, { method: "PUT", body: JSON.stringify(payload) });
+      else await apiRequest("/events", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(payload) });
+      changedRef.current = false; setDirty(false); allowNavigation(); sessionStorage.removeItem(recoveryKey);
+      sessionStorage.setItem("connectsphere:notice", "Your event request has been submitted successfully.");
+      router.push("/dashboard");
+    } catch (caught) { showFailure(caught); }
+    finally { setSubmitting(false); }
   };
 
-  if (loading) return <SectionCard><p className="text-sm text-on-surface-variant">Loading draft…</p></SectionCard>;
+  if (loading) return <SectionCard><p>Loading draft…</p></SectionCard>;
+  if (locked) return <SectionCard><AlertBanner title="Draft unavailable" tone="error">{error}</AlertBanner><Link href={initialId ? `/events/${initialId}` : "/dashboard"} className="mt-4 inline-block text-primary underline">{initialId ? "View event details" : "Back to My Requests"}</Link></SectionCard>;
 
   const field = (key: keyof EventFormValues) => fieldErrors[key] ? <p className="mt-1 text-xs text-error" role="alert">{fieldErrors[key]}</p> : null;
   return <div className="pb-5">
@@ -220,7 +245,7 @@ export function EventRequestWizard() {
     {error ? <div className="mb-4"><AlertBanner tone="error" title="We could not save this request">{error}</AlertBanner></div> : null}
     {notice ? <div className="mb-4"><AlertBanner tone="success">{notice}</AlertBanner></div> : null}
 
-    <form onSubmit={submit}>
+    <form onSubmit={submit} noValidate><fieldset disabled={submitting}>
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_332px]">
         <section className="min-h-[596px] overflow-hidden rounded-lg border border-[#e2e5f1] bg-white shadow-elevation-1">
           <header className="flex flex-wrap items-start justify-between gap-3 bg-[#eff4ff] px-5 py-5 sm:px-7 sm:py-6">
@@ -239,9 +264,16 @@ export function EventRequestWizard() {
               <div><FormLabel htmlFor="endDatetime" required>Event End Date &amp; Time</FormLabel><input id="endDatetime" type="datetime-local" value={values.endDatetime} onChange={(e) => update("endDatetime", e.target.value)} className={fieldClasses} />{field("endDatetime")}</div>
               <div><FormLabel htmlFor="expectedAttendance" required>Targeted In-Person Headcount</FormLabel><input id="expectedAttendance" type="number" min="1" step="1" value={values.expectedAttendance} onChange={(e) => update("expectedAttendance", e.target.value)} className={fieldClasses} placeholder="Expected attendance" />{field("expectedAttendance")}</div>
             </div>}
-            {step === 2 && <div className="space-y-4"><AlertBanner tone="info" title="Venue choices are unavailable">Your request can still be submitted. Venue preferences and layout selections will be omitted until the catalogue is connected.</AlertBanner><div><FormLabel htmlFor="layout">Preferred Seating &amp; Room Geometry</FormLabel><select id="layout" disabled className={`${fieldClasses} disabled:opacity-70`}><option>No preference available</option></select><p className="mt-1.5 text-xs text-on-surface-variant">No room will be selected or held by this form.</p></div></div>}
-            {step === 3 && <div className="space-y-5"><div><p className="mb-3 text-[13px] font-semibold text-on-surface">Access and accommodation requirements</p><div className="grid gap-2 sm:grid-cols-2">{ACCESSIBILITY_OPTIONS.map((option) => <label key={option} className="flex min-h-12 items-start gap-3 rounded-control border border-[#e2e5f1] bg-white p-3 text-[13px] leading-5 text-on-surface"><input type="checkbox" className="mt-1 size-4 accent-primary" checked={values.accessibilityNeeds.includes(option)} onChange={(e) => update("accessibilityNeeds", e.target.checked ? [...values.accessibilityNeeds, option] : values.accessibilityNeeds.filter((item) => item !== option))} />{option}</label>)}</div></div><div><FormLabel htmlFor="accessibilityNotes">Other accessibility notes</FormLabel><textarea id="accessibilityNotes" maxLength={200} rows={4} value={values.accessibilityNotes} onChange={(e) => update("accessibilityNotes", e.target.value)} className={`${fieldClasses} resize-y`} placeholder="Describe other access requirements." />{field("accessibilityNotes")}<p className="mt-1 text-xs text-on-surface-variant">Up to 200 characters per note.</p></div></div>}
-            {step === 4 && <div className="space-y-4"><AlertBanner tone="info" title="Equipment catalogue is unavailable">The prototype includes equipment selections, but no equipment catalogue is exposed by the current API. This request will leave equipment requirements empty.</AlertBanner><div className="rounded-control border border-[#e2e5f1] bg-surface-container-low p-4"><p className="text-sm font-semibold text-on-surface">Technical requirements</p><p className="mt-1 text-sm leading-relaxed text-on-surface-variant">Your event coordinator can follow up about AV, staging, and other equipment needs once the request is under review.</p></div></div>}
+            {step === 2 && <div className="space-y-4">
+              {optionsError && <AlertBanner tone="warning">{optionsError}</AlertBanner>}
+              <p className="text-sm text-on-surface-variant">Choose up to 20 venues in order of preference. This does not make a booking or hold.</p>
+              {options.venues.map(venue => <label key={venue.venueId} className="flex items-center gap-3 rounded-control border p-3"><input type="checkbox" checked={values.venuePreferences.includes(venue.venueId)} disabled={!values.venuePreferences.includes(venue.venueId) && values.venuePreferences.length >= 20} onChange={e => update("venuePreferences", e.target.checked ? [...values.venuePreferences, venue.venueId] : values.venuePreferences.filter(id => id !== venue.venueId))} />{venue.name}{values.venuePreferences.includes(venue.venueId) && <span>Preference {values.venuePreferences.indexOf(venue.venueId) + 1}</span>}</label>)}
+              {!options.venues.length && !optionsError && <p>No venues are currently listed. You may submit with no venue preference.</p>}
+              {field("venuePreferences")}
+              <div><FormLabel htmlFor="layout" required>Preferred Seating &amp; Room Geometry</FormLabel><select id="layout" value={values.preferredLayoutType} onChange={e => update("preferredLayoutType", e.target.value)} className={fieldClasses}>{[...new Set([...options.layouts, values.preferredLayoutType])].map(layout => <option key={layout} value={layout}>{layout === "NO_PREFERENCE" ? "No preference" : layout.replaceAll("_", " ")}</option>)}</select>{field("preferredLayoutType")}</div>
+            </div>}
+            {step === 3 && <div className="space-y-5">{field("accessibilityNeeds")}<div><p className="mb-3 text-[13px] font-semibold text-on-surface">Access and accommodation requirements</p><div className="grid gap-2 sm:grid-cols-2">{ACCESSIBILITY_OPTIONS.map((option) => <label key={option} className="flex min-h-12 items-start gap-3 rounded-control border border-[#e2e5f1] bg-white p-3 text-[13px] leading-5 text-on-surface"><input type="checkbox" className="mt-1 size-4 accent-primary" checked={values.accessibilityNeeds.includes(option)} onChange={(e) => update("accessibilityNeeds", e.target.checked ? [...values.accessibilityNeeds, option] : values.accessibilityNeeds.filter((item) => item !== option))} />{option}</label>)}</div></div><div><FormLabel htmlFor="accessibilityNotes">Other accessibility notes</FormLabel><textarea id="accessibilityNotes" maxLength={4000} rows={4} value={values.accessibilityNotes} onChange={(e) => update("accessibilityNotes", e.target.value)} className={`${fieldClasses} resize-y`} placeholder="Describe other access requirements." />{field("accessibilityNotes")}<p className="mt-1 text-xs text-on-surface-variant">Up to 200 characters per note.</p></div></div>}
+            {step === 4 && <div className="space-y-4">{field("equipmentRequirements")}<AlertBanner tone="info" title="Equipment requests">Equipment requests are handled separately. Existing saved equipment requirements will be preserved.</AlertBanner><div className="rounded-control border border-[#e2e5f1] bg-surface-container-low p-4"><p className="text-sm font-semibold text-on-surface">Technical requirements</p><p className="mt-1 text-sm leading-relaxed text-on-surface-variant">Your event coordinator can follow up about AV, staging, and other equipment needs once the request is under review.</p></div></div>}
             {step === 5 && <div className="space-y-5"><div><FormLabel htmlFor="registrationEnabled">Event Access &amp; Enrollment Mechanism</FormLabel><label className="mt-1 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-control border border-[#e2e5f1] p-4"><span><span className="block text-sm font-semibold text-on-surface">Enable event registration</span><span className="mt-1 block text-xs text-on-surface-variant">Collect registrations for this event.</span></span><input id="registrationEnabled" type="checkbox" className="size-5 accent-primary" checked={values.isRegistrationEnabled} onChange={(e) => update("isRegistrationEnabled", e.target.checked)} /></label></div>{values.isRegistrationEnabled && <div><FormLabel htmlFor="registrationCapacity" required>Registration capacity</FormLabel><input id="registrationCapacity" type="number" min="1" step="1" value={values.registrationCapacity} onChange={(e) => update("registrationCapacity", e.target.value)} className={fieldClasses} placeholder="Maximum registrations" />{field("registrationCapacity")}</div>}<p className="text-xs leading-relaxed text-on-surface-variant">Registration capacity is supported. Access rules, ticketing, and waitlists are not available in this API.</p></div>}
           </div>
         </section>
@@ -253,7 +285,7 @@ export function EventRequestWizard() {
             <p className="mt-3 text-[13px] leading-5 text-on-surface-variant">Event Title must be entered before any draft can be saved. No other field is compulsory for a draft.</p>
             <div className="my-3 border-t border-[#e2e5f1]" />
             <p className="text-[13px] leading-5 text-on-surface-variant">All remaining required fields must be completed for final submission. <span className="text-error">*</span> marks required fields.</p>
-            {savedAt && <p className="mt-3 text-xs font-semibold text-success">Last saved at {formatSavedTime(savedAt)}</p>}
+            {savedAt && <p className="mt-3 text-xs font-semibold text-success">Last auto-saved at {formatSavedTime(savedAt)}</p>}
           </section>
           <section className="rounded-lg bg-[#e6eeff] p-5">
             <h3 className="flex items-center gap-2 text-sm font-bold text-primary"><span aria-hidden="true" className="grid size-[18px] place-items-center rounded-full border border-primary text-[11px]">i</span>{guidance[step].title}</h3>
@@ -266,12 +298,12 @@ export function EventRequestWizard() {
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3">
           <div className="min-w-0"><p className="text-[13px] font-semibold text-on-surface">{values.title.trim() ? "Your title is entered. You can save a draft without finishing the form." : "Enter an Event Title to save a draft."}</p><p className="mt-0.5 text-xs text-on-surface-variant">Your request will be evaluated by a Venue Coordinator within 2 business days.</p></div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <button type="button" onClick={() => void saveDraft(false)} disabled={saving || !values.title.trim()} className="inline-flex h-11 items-center gap-2 rounded-[2px] bg-[#e6eeff] px-5 text-sm font-medium text-on-surface disabled:cursor-not-allowed disabled:opacity-50"><span aria-hidden="true">♧</span>{saving ? "Saving…" : "Save Draft"}</button>
+            <button type="button" onClick={() => void saveDraft(false)} disabled={saving || submitting || !values.title.trim()} className="inline-flex h-11 items-center gap-2 rounded-[2px] bg-[#e6eeff] px-5 text-sm font-medium text-on-surface disabled:cursor-not-allowed disabled:opacity-50"><span aria-hidden="true">♧</span>{saving ? "Saving…" : "Save as Draft"}</button>
             <Button type="button" variant="secondary" disabled={step === 0 || saving} onClick={() => setStep((current) => current - 1)} className="h-11 rounded-[2px] px-5">Back</Button>
-            {step < steps.length - 1 ? <Button type="button" onClick={advance} className="h-11 rounded-[2px] px-5">Next <span aria-hidden="true">→</span></Button> : <Button type="submit" disabled={saving} className="h-11 rounded-[2px] px-5">{saving ? "Submitting…" : "Submit request"}</Button>}
+            {step < steps.length - 1 ? <Button key="next-step" type="button" onClick={advance} className="h-11 rounded-[2px] px-5">Next <span aria-hidden="true">→</span></Button> : <Button key="submit-request" id="submit-request" type="submit" disabled={saving || submitting} className="h-11 rounded-[2px] px-5">{submitting ? "Submitting…" : "Submit Request"}</Button>}
           </div>
         </div>
       </footer>
-    </form>
+    </fieldset></form>
   </div>;
 }

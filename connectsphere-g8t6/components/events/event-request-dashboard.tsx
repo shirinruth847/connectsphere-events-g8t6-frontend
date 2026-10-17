@@ -5,14 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertBanner, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { apiRequest } from "@/lib/api";
-import { displayEventStatus, EVENT_STATUS_ORDER, EventListItem, EventStatus, STATUS_PRESENTATION, formatDateRange } from "@/lib/events";
+import { displayEventStatus, EVENT_STATUS_ORDER, EventListItem, EventStatus, STATUS_PRESENTATION, statusPresentation, eventStatusLabel, formatDateRange } from "@/lib/events";
 
 type ListResponse = { events?: EventListItem[]; nextCursor?: string | null };
 type StatusSelection = EventStatus | "ALL";
 
 const actionFor = (status: EventListItem["status"]) => {
   switch (status) {
-    case "DRAFT": return "Continue draft";
+    case "DRAFT": return "Edit Draft";
     case "SUBMITTED": return "Track submission";
     case "UNDER_REVIEW":
     case "AWAITING_CLARIFICATION": return "View review status";
@@ -21,21 +21,25 @@ const actionFor = (status: EventListItem["status"]) => {
     case "COMPLETED": return "View summary";
     case "CANCELLED": return "View cancellation";
     case "REJECTED": return "View decision";
+    default: return "View event";
   }
 };
 
 export function EventRequestDashboard() {
   const params = useSearchParams();
+  const requestedStatus = params.get("status");
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [query, setQuery] = useState("");
-  const [statusSelection, setStatusSelection] = useState<StatusSelection>("ALL");
+  const [statusSelection, setStatusSelection] = useState<StatusSelection>(params.get("status") === "DRAFT" ? "DRAFT" : "ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const notice = params.get("saved") === "draft"
-    ? "Draft saved. You can resume it from My Requests."
-    : params.get("submitted")
-      ? "Your event request was submitted successfully."
-      : "";
+  useEffect(() => { const timer = setTimeout(() => setStatusSelection(requestedStatus === "DRAFT" ? "DRAFT" : "ALL"), 0); return () => clearTimeout(timer); }, [requestedStatus]);
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const value = sessionStorage.getItem("connectsphere:notice");
+    sessionStorage.removeItem("connectsphere:notice");
+    if (value) { const timer = setTimeout(() => setNotice(value), 0); return () => clearTimeout(timer); }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,7 +77,7 @@ export function EventRequestDashboard() {
       const leftStatus = displayEventStatus(left.status, left.isAssignedToCoordinator);
       const rightStatus = displayEventStatus(right.status, right.isAssignedToCoordinator);
       const statusDifference = EVENT_STATUS_ORDER.indexOf(leftStatus) - EVENT_STATUS_ORDER.indexOf(rightStatus);
-      return statusDifference || (left.startDatetime || "").localeCompare(right.startDatetime || "");
+      return statusDifference || (right.updatedAt || "").localeCompare(left.updatedAt || "") || right.eventId - left.eventId;
     });
   }, [events, query, statusSelection]);
 
@@ -81,7 +85,7 @@ export function EventRequestDashboard() {
     <section className="mb-7 rounded-[10px] bg-white px-4 py-5 shadow-[0_4px_12px_rgba(15,23,42,0.06)] sm:px-5" aria-label="Event management controls">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-2xl font-semibold tracking-[0.02em] text-[#4F46E5]">My Events</h1>
+          <h1 className="text-2xl font-semibold tracking-[0.02em] text-[#4F46E5]">My Requests</h1>
           <label className="relative block w-full sm:max-w-[298px]">
             <span className="sr-only">Search events</span>
             <svg aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></svg>
@@ -114,16 +118,17 @@ export function EventRequestDashboard() {
     {loading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-40 w-full" />)}</div>
       : visible.length === 0 ? <SectionCard><EmptyState title="No matching events" description="Try changing your status or search, or create a new event." action={<Link href="/events/new" className="rounded-control bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary">Create an event</Link>} /></SectionCard>
         : <>
+          <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === "DRAFT" ? "My Drafts" : "Event requests and drafts"}</h2>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visible.map((event) => {
               const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);
-              const statusStyle = STATUS_PRESENTATION[displayStatus];
+              const statusStyle = statusPresentation(displayStatus);
               const isDraft = event.status === "DRAFT";
               const href = isDraft ? `/events/new?draft=${event.eventId}` : `/events/${event.eventId}`;
               return <article key={event.eventId} className={`flex min-h-[206px] flex-col rounded-[12px] border border-[#E5E7EB] border-t-4 ${statusStyle.border} bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]`}>
                 <div className="flex items-start justify-between gap-3">
                   <h2 className="line-clamp-2 text-base font-semibold text-[#1F2937]">{event.title || "Untitled draft"}</h2>
-                  <StatusChip status={displayStatus} />
+                  <StatusChip status={displayStatus} label={eventStatusLabel(event)} />
                 </div>
                 <p className="mt-3 text-sm text-[#6B7280]">{formatDateRange(event.startDatetime, event.endDatetime)}</p>
                 {event.expectedAttendance ? <p className="mt-1 text-sm text-[#6B7280]">{event.expectedAttendance.toLocaleString()} expected attendees</p> : null}
