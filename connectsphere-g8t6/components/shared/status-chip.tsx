@@ -5,10 +5,10 @@
 export const EVENT_STATUS_CONFIG = {
   DRAFT: { label: "Draft", tone: "neutral", cardTone: "neutral" },
   SUBMITTED: { label: "Submitted", tone: "primary", cardTone: "primary" },
-  UNDER_REVIEW: { label: "Under review", tone: "primary", cardTone: "primary" },
-  AWAITING_CLARIFICATION: { label: "Awaiting clarification", tone: "error", cardTone: "error" },
+  UNDER_REVIEW: { label: "Under Review", tone: "primary", cardTone: "primary" },
+  AWAITING_CLARIFICATION: { label: "Awaiting Clarification", tone: "error", cardTone: "error" },
   PLANNING: { label: "Planning", tone: "tertiary", cardTone: "tertiary" },
-  SAFETY_REVIEW: { label: "Safety review", tone: "error", cardTone: "error" },
+  SAFETY_REVIEW: { label: "Safety Review", tone: "error", cardTone: "error" },
   PREPARATION: { label: "Preparation", tone: "tertiary", cardTone: "tertiary" },
   CONFIRMED: { label: "Confirmed", tone: "success", cardTone: "success" },
   COMPLETED: { label: "Completed", tone: "success", cardTone: "success" },
