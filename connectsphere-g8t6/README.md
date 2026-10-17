@@ -1,14 +1,14 @@
 # ConnectSphere frontend
 
-The organiser-facing Next.js App Router application for creating and tracking
-campus event requests.
+The role-based Next.js App Router application for creating and tracking
+campus event requests and accessing permitted workspaces.
 
 ## Requirements
 
 - Node.js 22 or newer
 - The ConnectSphere backend running locally, unless configured to use another
   API host
-- A Supabase project with an active organiser profile
+- A Supabase project with an active ConnectSphere profile
 
 ## Setup
 

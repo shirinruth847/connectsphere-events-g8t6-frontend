@@ -32,6 +32,44 @@ existing search/filter header; new standard pages use `PageContent`.
 entrypoints for existing feature branches. They delegate to the shared frame.
 Do not copy their previous implementations into new pages.
 
+## Where each member codes
+
+Folders belong to roles, not individual members. Anyone can work on any ticket;
+choose the folders for the roles that ticket affects. Cross-role workflows may
+touch several folders and share a backend contract. Prefer separate feature
+components over adding all ticket logic to the role's dashboard file.
+
+| Role | Dashboard entrypoint | Feature folder |
+| --- | --- | --- |
+| Organiser | `components/organiser/dashboard.tsx` | `components/organiser/`; existing event forms/details remain in `components/events/` |
+| Coordinator | `components/coordinator/dashboard.tsx` | `components/coordinator/` |
+| Coordinator Lead | `components/coordinator-lead/dashboard.tsx` | `components/coordinator-lead/` |
+| Venue Staff | `components/venue-staff/dashboard.tsx` | `components/venue-staff/` |
+| Technical Support | `components/tech-support/dashboard.tsx` | `components/tech-support/` |
+| Attendee | `components/attendee/registrations.tsx` | `components/attendee/` |
+
+`components/auth/role-dashboard.tsx` dispatches the trusted profile to a role's
+dashboard; feature logic belongs in that role's folder. Most roles keep the
+`/dashboard` URL while rendering different components. Attendees retain
+`/my-registrations`. New feature URLs belong under `app/`, with their view
+components in the role folder. Do not create another sidebar for a role.
+Staff/lead landing files are extension points for their tickets, not a claim
+that pending venue, technical or assignment workflows are implemented.
+
+The agent should establish these details from the ticket and repository:
+
+- Ticket ID/link and its current acceptance criteria.
+- Affected roles and feature folders from the table above.
+- Agreed URL, permitted roles and expected navigation destination.
+- Backend endpoints, request/response examples, errors and linked backend PR.
+- Existing screen or visual reference, including mobile behaviour.
+- Task scope, dependencies and any unfinished feature to keep excluded.
+- Expected validation and the shared files that require an integration review.
+
+Private test-account credentials are provided separately through the team's
+password manager. The shared baseline must be integrated before these files
+are available to other members; attaching the prompt alone does not add them.
+
 ## Roles and destinations
 
 | Role value | Display label | Home | Current main navigation |

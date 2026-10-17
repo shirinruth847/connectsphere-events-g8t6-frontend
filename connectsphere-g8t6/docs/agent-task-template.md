@@ -13,6 +13,12 @@ Use the user's actual ticket, not the example placeholder. This file is an
 instruction agreement, not a technical permission barrier. Required checks
 and shared-component review must also be enforced in the repository.
 
+Infer the relevant roles, folders and dependencies from the ticket and existing
+code. Any member may work in any role folder; these are feature boundaries,
+not personal assignments. A cross-role ticket may update several role folders.
+Ask only for missing requirements or API agreements that cannot be established
+from the ticket, linked PRs or repository.
+
 ## Before editing
 
 1. Read `AGENTS.md`, `docs/team-ui-workflow.md` and `COMMIT_MESSAGES.md`.
@@ -29,6 +35,9 @@ and shared-component review must also be enforced in the repository.
 
 - Use `DashboardWorkspace` and `PageContent` for new protected pages.
   Apply the workspace once, in the route layout or page, never both.
+- Put feature components in the relevant role folders listed in the team
+  guide. Keep `components/auth/role-dashboard.tsx` as a dispatcher, not a
+  shared file for every member's feature logic. URL entrypoints live in `app/`.
 - Reuse `components/shared/primitives.tsx` for buttons, inputs, cards,
   alerts, loading/empty states and status chips.
 - Use the shared `DashboardShell`. Do not create or copy another sidebar,

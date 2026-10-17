@@ -131,3 +131,24 @@ lint and production build/type checks also pass. The team guide and starter
 page are in `docs/team-ui-workflow.md`, accompanied by a PR template and a
 prepared GitHub checks workflow. Its YAML parses locally; it has not run on
 GitHub, and required checks/reviewer settings have not been enabled remotely.
+
+## Final role-folder and branch review
+
+Role-owned views now live under `components/organiser/`, `coordinator/`,
+`coordinator-lead/`, `venue-staff/`, `tech-support/` and `attendee/`.
+`components/auth/role-dashboard.tsx` is a typed dispatcher only. The former
+auth registration entrypoint delegates to the attendee component to preserve
+existing imports. These small compatibility exports are intentional.
+
+The final role split passes all 29 browser journeys, production compilation,
+type checks, lint and 8 helper tests. Backend unit checks were rerun with
+local-port access: all 342 pass. The earlier live 81-test integration run
+remains the database evidence; no backend runtime changed in this final pass.
+The prepared workflow YAML also parses successfully.
+
+Remove inherited conflict markers from the root `.gitignore`. Branch review
+found no tracked private environment files, dependency/build directories or
+browser reports, and no configured private values in the repair diffs.
+Retain existing design/reference images, project specifications and required
+migration history. Generated local evidence stays ignored. The team guide
+lets any member choose the role folders relevant to their ticket.
