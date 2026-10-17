@@ -11,9 +11,9 @@ const safeNextPath = (value: string | null) => {
     const target = new URL(value, window.location.origin);
     return target.origin === window.location.origin
       ? `${target.pathname}${target.search}${target.hash}`
-      : "/dashboard";
+      : "/";
   } catch {
-    return "/dashboard";
+    return "/";
   }
 };
 
