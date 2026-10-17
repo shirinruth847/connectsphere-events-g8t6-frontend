@@ -4,7 +4,8 @@ import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useOrganiserProfile } from "@/components/auth/organiser-gate";
-import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { signOut } from "@/lib/session";
+import { useNavigationGuard } from "@/components/shared/navigation-guard";
 
 type NavIconName = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "logout" | "plus" | "menu" | "close";
 
@@ -29,6 +30,7 @@ const groups: Array<{ title: string; items: Array<{ title: string; icon: NavIcon
   { title: "Main Navigation", items: [
     { title: "Dashboard", icon: "dashboard", href: "/dashboard" },
     { title: "My Requests", icon: "event", href: "/dashboard" },
+    { title: "My Drafts", icon: "event", href: "/dashboard?status=DRAFT#my-drafts" },
     { title: "Registrations", icon: "registrations" },
     { title: "Notifications", icon: "notifications" },
   ] },
@@ -39,10 +41,12 @@ const groups: Array<{ title: string; items: Array<{ title: string; icon: NavIcon
 export function OrganiserShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const profile = useOrganiserProfile();
+  const guard = useNavigationGuard();
   const pathname = usePathname();
   const router = useRouter();
   const logout = async () => {
-    try { await getSupabaseBrowserClient().auth.signOut(); } finally { router.replace("/login"); }
+    try { await signOut(); router.replace("/login"); }
+    catch { router.replace("/login?reason=logout-unconfirmed"); }
   };
   const closeMenu = () => setOpen(false);
   const sidebar = <div className="flex min-h-full flex-col">
@@ -66,7 +70,7 @@ export function OrganiserShell({ children }: { children: ReactNode }) {
         })}
       </nav>
     </section>)}
-    <button onClick={logout} className="mt-1 flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-white/80 transition hover:bg-white/10 hover:text-white"><NavIcon name="logout" />Logout</button>
+    <button onClick={() => guard.navigate(() => { void logout(); })} className="mt-1 flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-white/80 transition hover:bg-white/10 hover:text-white"><NavIcon name="logout" />Logout</button>
     <div className="mt-auto border-t border-white/20 pt-5">
       <div className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-2" title={profile.email || profile.name}>
         <div
