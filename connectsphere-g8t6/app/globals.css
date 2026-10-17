@@ -1,12 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* New SPM-180 tokens */
+  --primary: #3525cd;
+  --primary-container: #4f46e5;
+  --primary-fixed: #e2dfff;
+  --surface: #f8f9ff;
+  --surface-container: #ffffff;
+  --surface-inset: #eff4ff;
+  --on-surface: #1b1b21;
+  --on-surface-variant: #464555;
+  --outline: #c7c4d8;
+  --success: #146c2e;
+  --success-container: #c5f2c7;
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+  --scrim: rgba(25, 27, 45, 0.38);
+  --shadow-soft: 0 2px 10px rgba(32, 35, 75, 0.06);
+  --shadow-modal: 0 18px 50px rgba(20, 20, 50, 0.22);
+
+  /* Legacy tokens (dashboard/login/primitives) */
+  --background: #f8f9ff;
+  --foreground: #0d1c2e;
+  --primary-dim: #c3c0ff;
+  --tertiary: #712ae2;
+  --tertiary-container: #8a4cfc;
+  --tertiary-fixed: #eaddff;
+  --success-legacy: #005338;
+  --success-container-legacy: #85f8c4;
+  --on-success-container: #002114;
+  --error-legacy: #ba1a1a;
+  --error-container-legacy: #ffdad6;
+  --on-error-container: #93000a;
+  --error-on-surface: #7d1010;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #eff4ff;
+  --surface-container-legacy: #e6eeff;
+  --surface-container-high: #dce9ff;
+  --surface-container-highest: #d5e3fc;
+  --on-surface-legacy: #0d1c2e;
+  --on-surface-variant-legacy: #464555;
+  --outline-legacy: #777587;
+  --outline-variant: #c7c4d8;
 }
 
 @theme inline {
-  /* New SPM-180 theme */
   --color-primary: var(--primary);
   --color-background: var(--surface);
   --color-foreground: var(--on-surface);
@@ -53,6 +91,7 @@
     0 1px 3px rgb(13 28 46 / 8%), 0 1px 2px rgb(13 28 46 / 4%);
   --tracking-label: 0.08em;
 }
+
 
 * {
   box-sizing: border-box;
@@ -101,12 +140,6 @@ select:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 .console-shell {
@@ -2123,12 +2156,6 @@ label {
   color: var(--on-surface);
 }
 
-.cal-legend-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .cal-legend-item {
   display: inline-flex;
   align-items: center;
@@ -3036,27 +3063,98 @@ label {
 }
 
 .cal-legend {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  position: relative;
+}
+
+.cal-legend-trigger {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.cal-legend-trigger:hover {
+  background: var(--surface-container-low);
+  border-color: var(--primary);
+}
+
+.cal-legend-trigger-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.cal-legend-trigger-arrow {
+  font-size: 9px;
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+
+.cal-legend-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  width: 220px;
+  margin-top: 6px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-modal);
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-  background: var(--surface-container);
-  border-radius: 10px;
-  border: 1px solid var(--outline-variant);
-  margin-bottom: 16px;
+  gap: 6px;
+}
+
+.cal-legend-search {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.cal-legend-search::placeholder {
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+.cal-legend-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .cal-legend-toggle {
-  min-height: 32px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--outline);
   border-radius: 6px;
   background: var(--surface);
   color: var(--on-surface);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
+  cursor: pointer;
   transition: all 0.15s ease;
-  align-self: flex-start;
 }
 
 .cal-legend-toggle:hover {
@@ -3064,66 +3162,86 @@ label {
   border-color: var(--primary);
 }
 
+.cal-legend-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .cal-legend-list {
+  flex: 1;
+  min-height: 0;
+  max-height: 200px;
+  overflow-y: auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--surface-container-lowest);
 }
 
 .cal-legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 4px 8px;
   border: 1px solid transparent;
-  border-radius: 20px;
-  background: var(--surface-inset);
+  border-radius: 5px;
+  background: transparent;
   color: var(--on-surface);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .cal-legend-item:hover {
-  background: var(--surface-container);
+  background: var(--surface-inset);
 }
 
-.cal-legend-item.on {
-  border-color: var(--primary);
-  background: var(--primary-fixed);
-}
-
-.cal-legend-item.off {
-  opacity: 0.6;
+.cal-legend-item .cal-legend-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .cal-legend-swatch {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 3px;
   flex-shrink: 0;
 }
 
-.cal-legend-item.on .cal-legend-swatch {
+.cal-legend-item .cal-legend-swatch {
   opacity: 1;
-}
-
-.cal-legend-item.off .cal-legend-swatch {
-  opacity: 0.3;
 }
 
 .cal-legend-name {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .cal-legend-count {
-  margin-left: 4px;
+  margin-left: auto;
   padding: 1px 5px;
   background: var(--surface-container-high);
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--on-surface-variant);
+}
+
+.cal-legend-empty {
+  margin: 0;
+  padding: 8px;
+  font-size: 11px;
+  color: var(--on-surface-variant);
+  text-align: center;
 }
 
 .calendar-grid-wrapper {

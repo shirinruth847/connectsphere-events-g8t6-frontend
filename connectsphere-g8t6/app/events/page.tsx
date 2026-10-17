@@ -13,7 +13,7 @@ import {
 import { AvailabilityMatrix } from "@/components/assignments/availability-matrix";
 import { CalendarView, type CalendarEvent } from "@/components/calendar/calendar-view";
 import { CoordinatorShell } from "@/components/layout/coordinator-shell";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useAuth } from "@/components/auth/auth-provider";
 
 type ViewMode = "list" | "calendar";
 type EventRequest = Omit<ApiEvent, "organisation"> & { date: string; start: string; end: string; organiser: string; organisation: { organisationId: number; name: string } | null; venue: string; submitted: string };
@@ -58,6 +58,7 @@ function overlaps(first: EventRequest, second: EventRequest) {
 
 function EventQueueContent() {
   const router = useRouter();
+  const { session, loading: authLoading } = useAuth();
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [accessToken, setAccessToken] = useState("");
   const [requests, setRequests] = useState<EventRequest[]>([]);
@@ -89,46 +90,38 @@ function EventQueueContent() {
 
   useEffect(() => {
     let mounted = true;
-    try {
-      const supabase = getSupabaseBrowserClient();
-      supabase.auth.getSession().then(async ({ data: { session } }) => {
-        if (!mounted) return;
-        if (!session?.access_token) {
-          router.replace("/");
-          return;
-        }
-        try {
-          const result = await getCurrentUser(session.access_token);
-          setAccessToken(session.access_token);
-          const canManageRequests = result.user.role === "COORDINATOR_LEAD";
-          setAuthState(canManageRequests ? "ready" : "forbidden");
-          if (canManageRequests) await loadData(session.access_token);
-        } catch (loadError) {
-          const typedError = loadError as Error & { status?: number };
-          if (typedError.status === 401) {
-            setAccessToken("");
-            router.replace("/");
-          } else {
-            setError(typedError.message);
-            setAuthState("error");
-          }
-        }
-      });
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (!session) {
+    const run = async () => {
+      if (!mounted) return;
+      // Redirect decisions come from the single source of truth (AuthProvider)
+      // and only run once auth state has finished loading.
+      if (authLoading) return;
+      const token = session?.access_token ?? null;
+      if (!token) {
+        setAuthState("unauthenticated");
+        router.replace("/");
+        return;
+      }
+      setAccessToken(token);
+      try {
+        const result = await getCurrentUser(token);
+        const canManageRequests = result.user.role === "COORDINATOR_LEAD";
+        setAuthState(canManageRequests ? "ready" : "forbidden");
+        if (canManageRequests) await loadData(token);
+      } catch (loadError) {
+        const typedError = loadError as Error & { status?: number };
+        if (typedError.status === 401) {
           setAccessToken("");
+          setAuthState("unauthenticated");
           router.replace("/");
+        } else {
+          setError(typedError.message);
+          setAuthState("error");
         }
-      });
-      return () => { mounted = false; listener.subscription.unsubscribe(); };
-    } catch (configurationError) {
-      queueMicrotask(() => {
-        if (!mounted) return;
-        setError((configurationError as Error).message);
-        setAuthState("error");
-      });
-    }
-  }, [router]);
+      }
+    };
+    void run();
+    return () => { mounted = false; };
+  }, [session, authLoading, router]);
 
   if (authState === "loading") {
     return <div className="empty-state"><h2>Loading requests…</h2></div>;
