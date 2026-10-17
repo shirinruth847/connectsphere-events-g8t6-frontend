@@ -4,12 +4,14 @@ import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getCurrentUser } from "@/lib/api/events";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 
 type AuthState = "loading" | "unauthenticated" | "coordinator-lead" | "organiser" | "forbidden";
 
 export default function Home() {
   const router = useRouter();
+  const { signOut } = useAuth();
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -74,8 +76,9 @@ export default function Home() {
     }
   }
 
+  // Shared SPM-32 logout: POST /api/auth/logout, then local session cleanup.
   async function handleSignOut() {
-    await getSupabaseBrowserClient().auth.signOut({ scope: "local" });
+    await signOut();
     setAuthState("unauthenticated");
   }
 

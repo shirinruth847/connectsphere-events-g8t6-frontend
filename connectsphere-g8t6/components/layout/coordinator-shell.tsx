@@ -3,7 +3,7 @@
 import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 type NavIconName = "dashboard" | "event" | "assignments" | "calendar" | "logout" | "menu" | "close" | "settings";
 
@@ -46,8 +46,10 @@ export function CoordinatorShell({ children, userName, userEmail }: { children: 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ "Main Navigation": true, Account: true });
   const pathname = usePathname();
   const router = useRouter();
+  const { signOut } = useAuth();
+  // Shared SPM-32 logout: POST /api/auth/logout, then local session cleanup.
   const logout = async () => {
-    try { await getSupabaseBrowserClient().auth.signOut(); } finally { router.replace("/"); }
+    try { await signOut(); } finally { router.replace("/"); }
   };
   const closeMenu = () => setOpen(false);
 

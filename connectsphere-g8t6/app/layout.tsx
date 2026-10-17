@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk } from "next/font/google";
+import { AuthProvider } from "@/lib/auth/AuthProvider";
 import "./globals.css";
 
 const hankenGrotesk = Hanken_Grotesk({
@@ -8,8 +9,8 @@ const hankenGrotesk = Hanken_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "ConnectSphere | Event Requests",
-  description: "Coordinator lead event request assignment queue",
+  title: "ConnectSphere",
+  description: "Event planning and registration for ConnectSphere",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -18,7 +19,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${hankenGrotesk.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
