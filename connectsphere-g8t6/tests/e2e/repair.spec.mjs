@@ -1,6 +1,37 @@
 import { test, expect } from '@playwright/test';
 import { installConnectSphereMocks, installLoginMock, makeDraft, enterCompleteRequestThroughSubmit } from './support.mjs';
 
+test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async ({page}) => {
+ await installConnectSphereMocks(page);
+ await page.setViewportSize({width:1440,height:1000});
+ await page.goto('/dashboard');
+ await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toBeVisible();
+ const navigation=page.getByRole('navigation',{name:'Main Navigation',exact:true});
+ const rows=await navigation.locator(':scope > a, :scope > span').evaluateAll(elements=>elements.map(element=>{
+  const rect=element.getBoundingClientRect();return {x:rect.x,y:rect.y,right:rect.right,bottom:rect.bottom};
+ }));
+ const panel=await page.locator('aside').boundingBox();
+ expect(rows).toHaveLength(5);
+ for(let index=0;index<rows.length;index++) {
+  expect(rows[index].x).toBeGreaterThanOrEqual(panel.x);
+  expect(rows[index].right).toBeLessThanOrEqual(panel.x+panel.width);
+  if(index) expect(rows[index].y).toBeGreaterThanOrEqual(rows[index-1].bottom);
+ }
+ const filter=page.locator('label').filter({has:page.getByRole('combobox')});
+ const caption=await filter.locator('span').boundingBox();
+ const selection=await filter.getByRole('combobox').boundingBox();
+ expect(selection.x).toBeGreaterThanOrEqual(caption.x+caption.width);
+ expect(Math.abs((caption.y+caption.height/2)-(selection.y+selection.height/2))).toBeLessThan(4);
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Open menu',exact:true}).click();
+ await expect.poll(async()=>Math.round((await page.locator('aside').boundingBox()).x)).toBe(0);
+ await expect(navigation.getByRole('link',{name:'My Drafts',exact:true})).toBeVisible();
+ await navigation.getByRole('link',{name:'My Drafts',exact:true}).click();
+ await expect(page).toHaveURL(/status=DRAFT/);
+ await expect(page.getByRole('button',{name:'Open menu',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
 for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations'],['COORDINATOR_LEAD','Event Coordinator Lead dashboard']]) {
  test(`[SPM-32] ${role} login reaches its authorised workspace`, async ({page}) => {
   await installLoginMock(page,{role});await page.goto('/login');await page.getByLabel('Email',{exact:false}).fill('user@example.com');await page.getByLabel('Password',{exact:false}).fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();

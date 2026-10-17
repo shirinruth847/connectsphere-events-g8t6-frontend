@@ -44,7 +44,7 @@ Reviewing. Their remaining fixes belong in their feature work.
 - `npm test`: 8 helper/validation regressions passed.
 - `npm run lint`: passed without warnings.
 - `npm run build`: production compilation, TypeScript and prerendering passed.
-- `npm run test:e2e`: 28/28 passed; see final result in `test-results/browser-results.json`.
+- `npm run test:e2e`: 29/29 passed; see final result in `test-results/browser-results.json`.
   Three focused checks also passed against the development server (login,
   redirect-back and draft clear/save). The suite covers every requested role, blank/invalid login, safe return URLs,
   logout/Back, attendee denial, explicit submission, draft clear/resume, idle
@@ -91,3 +91,22 @@ The reported hydration diff contained `data-scribe-recorder-ready` on the root
 HTML element. This is absent from application code and the clean browser;
 disable the injecting Scribe extension for localhost. Application hydration
 warnings remain enabled.
+
+## Organiser layout parity with shree
+
+Restore the `shree` global stylesheet foundation, retaining the existing
+Next.js Hanken Grotesk font loader. Retired coordinator styling had introduced
+unscoped `nav`, `label` and `.page-header` rules: sidebar navigation became a
+horizontal row wider than its panel, and the status filter lost its alignment.
+Those unused feature styles are no longer loaded. Shared original colours,
+spacing tokens, panel styling and Tailwind utilities remain available.
+
+Desktop verification at 1440px restores vertical navigation within the 225px
+sidebar and an inline status filter. Mobile verification at 390px confirms
+the opened menu, draft navigation and absence of horizontal page overflow.
+All 29 browser tests pass, including the new layout regression; production
+build/type checks and lint pass. Real seed-account dashboard captures also
+passed on the existing development server, which was left running untouched.
+Login, draft persistence, submission and role routing implementations are
+unchanged by this styling repair. Future feature styling belongs in scoped
+CSS modules or component utilities rather than global element selectors.
