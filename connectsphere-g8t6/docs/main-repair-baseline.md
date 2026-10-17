@@ -66,3 +66,28 @@ Reviewing. Their remaining fixes belong in their feature work.
 - SPM-123 frontend signup remains outside the agreed backend-only repair scope.
   Staff role landing pages do not implement future venue/technical operations.
 - No push, merge or shared database schema changes were made.
+
+## Local login follow-up
+
+A leftover production verification server occupied port 3000, so a subsequent
+development server automatically moved to 3001. Direct Supabase sign-in
+succeeded for all five requested seed accounts, but browser profile requests
+from 3001 failed the backend's configured 3000 CORS origin. The development
+command now specifies port 3000 explicitly, preventing silent fallback. The
+leftover server was stopped and development restarted on the configured port.
+All five supplied accounts then passed real development-browser login,
+role-specific dashboard heading and logout checks on localhost:3000. Login
+had no console errors. A second development launch failed with EADDRINUSE
+on 3000 instead of switching ports, and all 8 helper tests still passed.
+Local browser evidence is in ignored `test-results/login-diagnostics.json`.
+
+The browser logs a separate 403 from Supabase's logout endpoint after the
+backend has already revoked the session. The SDK explicitly accepts 403
+during sign-out and removes the local session; the logout redirect passed.
+This existing duplicate-revocation response is separate from login and the
+hydration warning. No logout implementation changes were made here.
+
+The reported hydration diff contained `data-scribe-recorder-ready` on the root
+HTML element. This is absent from application code and the clean browser;
+disable the injecting Scribe extension for localhost. Application hydration
+warnings remain enabled.

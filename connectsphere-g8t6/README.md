@@ -20,6 +20,19 @@ campus event requests.
 
 Do not commit `.env.local` or other files containing credentials.
 
+The development command explicitly uses port 3000 so an occupied port fails
+instead of silently starting on 3001. The backend's `FRONTEND_ORIGIN` defaults
+to `http://localhost:3000`; an alternate port or hostname must match that
+setting, or the browser blocks profile verification after Supabase login.
+Stop the existing local frontend before starting another instance. For a
+deliberate alternate port, use `npm run dev -- --port <port>` and update the
+backend origin before restarting the backend.
+
+If hydration reports an extra `data-scribe-recorder-ready` attribute on
+`<html>`, disable the Scribe browser extension for localhost and reload, or
+use a browser profile with extensions disabled. This attribute is not rendered
+by the application. Do not suppress hydration diagnostics globally to hide it.
+
 ## Checks
 
 - `npm run lint`
