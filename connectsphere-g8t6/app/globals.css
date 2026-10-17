@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/*
+ * ConnectSphere theme tokens (SPM-32, provisional). Replace these values once
+ * the design system lands. Components use the token utilities (bg-brand,
+ * text-ink, ...), never raw hex. Surface and success colours come from the
+ * design-system theme below (bg-surface-container-lowest, text-success).
+ */
+@theme {
+  --color-brand: #4338ca;
+  --color-brand-strong: #3730a3;
+  --color-brand-soft: #eef2ff;
+
+  --color-canvas: #f8fafc;
+  --color-line: #e2e8f0;
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fef2f2;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-success-soft: #f0fdf4;
+}
+
 :root {
   /* New SPM-180 tokens */
   --primary: #3525cd;

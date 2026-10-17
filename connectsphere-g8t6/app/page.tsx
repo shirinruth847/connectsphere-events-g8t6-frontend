@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getCurrentUser } from "@/lib/api/events";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 
 type AuthState = "loading" | "unauthenticated" | "coordinator-lead" | "organiser" | "forbidden";
 
 export default function Home() {
   const router = useRouter();
+  const { signOut } = useAuth();
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -74,8 +77,9 @@ export default function Home() {
     }
   }
 
+  // Shared SPM-32 logout: POST /api/auth/logout, then local session cleanup.
   async function handleSignOut() {
-    await getSupabaseBrowserClient().auth.signOut({ scope: "local" });
+    await signOut();
     setAuthState("unauthenticated");
   }
 
@@ -114,6 +118,16 @@ export default function Home() {
             </div>
             <Button disabled={busy} fullWidth>{busy ? "Signing in…" : "Sign in"}</Button>
           </form>
+          <div className="mt-6 space-y-2 text-center text-sm text-on-surface-variant">
+            <p>
+              Attendee or Event Organiser?{" "}
+              <Link href="/signup" className="font-semibold text-primary hover:underline">Create an account</Link>
+            </p>
+            <p>
+              Attendee or other staff account?{" "}
+              <Link href="/login" className="font-semibold text-primary hover:underline">Log in here</Link>
+            </p>
+          </div>
         </section>
       </main>
     );
