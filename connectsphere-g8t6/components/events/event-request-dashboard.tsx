@@ -36,9 +36,11 @@ export function EventRequestDashboard() {
   useEffect(() => { const timer = setTimeout(() => setStatusSelection(requestedStatus === "DRAFT" ? "DRAFT" : "ALL"), 0); return () => clearTimeout(timer); }, [requestedStatus]);
   const [notice, setNotice] = useState("");
   useEffect(() => {
-    const value = sessionStorage.getItem("connectsphere:notice");
-    sessionStorage.removeItem("connectsphere:notice");
-    if (value) { const timer = setTimeout(() => setNotice(value), 0); return () => clearTimeout(timer); }
+    const timer = setTimeout(() => {
+      const value = sessionStorage.getItem("connectsphere:notice");
+      if (value) { setNotice(value); sessionStorage.removeItem("connectsphere:notice"); }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const load = useCallback(async () => {

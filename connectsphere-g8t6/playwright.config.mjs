@@ -7,7 +7,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  reporter: [["json", { outputFile: "test-results/browser-results.json" }], ["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
+  reporter: [["json", { outputFile: process.env.E2E_DEV ? "test-results/browser-dev-results.json" : "test-results/browser-results.json" }], ["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   outputDir: "test-results/e2e",
   use: {
     ...devices["Desktop Chrome"],
@@ -17,7 +17,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run build && npm run start -- --hostname 127.0.0.1 --port 3100",
+    command: process.env.E2E_DEV ? "npm run dev -- --hostname 127.0.0.1 --port 3100" : "npm run build && npm run start -- --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
     timeout: 120_000,
