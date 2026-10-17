@@ -282,7 +282,7 @@ function layoutDayEvents(
   return results;
 }
 
-function CoordinatorLegend({
+export function CoordinatorLegend({
   coordinators,
   visibleIds,
   onToggle,
@@ -293,6 +293,10 @@ function CoordinatorLegend({
   onToggle: (id: number) => void;
   colorMap: Map<number, string>;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
   const nameCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of coordinators) {
@@ -307,50 +311,106 @@ function CoordinatorLegend({
     return c.name;
   };
 
-  const allVisible = coordinators.every((c) => visibleIds.has(c.coordinatorId));
+  const allVisible = coordinators.length > 0 && coordinators.every((c) => visibleIds.has(c.coordinatorId));
+  const noneVisible = coordinators.length > 0 && visibleIds.size === 0;
+
+  const filtered = coordinators.filter((c) =>
+    c.name.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  if (coordinators.length === 0) {
+    return null;
+  }
+
+  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
 
   return (
     <div className="cal-legend" role="group" aria-label="Filter by coordinator">
       <button
         type="button"
         className="cal-legend-toggle"
-        onClick={() => {
-          if (allVisible) {
-            coordinators.forEach((c) => onToggle(c.coordinatorId));
-          } else {
-            coordinators.forEach((c) => {
-              if (!visibleIds.has(c.coordinatorId)) onToggle(c.coordinatorId);
-            });
-          }
-        }}
+        onClick={() => setCollapsed((prev) => !prev)}
+        aria-expanded={!collapsed}
       >
-        {allVisible ? "Hide all" : "Show all"}
+        {collapsed ? "Show filter" : "Hide filter"}
       </button>
-      <div className="cal-legend-list">
-        {coordinators.map((coordinator) => {
-          const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
-          const visible = visibleIds.has(coordinator.coordinatorId);
-          return (
-            <button
-              key={coordinator.coordinatorId}
-              type="button"
-              className={`cal-legend-item ${visible ? "on" : "off"}`}
-              aria-pressed={visible}
-              onClick={() => onToggle(coordinator.coordinatorId)}
-            >
-              <span
-                className="cal-legend-swatch"
-                style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
+      {!collapsed && (
+        <div className="cal-legend-dropdown">
+          <button
+            type="button"
+            className="cal-legend-trigger"
+            onClick={() => setOpen((prev) => !prev)}
+            aria-expanded={open}
+            aria-haspopup="listbox"
+          >
+            <span className="cal-legend-trigger-label">
+              {open ? "Coordinator filter" : selectedCoords.length === coordinators.length && coordinators.length > 0 ? "All coordinators" : selectedCoords.length === 0 ? "No coordinators" : `${selectedCoords.length} coordinator${selectedCoords.length === 1 ? "" : "s"}`}
+            </span>
+            <span className="cal-legend-trigger-arrow">{open ? "▲" : "▼"}</span>
+          </button>
+          {open && (
+            <div className="cal-legend-panel" role="listbox">
+              <input
+                className="cal-legend-search"
+                type="search"
+                placeholder="Search coordinators…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search coordinators"
               />
-              <span className="cal-legend-name">{displayName(coordinator)}</span>
-              <span className="cal-legend-count">{coordinator.events.length}</span>
-            </button>
-          );
-        })}
-      </div>
+              <div className="cal-legend-actions">
+                <button
+                  type="button"
+                  className="cal-legend-toggle"
+                  onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+                  disabled={allVisible}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className="cal-legend-toggle"
+                  onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+                  disabled={noneVisible}
+                >
+                  None
+                </button>
+              </div>
+              <div className="cal-legend-list">
+                {filtered.length === 0 ? (
+                  <p className="cal-legend-empty">No coordinators match.</p>
+                ) : (
+                  filtered.map((coordinator) => {
+                    const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
+                    const visible = visibleIds.has(coordinator.coordinatorId);
+                    return (
+                      <button
+                        key={coordinator.coordinatorId}
+                        type="button"
+                        role="option"
+                        className={`cal-legend-item ${visible ? "on" : "off"}`}
+                        aria-selected={visible}
+                        onClick={() => { onToggle(coordinator.coordinatorId); }}
+                      >
+                        <span
+                          className="cal-legend-swatch"
+                          style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
+                        />
+                        <span className="cal-legend-name">{displayName(coordinator)}</span>
+                        <span className="cal-legend-count">{coordinator.events.length}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+
 
 function EventBlock({
   event,

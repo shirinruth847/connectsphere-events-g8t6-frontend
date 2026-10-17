@@ -1,6 +1,12 @@
-import { OrganiserWorkspace } from "@/components/layout/organiser-workspace";
-import { EventRequestDetails } from "@/components/events/event-request-details";
+import { CoordinatorShell } from "@/components/layout/coordinator-shell";
 
 export default function EventRequestPage() {
-  return <OrganiserWorkspace><EventRequestDetails /></OrganiserWorkspace>;
+  return (
+    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
+      <div className="empty-state">
+        <h1>Covered in later scope</h1>
+        <p>Event request details are out of scope for SPM-174.</p>
+      </div>
+    </CoordinatorShell>
+  );
 }

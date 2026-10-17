@@ -1,25 +1,12 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 import { getSupabaseBrowserClient, SupabaseConfigurationError } from "@/lib/supabase";
 
-const safeNextPath = (value: string | null) => {
-  if (!value) return "/dashboard";
-  try {
-    const target = new URL(value, window.location.origin);
-    return target.origin === window.location.origin
-      ? `${target.pathname}${target.search}${target.hash}`
-      : "/dashboard";
-  } catch {
-    return "/dashboard";
-  }
-};
-
 export function LoginForm() {
   const router = useRouter();
-  const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -33,7 +20,8 @@ export function LoginForm() {
       const client = getSupabaseBrowserClient();
       const { error: authError } = await client.auth.signInWithPassword({ email: email.trim(), password });
       if (authError) throw authError;
-      router.replace(safeNextPath(params.get("next")));
+      // Session is now established. Let the home page handle role-based routing.
+      router.replace("/");
     } catch (caught) {
       setError(caught instanceof SupabaseConfigurationError
         ? "Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to .env.local, then restart Next.js."

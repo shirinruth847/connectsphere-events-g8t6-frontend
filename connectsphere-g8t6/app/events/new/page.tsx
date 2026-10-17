@@ -1,7 +1,12 @@
-import { Suspense } from "react";
-import { EventRequestWizard } from "@/components/events/event-request-wizard";
-import { OrganiserWorkspace } from "@/components/layout/organiser-workspace";
+import { CoordinatorShell } from "@/components/layout/coordinator-shell";
 
 export default function NewEventPage() {
-  return <OrganiserWorkspace><Suspense fallback={<p className="text-sm text-on-surface-variant">Loading form…</p>}><EventRequestWizard /></Suspense></OrganiserWorkspace>;
+  return (
+    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
+      <div className="empty-state">
+        <h1>Covered in later scope</h1>
+        <p>Create event wizard is out of scope for SPM-174.</p>
+      </div>
+    </CoordinatorShell>
+  );
 }

@@ -1,7 +1,12 @@
-import { Suspense } from "react";
-import { OrganiserWorkspace } from "@/components/layout/organiser-workspace";
-import { EventRequestDashboard } from "@/components/events/event-request-dashboard";
+import { CoordinatorShell } from "@/components/layout/coordinator-shell";
 
 export default function DashboardPage() {
-  return <OrganiserWorkspace><Suspense fallback={<p className="text-sm text-on-surface-variant">Loading requests…</p>}><EventRequestDashboard /></Suspense></OrganiserWorkspace>;
+  return (
+    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
+      <div className="empty-state">
+        <h1>Covered in later scope</h1>
+        <p>Organiser dashboard is out of scope for SPM-174.</p>
+      </div>
+    </CoordinatorShell>
+  );
 }

@@ -47,7 +47,7 @@ export function CoordinatorShell({ children, userName, userEmail }: { children: 
   const pathname = usePathname();
   const router = useRouter();
   const logout = async () => {
-    try { await getSupabaseBrowserClient().auth.signOut(); } finally { router.replace("/"); }
+    try { await getSupabaseBrowserClient().auth.signOut(); } finally { router.replace("/login"); }
   };
   const closeMenu = () => setOpen(false);
 

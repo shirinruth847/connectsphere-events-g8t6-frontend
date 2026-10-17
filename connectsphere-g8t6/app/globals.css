@@ -2214,6 +2214,154 @@ label {
   color: var(--on-surface-variant);
 }
 
+/* ---------- Coordinator Legend Dropdown ---------- */
+
+.cal-legend-dropdown {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-legend-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--on-surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 140px;
+}
+
+.cal-legend-trigger:hover {
+  background: var(--surface-container-high);
+  border-color: var(--outline);
+}
+
+.cal-legend-trigger-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-legend-trigger-arrow {
+  font-size: 10px;
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+
+.cal-legend-panel {
+  position: absolute;
+  z-index: 50;
+  width: 260px;
+  margin-top: 6px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-modal);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-legend-search {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: var(--surface-container-lowest);
+  font-size: 13px;
+  color: var(--on-surface);
+  box-sizing: border-box;
+}
+
+.cal-legend-search::placeholder {
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+.cal-legend-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cal-legend-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cal-legend-empty {
+  margin: 0;
+  padding: 8px;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.cal-legend-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--on-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.cal-legend-item:hover {
+  background: var(--surface-container-high);
+}
+
+.cal-legend-item.on {
+  background: rgba(79, 70, 229, 0.08);
+  border-color: rgba(79, 70, 229, 0.3);
+}
+
+.cal-legend-item.off {
+  opacity: 1;
+}
+
+.cal-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cal-legend-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-legend-count {
+  margin-left: auto;
+  padding: 1px 5px;
+  background: var(--surface-container-high);
+  border-radius: 10px;
+  font-size: 10px;
+  color: var(--on-surface-variant);
+}
+
 /* ---------- Event blocks (Google Calendar-style) ---------- */
 
 .cal-event-block {
@@ -3099,8 +3247,10 @@ label {
 
 .cal-legend-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .cal-legend-item {
