@@ -56,9 +56,13 @@ Reviewing. Their remaining fixes belong in their feature work.
   save/resume/clear/submit and autosave POST/PUT persistence were checked.
   Each live run removed all three of its temporary event rows. Existing seed
   users and their append-only audit history were preserved.
-- Companion backend: 342 unit tests and 64 live auth/signup integration tests
-  passed. The full mutating event/reassignment suites require a separate
-  TEST_DATABASE_URL and were not run without it.
+- Companion backend: 342 unit tests passed. The formerly blocked complete
+  integration run now passes all 81 tests across auth, signup, event/draft and
+  reassignment suites. The test-only PostgreSQL connection uses the shared
+  development project's session pooler with Supabase CA and hostname
+  verification. All run fixtures were removed and no manifests remain.
+  This verifies the deployed database; fresh migration reconstruction was
+  not tested. Pending coordinator workflows remain disabled by default.
 - SPM-123 frontend signup remains outside the agreed backend-only repair scope.
   Staff role landing pages do not implement future venue/technical operations.
 - No push, merge or shared database schema changes were made.
