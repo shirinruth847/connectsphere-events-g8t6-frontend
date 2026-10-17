@@ -45,7 +45,11 @@ export function RadioCardGroup<T extends string>({
           const optionId = `${baseId}-${option.value}`;
           const descriptionId = option.description ? `${optionId}-description` : undefined;
           const checked = value === option.value;
-          const border = checked ? "border-brand bg-brand-soft" : error ? "border-danger bg-surface" : "border-line bg-surface";
+          const border = checked
+            ? "border-brand bg-brand-soft"
+            : error
+              ? "border-danger bg-surface-container-lowest"
+              : "border-line bg-surface-container-lowest";
 
           return (
             <label

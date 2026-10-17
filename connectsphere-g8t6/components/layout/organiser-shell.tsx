@@ -4,7 +4,7 @@ import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useOrganiserProfile } from "@/components/auth/organiser-gate";
-import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 type NavIconName = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "logout" | "plus" | "menu" | "close";
 
@@ -41,8 +41,10 @@ export function OrganiserShell({ children }: { children: ReactNode }) {
   const profile = useOrganiserProfile();
   const pathname = usePathname();
   const router = useRouter();
+  const { signOut } = useAuth();
+  // Shared SPM-32 logout: POST /api/auth/logout, then local session cleanup.
   const logout = async () => {
-    try { await getSupabaseBrowserClient().auth.signOut(); } finally { router.replace("/login"); }
+    try { await signOut(); } finally { router.replace("/login"); }
   };
   const closeMenu = () => setOpen(false);
   const sidebar = <div className="flex min-h-full flex-col">

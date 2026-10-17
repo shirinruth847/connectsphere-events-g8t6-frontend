@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { usePathname, useRouter } from "next/navigation";
 import { AlertBanner, Skeleton } from "@/components/shared/primitives";
 import { getBackendBaseUrl } from "@/lib/api";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import { getSupabaseBrowserClient, SupabaseConfigurationError } from "@/lib/supabase";
 
 type GateState = "loading" | "ready" | "configuration" | "error";
@@ -20,6 +21,7 @@ export const useOrganiserProfile = () => useContext(OrganiserProfileContext);
 export function OrganiserGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { signOut } = useAuth();
   const [state, setState] = useState<GateState>("loading");
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -51,7 +53,8 @@ export function OrganiserGate({ children }: { children: ReactNode }) {
         }
         const body = await response.json().catch(() => ({})) as AuthMeResponse;
         if (response.status === 401 || response.status === 403) {
-          await client.auth.signOut();
+          // Shared SPM-32 logout: revokes this device's session only.
+          await signOut();
           router.replace(`/login?next=${encodeURIComponent(pathname)}`);
           return;
         }
@@ -89,7 +92,7 @@ export function OrganiserGate({ children }: { children: ReactNode }) {
     };
     void check();
     return () => { alive = false; };
-  }, [pathname, retry, router]);
+  }, [pathname, retry, router, signOut]);
 
   if (state === "loading") return <main className="mx-auto w-full max-w-5xl space-y-4 p-6"><Skeleton className="h-12 w-1/2" /><Skeleton className="h-48 w-full" /></main>;
   if (state === "configuration") return <main className="mx-auto mt-16 w-full max-w-xl p-5"><AlertBanner title="Authentication setup is incomplete" tone="warning">Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> (or <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>) to the frontend <code>.env.local</code>, and set <code>NEXT_PUBLIC_BACKEND_URL</code> if your API is not at localhost:8000. Restart Next.js after editing.</AlertBanner></main>;

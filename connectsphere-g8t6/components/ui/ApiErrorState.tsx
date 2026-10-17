@@ -48,7 +48,7 @@ export function ForbiddenState({ homePath }: { homePath: string }) {
       action={
         <Link
           href={homePath}
-          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink hover:bg-canvas"
+          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-line bg-surface-container-lowest px-4 text-sm font-semibold text-ink hover:bg-canvas"
         >
           Go to your home page
         </Link>

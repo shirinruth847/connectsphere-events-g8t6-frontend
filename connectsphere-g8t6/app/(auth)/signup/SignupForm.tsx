@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertBanner } from "@/components/ui/AlertBanner";
@@ -74,9 +74,15 @@ function fieldErrorsFrom(fields: Record<string, string> | undefined): SignupFiel
   return errors;
 }
 
+const subscribeToNothing = () => () => {};
+
 export function SignupForm() {
   const auth = useAuth();
   const router = useRouter();
+  // False in the prerendered HTML and during hydration, true once React handles
+  // events. Until then the submit button stays disabled, so the browser cannot
+  // fall back to a native GET that would put the password in the URL.
+  const hydrated = useSyncExternalStore(subscribeToNothing, () => true, () => false);
 
   const [accountType, setAccountType] = useState<SignupAccountType | null>(null);
   const [name, setName] = useState("");
@@ -282,7 +288,7 @@ export function SignupForm() {
               clearFieldError("password");
             }}
           />
-          <Button type="submit" loading={busy} className="mt-2 w-full">
+          <Button type="submit" loading={busy} disabled={!hydrated} className="mt-2 w-full">
             {busy ? busyLabel : "Create account"}
           </Button>
           <p role="status" className="sr-only">

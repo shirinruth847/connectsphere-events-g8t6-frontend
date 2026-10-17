@@ -24,7 +24,7 @@ export function TextField({ label, hint, error, id, className = "", ...props }: 
         id={inputId}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
-        className={`min-h-11 rounded-lg border bg-surface px-3 text-base text-ink placeholder:text-ink-muted focus:outline-2 focus:outline-offset-1 focus:outline-brand disabled:opacity-60 ${
+        className={`min-h-11 rounded-lg border bg-surface-container-lowest px-3 text-base text-ink placeholder:text-ink-muted focus:outline-2 focus:outline-offset-1 focus:outline-brand disabled:opacity-60 ${
           error ? "border-danger" : "border-line"
         } ${className}`}
       />
