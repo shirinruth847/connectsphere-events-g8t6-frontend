@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { CalendarView, CalendarCoordinator } from "@/components/calendar/calendar-view";
 import { CoordinatorShell } from "@/components/layout/coordinator-shell";
 import { getCurrentUser, getCoordinatorAvailability } from "@/lib/api/events";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useAuth } from "@/components/auth/auth-provider";
 
 type AuthState = "loading" | "ready" | "forbidden" | "error";
 
 export default function CalendarPage() {
   const router = useRouter();
+  const { session, loading } = useAuth();
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [coordinators, setCoordinators] = useState<CalendarCoordinator[]>([]);
   const [userName, setUserName] = useState("Loading…");
@@ -19,16 +20,17 @@ export default function CalendarPage() {
 
   useEffect(() => {
     let mounted = true;
-    const supabase = getSupabaseBrowserClient();
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
-      if (!session?.access_token) {
-        router.replace("/");
+    const run = async () => {
+      // Redirect decisions come from the single source of truth (AuthProvider)
+      // and only run once auth state has finished loading.
+      if (loading) return;
+      const token = session?.access_token ?? null;
+      if (!token) {
+        router.replace("/login");
         return;
       }
       try {
-        const result = await getCurrentUser(session.access_token);
+        const result = await getCurrentUser(token);
         if (result.user.role !== "COORDINATOR_LEAD") {
           setAuthState("forbidden");
           return;
@@ -36,46 +38,37 @@ export default function CalendarPage() {
         setAuthState("ready");
         setUserName(result.user.name);
         setUserEmail(result.user.email);
-const availability = await getCoordinatorAvailability(session.access_token);
+        const availability = await getCoordinatorAvailability(token);
         if (!mounted) return;
-          setCoordinators(
-            availability.coordinators.map((c) => ({
+        setCoordinators(
+          availability.coordinators.map((c) => ({
+            coordinatorId: c.coordinatorId,
+            name: c.name,
+            events: c.events.map((e) => ({
+              eventId: e.eventId,
+              title: e.title,
+              startDatetime: e.startDatetime,
+              endDatetime: e.endDatetime,
               coordinatorId: c.coordinatorId,
-              name: c.name,
-              events: c.events.map((e) => ({
-                eventId: e.eventId,
-                title: e.title,
-                startDatetime: e.startDatetime,
-                endDatetime: e.endDatetime,
-                coordinatorId: c.coordinatorId,
-                coordinatorName: c.name,
-                isRequested: false,
-                status: e.status,
-                requestId: e.requestId,
-                expectedAttendance: e.expectedAttendance,
-                organisation: e.organisation?.name ?? null,
-                createdAt: e.createdAt,
-              })),
-            }))
-          );
+              coordinatorName: c.name,
+              isRequested: false,
+              status: e.status,
+              requestId: e.requestId,
+              expectedAttendance: e.expectedAttendance,
+              organisation: e.organisation?.name ?? null,
+              createdAt: e.createdAt,
+            })),
+          }))
+        );
       } catch (loadError) {
         if (!mounted) return;
         setError((loadError as Error).message);
         setAuthState("error");
       }
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        router.replace("/");
-      }
-    });
-
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
     };
-  }, [router]);
+    void run();
+    return () => { mounted = false; };
+  }, [session, loading, router]);
 
   if (authState === "loading") {
     return (

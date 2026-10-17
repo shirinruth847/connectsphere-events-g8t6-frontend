@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -293,6 +294,9 @@ function CoordinatorLegend({
   onToggle: (id: number) => void;
   colorMap: Map<number, string>;
 }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
   const nameCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of coordinators) {
@@ -307,47 +311,94 @@ function CoordinatorLegend({
     return c.name;
   };
 
-  const allVisible = coordinators.every((c) => visibleIds.has(c.coordinatorId));
+  const allVisible = coordinators.length > 0 && coordinators.every((c) => visibleIds.has(c.coordinatorId));
+  const noneVisible = coordinators.length > 0 && visibleIds.size === 0;
+
+  const filtered = coordinators.filter((c) =>
+    c.name.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
+
+  if (coordinators.length === 0) {
+    return null;
+  }
 
   return (
     <div className="cal-legend" role="group" aria-label="Filter by coordinator">
       <button
         type="button"
-        className="cal-legend-toggle"
-        onClick={() => {
-          if (allVisible) {
-            coordinators.forEach((c) => onToggle(c.coordinatorId));
-          } else {
-            coordinators.forEach((c) => {
-              if (!visibleIds.has(c.coordinatorId)) onToggle(c.coordinatorId);
-            });
-          }
-        }}
+        className="cal-legend-trigger"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
       >
-        {allVisible ? "Hide all" : "Show all"}
+        <span className="cal-legend-trigger-label">
+          {selectedCoords.length === coordinators.length ? "All coordinators"
+            : selectedCoords.length === 0 ? "No coordinators"
+            : `${selectedCoords.length} coordinator${selectedCoords.length === 1 ? "" : "s"}`}</span>
+        <span className="cal-legend-trigger-arrow">{open ? "▲" : "▼"}</span>
       </button>
-      <div className="cal-legend-list">
-        {coordinators.map((coordinator) => {
-          const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
-          const visible = visibleIds.has(coordinator.coordinatorId);
-          return (
+      {open && (
+        <div className="cal-legend-panel" role="listbox">
+          <input
+            className="cal-legend-search"
+            type="search"
+            placeholder="Search coordinators…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search coordinators"
+          />
+          <div className="cal-legend-actions">
             <button
-              key={coordinator.coordinatorId}
               type="button"
-              className={`cal-legend-item ${visible ? "on" : "off"}`}
-              aria-pressed={visible}
-              onClick={() => onToggle(coordinator.coordinatorId)}
+              className="cal-legend-toggle"
+              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              disabled={allVisible}
             >
-              <span
-                className="cal-legend-swatch"
-                style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
-              />
-              <span className="cal-legend-name">{displayName(coordinator)}</span>
-              <span className="cal-legend-count">{coordinator.events.length}</span>
+              All
             </button>
-          );
-        })}
-      </div>
+            <button
+              type="button"
+              className="cal-legend-toggle"
+              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              disabled={noneVisible}
+            >
+              None
+            </button>
+          </div>
+          <div className="cal-legend-list">
+            {filtered.length === 0 ? (
+              <p className="cal-legend-empty">No coordinators match.</p>
+            ) : (
+              filtered.map((coordinator) => {
+                const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
+                const visible = visibleIds.has(coordinator.coordinatorId);
+                return (
+                  <label
+                    key={coordinator.coordinatorId}
+                    className="cal-legend-item"
+                  >
+                    <input
+                      type="checkbox"
+                      className="cal-legend-checkbox"
+                      checked={visible}
+                      onChange={() => onToggle(coordinator.coordinatorId)}
+                      aria-label={displayName(coordinator)}
+                    />
+                    <span
+                      className="cal-legend-swatch"
+                      style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
+                    />
+                    <span className="cal-legend-name">{displayName(coordinator)}</span>
+                    <span className="cal-legend-count">{coordinator.events.length}</span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1218,6 +1269,12 @@ export function CalendarView({
     );
     return map;
   }, [coordinators]);
+
+  useEffect(() => {
+    if (visibleIds.size === 0 && coordinators.length > 0) {
+      setVisibleIds(new Set(coordinators.map((c) => c.coordinatorId)));
+    }
+  }, [coordinators, visibleIds.size]);
 
   const visibleCoordinators = coordinators.filter((c) =>
     visibleIds.has(c.coordinatorId),
