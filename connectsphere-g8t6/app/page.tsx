@@ -1,85 +1,52 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getCurrentUser } from "@/lib/api/events";
-import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
+import { useAuth } from "@/components/auth/auth-provider";
 
-type AuthState = "loading" | "unauthenticated" | "coordinator-lead" | "organiser" | "forbidden";
+type AuthView = "loading" | "login" | "coordinator-lead" | "organiser" | "forbidden";
 
 export default function Home() {
+  const { session, loading } = useAuth();
   const router = useRouter();
-  const [authState, setAuthState] = useState<AuthState>("loading");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<AuthView>("loading");
 
   useEffect(() => {
     let mounted = true;
-    const supabase = getSupabaseBrowserClient();
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
-      if (!session?.access_token) {
-        setAuthState("unauthenticated");
+    const run = async () => {
+      // Redirect decisions only run once auth state has finished loading.
+      if (loading) return;
+      if (!session) {
+        if (mounted) {
+          setView("login");
+          router.replace("/login");
+        }
         return;
       }
       try {
         const result = await getCurrentUser(session.access_token);
-        if (result.user.role === "COORDINATOR_LEAD") {
-          setAuthState("coordinator-lead");
-        } else if (result.user.role === "ORGANISER") {
-          setAuthState("organiser");
-        } else {
-          setAuthState("forbidden");
-        }
+        if (!mounted) return;
+        if (result.user.role === "COORDINATOR_LEAD") setView("coordinator-lead");
+        else if (result.user.role === "ORGANISER") setView("organiser");
+        else setView("forbidden");
       } catch {
-        setAuthState("unauthenticated");
+        if (!mounted) return;
+        // Session exists but we couldn't resolve the role — don't bounce back
+        // to /login (that loops). Show the access-denied state instead.
+        setView("forbidden");
       }
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setAuthState("unauthenticated");
-      }
-    });
-
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
     };
-  }, []);
+    void run();
+    return () => { mounted = false; };
+  }, [session, loading, router]);
 
-  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      const { data, error: signInError } = await getSupabaseBrowserClient().auth.signInWithPassword({ email, password });
-      if (signInError || !data.session) throw signInError ?? new Error("Sign-in did not return an active session.");
-      const result = await getCurrentUser(data.session.access_token);
-      if (result.user.role === "COORDINATOR_LEAD") {
-        setAuthState("coordinator-lead");
-      } else if (result.user.role === "ORGANISER") {
-        setAuthState("organiser");
-      } else {
-        setAuthState("forbidden");
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  useEffect(() => {
+    if (view === "coordinator-lead") router.replace("/events");
+    else if (view === "organiser") router.replace("/dashboard");
+  }, [view, router]);
 
-  async function handleSignOut() {
-    await getSupabaseBrowserClient().auth.signOut({ scope: "local" });
-    setAuthState("unauthenticated");
-  }
-
-  if (authState === "loading") {
+  if (view === "loading") {
     return (
       <main className="grid min-h-screen place-items-center bg-surface px-4 py-10">
         <section className="w-full max-w-md rounded-panel bg-surface-container-lowest p-6 shadow-elevation-1 sm:p-9">
@@ -93,33 +60,7 @@ export default function Home() {
     );
   }
 
-  if (authState === "unauthenticated") {
-    return (
-      <main className="grid min-h-screen place-items-center bg-surface px-4 py-10">
-        <section className="w-full max-w-md rounded-panel bg-surface-container-lowest p-6 shadow-elevation-1 sm:p-9">
-          <div className="mb-8">
-            <span className="text-xs font-bold uppercase tracking-label text-primary">ConnectSphere</span>
-            <h1 className="mt-3 text-3xl font-bold text-on-surface">Welcome back</h1>
-            <p className="mt-2 text-sm text-on-surface-variant">Sign in with your Event Coordinator Lead or Organiser account.</p>
-          </div>
-          <form onSubmit={handleSignIn} className="space-y-5">
-            {error ? <AlertBanner tone="error">{error}</AlertBanner> : null}
-            <div>
-              <FormLabel htmlFor="email" required>Email</FormLabel>
-              <input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} className={fieldClasses} />
-            </div>
-            <div>
-              <FormLabel htmlFor="password" required>Password</FormLabel>
-              <input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className={fieldClasses} />
-            </div>
-            <Button disabled={busy} fullWidth>{busy ? "Signing in…" : "Sign in"}</Button>
-          </form>
-        </section>
-      </main>
-    );
-  }
-
-  if (authState === "forbidden") {
+  if (view === "forbidden") {
     return (
       <main className="grid min-h-screen place-items-center bg-surface px-4 py-10">
         <section className="w-full max-w-md rounded-panel bg-surface-container-lowest p-6 shadow-elevation-1 sm:p-9">
@@ -128,20 +69,9 @@ export default function Home() {
             <h1 className="mt-3 text-3xl font-bold text-on-surface">Insufficient permissions</h1>
             <p className="mt-2 text-sm text-on-surface-variant">Your account does not have permission to access ConnectSphere.</p>
           </div>
-          <Button variant="secondary" fullWidth onClick={handleSignOut}>Sign out</Button>
         </section>
       </main>
     );
-  }
-
-  if (authState === "coordinator-lead") {
-    router.replace("/events");
-    return null;
-  }
-
-  if (authState === "organiser") {
-    router.replace("/dashboard");
-    return null;
   }
 
   return null;

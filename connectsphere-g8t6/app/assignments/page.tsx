@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   getCoordinatorAvailability,
   getCurrentUser,
@@ -66,12 +67,11 @@ function isReassignable(status: string) {
 }
 
 export default function AssignmentsPage() {
+  const router = useRouter();
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [accessToken, setAccessToken] = useState("");
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [coordinators, setCoordinators] = useState<Coordinator[]>([]);
   const [leadAssignments, setLeadAssignments] = useState<LeadAssignment[]>([]);
   const [search, setSearch] = useState("");
@@ -104,27 +104,6 @@ export default function AssignmentsPage() {
       setAuthState(typedError.status === 403 ? "forbidden" : "error");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    try {
-      const { data, error: signInError } = await getSupabaseBrowserClient().auth.signInWithPassword({ email, password });
-      if (signInError || !data.session) throw signInError ?? new Error("Sign-in did not return an active session.");
-      const result = await getCurrentUser(data.session.access_token);
-      if (result.user.role === "COORDINATOR_LEAD") {
-        setAuthState("ready");
-        setAccessToken(data.session.access_token);
-        setUserName(result.user.name);
-        setUserEmail(result.user.email);
-        await loadAssignments(data.session.access_token);
-      } else {
-        setAuthState("forbidden");
-      }
-    } catch (err) {
-      setError((err as Error).message);
     }
   }
 
@@ -178,6 +157,12 @@ export default function AssignmentsPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (authState === "signed-out") {
+      router.replace("/login");
+    }
+  }, [authState, router]);
+
   // Derived state - must be before early returns
   const assignments = useMemo(() => {
     return leadAssignments
@@ -206,9 +191,16 @@ export default function AssignmentsPage() {
   const selectedAssignment = assignments.find(
     (a) => a.event.eventId === selectedEventId
   );
-  const selectedConflict = selectedAssignment
-    ? overlaps(selectedAssignment.event, selectedAssignment.event)
-    : null;
+  const selectedConflict =
+    selectedAssignment && selectedCoordinatorId !== null
+      ? coordinators
+          .find((c) => c.coordinatorId === selectedCoordinatorId)
+          ?.events.find(
+            (event) =>
+              event.eventId !== selectedAssignment.event.eventId &&
+              overlaps(event, selectedAssignment.event),
+          ) ?? null
+      : null;
 
   if (authState === "loading" && !mounted) {
     return (
@@ -228,51 +220,6 @@ export default function AssignmentsPage() {
           <div className="access-card">
             <h1>Supabase setup required</h1>
             <p>{error}</p>
-          </div>
-        </div>
-      </CoordinatorShell>
-    );
-  }
-
-  if (authState === "signed-out") {
-    return (
-      <CoordinatorShell userName="Sign in" userEmail="">
-        <div className="access-denied">
-          <div className="access-card">
-            <span className="eyebrow">CONNECTSPHERE AUTHENTICATION</span>
-            <h1>Sign in to assignment oversight</h1>
-            <p>
-              Use an Event Coordinator Lead account to review and reassign active
-              events.
-            </p>
-            <form className="lead-sign-in" onSubmit={handleSignIn}>
-              <label htmlFor="lead-email">Email</label>
-              <input
-                id="lead-email"
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-              <label htmlFor="lead-password">Password</label>
-              <input
-                id="lead-password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-              {error && (
-                <div className="error-alert" role="alert">
-                  {error}
-                </div>
-              )}
-              <button className="button button-primary" type="submit">
-                Sign in
-              </button>
-            </form>
           </div>
         </div>
       </CoordinatorShell>
