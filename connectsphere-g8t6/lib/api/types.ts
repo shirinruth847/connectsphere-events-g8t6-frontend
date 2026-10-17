@@ -18,19 +18,6 @@ export type Page = {
   next_offset: number | null;
 };
 
-export type OrganiserEventRequest = {
-  event_id: string | number;
-  title: string | null;
-  status: string;
-  start_datetime: string | null;
-  end_datetime: string | null;
-  expected_attendance: number | null;
-  organisation: { organisation_id: string | number; name: string } | null;
-  is_owner: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
 export type AttendeeEventStatus = "CONFIRMED" | "COMPLETED" | "CANCELLED" | "PENDING_CONFIRMATION";
 
 export type AttendeeRegistration = {

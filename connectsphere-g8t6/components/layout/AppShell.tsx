@@ -23,7 +23,7 @@ export function AppShell({ user, children }: { user: AuthenticatedUser; children
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b border-line bg-surface">
+      <header className="border-b border-line bg-surface-container-lowest">
         <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
           <span className="text-lg font-bold tracking-tight text-brand">ConnectSphere</span>
           <nav aria-label="Main" className="order-last flex w-full gap-1 sm:order-none sm:w-auto">
