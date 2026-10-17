@@ -5,6 +5,10 @@ becomes the team baseline when the repair PR is reviewed and merged. Do not
 merge this branch into an unrelated feature branch without reviewing its full
 repair scope. After integration, update feature branches from the agreed main.
 
+For coding agents, attach [agent-task-template.md](agent-task-template.md) or
+ask the agent to read it with your ticket ID and Jira link. `AGENTS.md` also
+points to it for agents that load repository instructions automatically.
+
 ## Shared files and responsibilities
 
 | File | Responsibility |

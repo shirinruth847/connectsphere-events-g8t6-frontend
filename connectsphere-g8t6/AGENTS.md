@@ -15,3 +15,7 @@ authentication or shared styling. New protected pages use `DashboardWorkspace`
 and `PageContent`; role tabs are configured in `lib/navigation.ts`. Preserve
 the shared shell and existing authentication/API helpers. Keep feature CSS in
 component utilities or CSS Modules, and global CSS limited to shared foundations.
+
+For ticket implementation, also follow `docs/agent-task-template.md` using
+the actual ticket and task supplied by the user. It defines scope, data and
+verification boundaries and can be attached to agents that do not load this file.
