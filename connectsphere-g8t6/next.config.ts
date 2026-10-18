@@ -1,15 +1,8 @@
 import type { NextConfig } from "next";
-
-// Protected pages must not be served from the browser cache after logout.
-const PROTECTED_PATHS = ["/dashboard", "/dashboard/:path*", "/my-registrations", "/my-registrations/:path*"];
-
 const nextConfig: NextConfig = {
-  async headers() {
-    return PROTECTED_PATHS.map((source) => ({
-      source,
-      headers: [{ key: "Cache-Control", value: "private, no-store" }],
-    }));
-  },
+  env: { NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8000" },
+  turbopack: { root: __dirname },
+  outputFileTracingRoot: __dirname,
+  async headers() { return [{ source: "/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] }]; },
 };
-
 export default nextConfig;
