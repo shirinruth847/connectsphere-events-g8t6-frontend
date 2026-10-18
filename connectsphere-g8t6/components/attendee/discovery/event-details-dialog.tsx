@@ -136,10 +136,16 @@ function EventDetailsContent({
   );
 }
 
+// Read out as the disabled action's description. It explains why the action
+// is unavailable without contradicting the availability chip.
+export const REGISTRATION_UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
+
 // Shows the one registration action for this event, as unavailable: there are
 // no register, waitlist or notify endpoints yet (separate ticket). It uses
 // aria-disabled rather than disabled so keyboard and screen-reader users can
 // still reach it and hear why it is unavailable. It has no click handler.
+// The shared Button's disabled: style only matches the disabled attribute, so
+// the same classes are applied through aria-disabled: instead.
 function RegistrationActionFooter({ event }: { event: AttendeeEventDetail }) {
   const helperId = useId();
   const action = getRegistrationAction(event);
@@ -148,14 +154,14 @@ function RegistrationActionFooter({ event }: { event: AttendeeEventDetail }) {
   return (
     <footer className="flex flex-col gap-2 border-t border-outline-variant/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
       <p id={helperId} className="text-xs text-on-surface-variant sm:order-first">
-        Registration coming soon
+        {REGISTRATION_UNAVAILABLE_NOTE}
       </p>
       <Button
         type="button"
         variant={action.variant}
         aria-disabled="true"
         aria-describedby={helperId}
-        className="w-full cursor-not-allowed opacity-60 max-lg:min-h-11 sm:w-auto"
+        className="w-full aria-disabled:pointer-events-none aria-disabled:opacity-55 max-lg:min-h-11 sm:w-auto"
       >
         {action.label}
       </Button>

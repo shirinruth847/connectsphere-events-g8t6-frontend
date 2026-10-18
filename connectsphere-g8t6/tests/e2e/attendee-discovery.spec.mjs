@@ -42,6 +42,20 @@ async function installDiscoveryMocks(page, { pages = { '': { events: [], nextCur
 
 const card = (page, title) => page.getByRole('article', { name: title, exact: true });
 
+const UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
+
+// The action stays focusable, describes why it is unavailable and uses the
+// shared Button's disabled look (no pointer interaction, 55% opacity).
+async function expectUnavailableAction(dialog, label) {
+  const action = dialog.getByRole('button', { name: label, exact: true });
+  await expect(action).toHaveAttribute('aria-disabled', 'true');
+  await expect(action).not.toHaveAttribute('disabled');
+  await expect(action).toHaveAccessibleDescription(UNAVAILABLE_NOTE);
+  await expect(action).toHaveCSS('pointer-events', 'none');
+  await expect(action).toHaveCSS('opacity', '0.55');
+  await expect(dialog).not.toContainText('Registration coming soon');
+}
+
 test('[SPM-34 AC1/AC2] attendee sees published events in the shared workspace', async ({ page }) => {
   await installDiscoveryMocks(page, { pages: { '': { events: [makeEvent(), makeEvent({ eventId: 102, title: 'Career Fair', location: null, registrationAvailability: 'FULL_WAITLIST' })], nextCursor: null } } });
   await page.goto('/events');
@@ -107,9 +121,7 @@ test('[SPM-34 AC3/AC6] details modal shows the latest details and a disabled act
   await expect(dialog).toContainText('SMU Computing Club');
   await expect(dialog).toContainText('10 Oct 2026, 08:00 SGT');
   await expect(dialog).toContainText('27 Oct 2026, 23:59 SGT');
-  const register = dialog.getByRole('button', { name: 'Register Now', exact: true });
-  await expect(register).toHaveAttribute('aria-disabled', 'true');
-  await expect(dialog).toContainText('Registration coming soon');
+  await expectUnavailableAction(dialog, 'Register Now');
   expect(requests.detail).toEqual([101]);
 
   await page.keyboard.press('Escape');
@@ -117,6 +129,21 @@ test('[SPM-34 AC3/AC6] details modal shows the latest details and a disabled act
   // The list row picks up the refreshed title, and focus returns to its button.
   await expect(card(page, 'SMU Tech Summit')).toBeVisible();
   await expect(page.getByRole('button', { name: 'View event details for SMU Tech Summit', exact: true })).toBeFocused();
+});
+
+test('[SPM-34 AC3] waitlist and notify actions are shown as unavailable', async ({ page }) => {
+  const waitlist = makeEvent({ eventId: 106, title: 'Full Workshop', registrationAvailability: 'FULL_WAITLIST' });
+  // Opens far in the future, so the browser clock always reads it as not yet open.
+  const upcoming = makeEvent({ eventId: 107, title: 'Future Gala', registrationAvailability: 'CLOSED', registrationOpenAt: '2099-01-01T00:00:00.000Z', registrationCloseAt: null });
+  await installDiscoveryMocks(page, { pages: { '': { events: [waitlist, upcoming], nextCursor: null } }, details: { 106: waitlist, 107: upcoming } });
+  await page.goto('/events');
+  for (const [title, label] of [['Full Workshop', 'Join Waitlist'], ['Future Gala', 'Notify when registration opens']]) {
+    await page.getByRole('button', { name: `View event details for ${title}`, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: title, exact: true });
+    await expectUnavailableAction(dialog, label);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  }
 });
 
 test('[SPM-34 AC4] NOT_ENABLED events show no registration wording', async ({ page }) => {
