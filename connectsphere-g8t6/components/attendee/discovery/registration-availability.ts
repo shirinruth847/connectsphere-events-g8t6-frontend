@@ -64,6 +64,9 @@ export function getRegistrationAction(
       return { label: "Join Waitlist", variant: "primary" };
     case "CLOSED": {
       // Closed because the window has not opened yet, as opposed to having ended.
+      // This compares against the browser clock, which can be wrong. That is
+      // acceptable because it only picks the wording of a disabled button: no
+      // request depends on it, and the backend decides availability itself.
       const opensAt = event.registrationOpenAt ? new Date(event.registrationOpenAt).getTime() : Number.NaN;
       return opensAt > now.getTime() ? { label: "Notify when registration opens", variant: "secondary" } : null;
     }
