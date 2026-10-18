@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
 // Outline icons on a 24px grid in the style of Material Symbols Outlined. The
-// project has no icon package. Same API as the shared Icon proposed in PR #10
-// (SPM-33), so the two can be merged once that lands.
+// project has no icon package or shared icon component (the shell's NavIcon
+// is private to it), so discovery keeps its own small set.
 const PATHS = {
   calendar: <><rect x="4" y="5" width="16" height="16" rx="2" /><path d="M16 3v4M8 3v4M4 10h16" /></>,
   schedule: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,

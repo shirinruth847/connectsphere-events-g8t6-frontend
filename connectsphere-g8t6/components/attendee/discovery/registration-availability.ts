@@ -46,7 +46,8 @@ export const isRegistrationEnabled = (value: string) => getAvailabilityPresentat
 
 export interface RegistrationAction {
   label: string;
-  tone: "primary" | "tertiary" | "tonal";
+  // A shared Button variant.
+  variant: "primary" | "secondary";
 }
 
 // The one action the event details offer for each availability. Registering,
@@ -58,13 +59,13 @@ export function getRegistrationAction(
 ): RegistrationAction | null {
   switch (event.registrationAvailability) {
     case "OPEN":
-      return { label: "Register Now", tone: "primary" };
+      return { label: "Register Now", variant: "primary" };
     case "FULL_WAITLIST":
-      return { label: "Join Waitlist", tone: "tertiary" };
+      return { label: "Join Waitlist", variant: "primary" };
     case "CLOSED": {
       // Closed because the window has not opened yet, as opposed to having ended.
       const opensAt = event.registrationOpenAt ? new Date(event.registrationOpenAt).getTime() : Number.NaN;
-      return opensAt > now.getTime() ? { label: "Notify when registration opens", tone: "tonal" } : null;
+      return opensAt > now.getTime() ? { label: "Notify when registration opens", variant: "secondary" } : null;
     }
     default:
       // NOT_ENABLED, or a value the backend adds later: no action.

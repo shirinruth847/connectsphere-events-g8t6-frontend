@@ -136,12 +136,6 @@ function EventDetailsContent({
   );
 }
 
-const ACTION_TONES = {
-  primary: "bg-primary text-on-primary",
-  tertiary: "bg-tertiary text-on-primary",
-  tonal: "bg-surface-container-low text-primary",
-} as const;
-
 // Shows the one registration action for this event, as unavailable: there are
 // no register, waitlist or notify endpoints yet (separate ticket). It uses
 // aria-disabled rather than disabled so keyboard and screen-reader users can
@@ -156,14 +150,15 @@ function RegistrationActionFooter({ event }: { event: AttendeeEventDetail }) {
       <p id={helperId} className="text-xs text-on-surface-variant sm:order-first">
         Registration coming soon
       </p>
-      <button
+      <Button
         type="button"
+        variant={action.variant}
         aria-disabled="true"
         aria-describedby={helperId}
-        className={`inline-flex min-h-10 w-full cursor-not-allowed items-center justify-center rounded-control px-4 py-2 text-sm font-semibold opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-lg:min-h-11 sm:w-auto ${ACTION_TONES[action.tone]}`}
+        className="w-full cursor-not-allowed opacity-60 max-lg:min-h-11 sm:w-auto"
       >
         {action.label}
-      </button>
+      </Button>
     </footer>
   );
 }

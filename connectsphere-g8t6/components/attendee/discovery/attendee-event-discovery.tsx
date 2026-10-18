@@ -1,30 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { AlertBanner, Button, EmptyState, PageHeader, Skeleton } from "@/components/shared/primitives";
+import { useRef, useState } from "react";
+import { PageContent } from "@/components/layout/page-content";
+import { AlertBanner, Button, EmptyState, Skeleton } from "@/components/shared/primitives";
+import { ROLE_LABELS } from "@/lib/auth";
 import type { AttendeeEventSummary } from "@/lib/api/discovery";
-import { ATTENDEE_SIGN_IN_PATH, type AttendeeProfile } from "./attendee-session";
-import { AttendeeShell } from "./attendee-shell";
 import { EventDetailsDialog } from "./event-details-dialog";
 import { EventDiscoveryCard } from "./event-discovery-card";
 import { useDiscoveryEvents } from "./use-discovery-events";
 
 // Attendee Event Discovery at /events (SPM-34), from the "Event Discovery"
-// Figma frame, inside the attendee sidebar shell. Search, filters, capacity and
+// Figma frame. Render inside DashboardWorkspace. Search, filters, capacity and
 // working registration actions are not built: the backend does not provide
 // them yet.
-export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }) {
-  const router = useRouter();
+export function AttendeeEventDiscovery() {
   const discovery = useDiscoveryEvents();
   const [selected, setSelected] = useState<AttendeeEventSummary | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
+  // apiRequest reports a 401 to AuthGate, which sends the attendee to sign in.
   const sessionExpired = discovery.status === "error" && discovery.error?.status === 401;
-
-  useEffect(() => {
-    if (sessionExpired) router.replace(ATTENDEE_SIGN_IN_PATH);
-  }, [sessionExpired, router]);
 
   const openDetails = (event: AttendeeEventSummary, button: HTMLButtonElement) => {
     trigger.current = button;
@@ -40,13 +35,11 @@ export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }
   const countText = `Showing ${discovery.events.length} ${discovery.events.length === 1 ? "event" : "events"}${discovery.nextCursor ? " · more available" : ""}`;
 
   return (
-    <AttendeeShell profile={profile}>
-      <PageHeader
-        eyebrow="Attendee experience portal"
-        title="Event Discovery"
-        description="Browse confirmed events open to attendees. Open an event to see its full details and registration availability."
-      />
-
+    <PageContent
+      eyebrow={ROLE_LABELS.ATTENDEE}
+      title="Event Discovery"
+      description="Browse confirmed events open to attendees. Open an event to see its full details and registration availability."
+    >
       <section aria-labelledby="discovery-list-heading" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
           <div className="flex items-center gap-3">
@@ -153,6 +146,6 @@ export function AttendeeEventDiscovery({ profile }: { profile: AttendeeProfile }
         onLoaded={discovery.patchEvent}
         onNotFound={discovery.removeEvent}
       />
-    </AttendeeShell>
+    </PageContent>
   );
 }
