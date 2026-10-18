@@ -158,9 +158,25 @@ export const STATUS_PRESENTATION: Record<
 export const displayEventStatus = (status: EventStatus, assigned = false): EventStatus => { void assigned; return status; };
 export const statusPresentation = (status: string) => STATUS_PRESENTATION[status as EventStatus] ?? { label: status.replaceAll("_", " "), chip: "bg-slate-100 text-slate-700", border: "border-t-slate-400" };
 
+// The eight organiser labels (Master section 3.5). The backend computes them;
+// this copy is only the fallback for a response without a usable label.
+export const ORGANISER_STATUS_LABELS: Record<EventStatus, string> = {
+  DRAFT: "Draft",
+  SUBMITTED: "Submitted",
+  UNDER_REVIEW: "Under Review",
+  AWAITING_CLARIFICATION: "Under Review",
+  PLANNING: "Approved & Planning",
+  SAFETY_REVIEW: "Approved & Planning",
+  CONFIRMED: "Confirmed",
+  PREPARATION: "Confirmed",
+  COMPLETED: "Completed",
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
+};
 // A label equal to the raw state code means the backend had none to give.
 export const eventStatusLabel = (event: { status: string; statusLabel?: string | null }) =>
   (event.statusLabel && event.statusLabel !== event.status ? event.statusLabel : null)
+  ?? ORGANISER_STATUS_LABELS[event.status as EventStatus]
   ?? statusPresentation(event.status).label;
 
 export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
@@ -207,6 +223,9 @@ export const EVENT_STATUS_ORDER: EventStatus[] = [
   "CANCELLED",
   "REJECTED",
 ];
+
+// Organiser labels in lifecycle order, each once, for the organiser's status filter.
+export const ORGANISER_LABEL_ORDER = [...new Set(EVENT_STATUS_ORDER.map(status => ORGANISER_STATUS_LABELS[status]))];
 
 export const EMPTY_EVENT_FORM: EventFormValues = {
   title: "",
