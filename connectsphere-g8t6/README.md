@@ -1,54 +1,57 @@
 # ConnectSphere frontend
 
-The organiser-facing Next.js App Router application for creating and tracking
-campus event requests.
+The role-based Next.js App Router application for creating and tracking
+campus event requests and accessing permitted workspaces.
 
 ## Requirements
 
 - Node.js 22 or newer
 - The ConnectSphere backend running locally, unless configured to use another
   API host
-- A Supabase project with an active organiser profile
+- A Supabase project with an active ConnectSphere profile
 
 ## Setup
 
 1. Install dependencies with `npm ci`.
-2. Create `.env.local` in `connectsphere-g8t6/` with the variables below. Set
-   `NEXT_PUBLIC_BACKEND_URL` if the API is not at `http://localhost:8000`.
+2. Copy `.env.example` to `.env.local` and provide the Supabase URL and
+   publishable key. Set `NEXT_PUBLIC_BACKEND_URL` if the API is not at
+   `http://localhost:8000`.
 3. Start the app with `npm run dev` and open `http://localhost:3000`.
 
 Do not commit `.env.local` or other files containing credentials.
 
-```dotenv
-BACKEND_URL=http://localhost:8000
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
-NEXT_PUBLIC_SUPABASE_URL=https://rvwiflsedoujspmzfrbq.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon/publishable key from the Supabase dashboard>
-```
+The development command explicitly uses port 3000 so an occupied port fails
+instead of silently starting on 3001. The backend's `FRONTEND_ORIGIN` defaults
+to `http://localhost:3000`; an alternate port or hostname must match that
+setting, or the browser blocks profile verification after Supabase login.
+Stop the existing local frontend before starting another instance. For a
+deliberate alternate port, use `npm run dev -- --port <port>` and update the
+backend origin before restarting the backend.
 
-| Variable | Read by | Notes |
-| --- | --- | --- |
-| `BACKEND_URL` | `lib/api/events.ts` | Fallback when `NEXT_PUBLIC_BACKEND_URL` is unset |
-| `NEXT_PUBLIC_BACKEND_URL` | `lib/api/client.ts`, `lib/api.ts`, `lib/api/events.ts` (browser) | Express backend base URL, no trailing slash |
-| `NEXT_PUBLIC_SUPABASE_URL` | `lib/auth/session.ts`, `lib/supabase.ts`, `lib/supabase/browser.ts` | Supabase Auth only; business data goes through the backend |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same as above | Public anon key (`lib/supabase.ts` also accepts `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`). Never put the service-role key here |
-
-`NEXT_PUBLIC_*` values are inlined at build time, so rebuild or restart after changing them.
-
-## Authentication (SPM-32)
-
-- `/login` signs in with Supabase Auth in the browser, then calls `GET /api/auth/me`; the backend's `role` and `home_path` decide where the user lands. A valid same-origin `?next=` takes priority.
-- Every route under `app/(portal)/` is protected by `components/layout/PortalGate.tsx`, which renders nothing protected until `/api/auth/me` succeeds and redirects to `/login?next=…` otherwise.
-- `/dashboard` renders one component per role (`components/dashboard/DashboardView.tsx`); organisers get the event request dashboard from `components/events`.
-- Logout calls `POST /api/auth/logout`, then `supabase.auth.signOut({ scope: "local" })`.
-- Code layout: `lib/api` (single backend client), `lib/auth` (session, provider, guard, `next=` handling), `lib/permissions` (presentation-only role helpers), `lib/validation`, `components/dashboard` (one replaceable component per role).
+If hydration reports an extra `data-scribe-recorder-ready` attribute on
+`<html>`, disable the Scribe browser extension for localhost and reload, or
+use a browser profile with extensions disabled. This attribute is not rendered
+by the application. Do not suppress hydration diagnostics globally to hide it.
 
 ## Sign-up (SPM-123)
 
-- `/signup` lets visitors register as an Attendee or Event Organiser only (`SIGNUP_ACCOUNT_TYPES` in `lib/validation/signup.ts`); staff roles are never self-registered.
-- It calls `POST /api/auth/signup`, which creates an account that is usable immediately but returns no session. The page then signs in through the same `useAuth().signIn` flow as `/login`, so the landing page comes from `GET /api/auth/me` and the backend's `home_path`.
+- `/signup` (`components/auth/signup-form.tsx`) lets visitors register as an
+  Attendee or Event Organiser only (`SIGNUP_ACCOUNT_TYPES` in `lib/signup.ts`).
+  Staff roles are never self-registered; the backend enforces the same rules.
+- It sends `{ accountType, name, email, password }` to `POST /api/auth/signup`.
+  The account is usable immediately, but no session is returned, so the form
+  then signs in like `/login`: `signInWithPassword` on the shared client,
+  `currentUser()` (`GET /api/auth/me`) and `postLoginPath`.
+- If the account is created but automatic sign-in fails, the page says so and
+  links to `/login`; it never submits the sign-up again.
 
 ## Checks
+
+Team members: read [the shared UI workflow](docs/team-ui-workflow.md) before
+adding a dashboard page, role navigation item or custom styling. It includes
+the starter page, route/API agreement and PR checks.
+For AI coding tools, attach [the agent task template](docs/agent-task-template.md)
+and provide the ticket ID, Jira link and task.
 
 - `npm run lint`
 - `npx tsc --noEmit`
@@ -59,3 +62,31 @@ authenticates directly with Supabase Auth; organiser role and profile checks
 are performed by the backend.
 
 See [COMMIT_MESSAGES.md](COMMIT_MESSAGES.md) for the repository's commit format.
+
+
+## Repair baseline verification
+
+This branch covers SPM-32, SPM-35 and SPM-37, with backend SPM-123 regression
+checks. See `docs/main-repair-baseline.md` and the companion backend's report.
+Validation used Node.js 24.9.0.
+
+- `npm test` runs the pure auth/validation/payload tests.
+- `npm run test:e2e` builds a separate test configuration, starts port 3100 and
+  runs Chrome with deterministic Auth/API mocks. Install Chrome first. Reports
+  and traces are under ignored `playwright-report/` and `test-results/`.
+- `npm run build` uses Webpack and performs TypeScript checks.
+- `npm run test:live` requires both real applications already running at
+  localhost:3000/8000, the sibling backend repository and its existing synthetic
+  `dev-*` seed accounts with SEED_ACCOUNT_PASSWORD. It does not reset or create
+  users. It removes only this run's event data; audit entries remain under the
+  existing seed users. LIVE_FRONTEND_URL/LIVE_BACKEND_URL may override hosts;
+  LIVE_ROLES may select a comma-separated subset for focused checks.
+
+The live checker reads the backend's private environment only in its Node.js
+process; no private key is bundled into the browser. Rebuild/restart the normal
+frontend after mock browser tests before running live checks. NEXT_PUBLIC_BACKEND_URL
+wins over the build-time BACKEND_URL fallback. Local .env files remain ignored.
+
+For focused development-mode browser checks, use
+`E2E_DEV=1 npm run test:e2e -- --grep 'title-only draft|protected create returns|ORGANISER login'`.
+The development report is separate from the full production browser report.
