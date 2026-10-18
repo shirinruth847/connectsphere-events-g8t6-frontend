@@ -358,16 +358,36 @@ nav {
   box-shadow: var(--shadow-soft);
 }
 
-.assignment-card--submitted { border-top-color: var(--primary); }
-.assignment-card--under_review { border-top-color: var(--primary-container); }
-.assignment-card--awaiting_clarification { border-top-color: var(--tertiary); }
-.assignment-card--planning { border-top-color: var(--tertiary-container); }
-.assignment-card--safety_review { border-top-color: var(--tertiary); }
-.assignment-card--preparation { border-top-color: var(--primary-fixed); }
-.assignment-card--confirmed { border-top-color: var(--success); }
-.assignment-card--completed { border-top-color: var(--success-container); }
-.assignment-card--cancelled { border-top-color: var(--error); }
-.assignment-card--unknown { border-top-color: var(--outline); }
+.assignment-card--submitted {
+  border-top-color: var(--primary);
+}
+.assignment-card--under_review {
+  border-top-color: var(--primary-container);
+}
+.assignment-card--awaiting_clarification {
+  border-top-color: var(--tertiary);
+}
+.assignment-card--planning {
+  border-top-color: var(--tertiary-container);
+}
+.assignment-card--safety_review {
+  border-top-color: var(--tertiary);
+}
+.assignment-card--preparation {
+  border-top-color: var(--primary-fixed);
+}
+.assignment-card--confirmed {
+  border-top-color: var(--success);
+}
+.assignment-card--completed {
+  border-top-color: var(--success-container);
+}
+.assignment-card--cancelled {
+  border-top-color: var(--error);
+}
+.assignment-card--unknown {
+  border-top-color: var(--outline);
+}
 
 .assignment-card-top {
   display: flex;
@@ -1732,10 +1752,13 @@ label {
   border-radius: 16px;
   color: #ffffff;
   background: var(--sidebar-bg);
-  font-family: var(--font-poppins), "Poppins", var(--font-hanken-grotesk), sans-serif;
+  font-family:
+    var(--font-poppins), "Poppins", var(--font-hanken-grotesk), sans-serif;
   overflow-x: hidden;
   overflow-y: auto;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.12),
+    0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* Pinned card beside the page content */
@@ -1820,7 +1843,9 @@ label {
   width: 16px;
   height: 16px;
   color: rgba(255, 255, 255, 0.5);
-  transition: transform 0.2s ease, color 0.15s ease;
+  transition:
+    transform 0.2s ease,
+    color 0.15s ease;
 }
 
 .sidebar-section-header[aria-expanded="false"] .sidebar-chevron {
@@ -1862,7 +1887,10 @@ label {
   line-height: 1.4;
   text-align: left;
   text-decoration: none;
-  transition: background-color 0.12s ease, color 0.12s ease, padding-left 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease,
+    padding-left 0.12s ease;
   white-space: nowrap;
 }
 
@@ -2130,19 +2158,16 @@ label {
 /* ---------- Coordinator Legend ---------- */
 
 .cal-legend {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: var(--surface-container);
-  border-bottom: 1px solid var(--outline);
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  position: relative;
+  margin-left: 10px;
 }
 
 .cal-legend-toggle {
   padding: 4px 10px;
-  border: 1px solid var(--outline);
-  border-radius: 6px;
   background: transparent;
   font-size: 13px;
   font-weight: 600;
@@ -2223,24 +2248,25 @@ label {
 }
 
 .cal-legend-trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  min-height: 30px;
   padding: 6px 10px;
   border: 1px solid var(--outline);
   border-radius: 6px;
-  background: var(--surface-container-low);
-  font-size: 13px;
-  font-weight: 600;
+  background: var(--surface-container-lowest);
   color: var(--on-surface);
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  min-width: 140px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .cal-legend-trigger:hover {
-  background: var(--surface-container-high);
-  border-color: var(--outline);
+  background: var(--surface-container-low);
+  border-color: var(--primary);
 }
 
 .cal-legend-trigger-label {
@@ -2248,16 +2274,19 @@ label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 140px;
 }
 
 .cal-legend-trigger-arrow {
-  font-size: 10px;
+  font-size: 9px;
   flex-shrink: 0;
   color: var(--on-surface-variant);
 }
 
 .cal-legend-panel {
   position: absolute;
+  left: 0;
+  right: auto;
   z-index: 50;
   width: 260px;
   margin-top: 6px;
@@ -2269,6 +2298,41 @@ label {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.cal-legend-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cal-legend-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.cal-legend-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.cal-legend-close:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
 }
 
 .cal-legend-search {
@@ -2377,7 +2441,10 @@ label {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  transition: opacity 0.15s ease, z-index 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    z-index 0.15s ease,
+    box-shadow 0.15s ease;
   z-index: 1;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
@@ -2453,7 +2520,7 @@ label {
 
 .cal-event-phantom {
   position: absolute;
-  border: 1px dashed #DC2626;
+  border: 1px dashed #dc2626;
   border-radius: 4px;
   opacity: 0.3;
   pointer-events: none;
@@ -2527,7 +2594,7 @@ label {
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 2px solid #DC2626;
+  border-top: 2px solid #dc2626;
   z-index: 8;
   pointer-events: none;
 }
@@ -2536,7 +2603,7 @@ label {
   position: absolute;
   left: 4px;
   top: -8px;
-  background: #DC2626;
+  background: #dc2626;
   color: white;
   font-size: 10px;
   font-weight: 600;
@@ -3225,6 +3292,7 @@ label {
   border-radius: 10px;
   border: 1px solid var(--outline-variant);
   margin-bottom: 16px;
+  position: relative;
 }
 
 .cal-legend-toggle {

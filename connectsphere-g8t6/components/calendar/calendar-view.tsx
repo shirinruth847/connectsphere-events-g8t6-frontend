@@ -282,7 +282,7 @@ function layoutDayEvents(
   return results;
 }
 
-export function CoordinatorLegend({
+function CoordinatorLegend({
   coordinators,
   visibleIds,
   onToggle,
@@ -293,7 +293,6 @@ export function CoordinatorLegend({
   onToggle: (id: number) => void;
   colorMap: Map<number, string>;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -328,83 +327,86 @@ export function CoordinatorLegend({
     <div className="cal-legend" role="group" aria-label="Filter by coordinator">
       <button
         type="button"
-        className="cal-legend-toggle"
-        onClick={() => setCollapsed((prev) => !prev)}
-        aria-expanded={!collapsed}
+        className="cal-legend-trigger"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
       >
-        {collapsed ? "Show filter" : "Hide filter"}
+        <span className="cal-legend-trigger-label">
+          {selectedCoords.length === coordinators.length ? "All coordinators"
+            : selectedCoords.length === 0 ? "No coordinators"
+            : `${selectedCoords.length} coordinator${selectedCoords.length === 1 ? "" : "s"}`}</span>
+        <span className="cal-legend-trigger-arrow">{open ? "▲" : "▼"}</span>
       </button>
-      {!collapsed && (
-        <div className="cal-legend-dropdown">
-          <button
-            type="button"
-            className="cal-legend-trigger"
-            onClick={() => setOpen((prev) => !prev)}
-            aria-expanded={open}
-            aria-haspopup="listbox"
-          >
-            <span className="cal-legend-trigger-label">
-              {open ? "Coordinator filter" : selectedCoords.length === coordinators.length && coordinators.length > 0 ? "All coordinators" : selectedCoords.length === 0 ? "No coordinators" : `${selectedCoords.length} coordinator${selectedCoords.length === 1 ? "" : "s"}`}
-            </span>
-            <span className="cal-legend-trigger-arrow">{open ? "▲" : "▼"}</span>
-          </button>
-          {open && (
-            <div className="cal-legend-panel" role="listbox">
-              <input
-                className="cal-legend-search"
-                type="search"
-                placeholder="Search coordinators…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search coordinators"
-              />
-              <div className="cal-legend-actions">
-                <button
-                  type="button"
-                  className="cal-legend-toggle"
-                  onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
-                  disabled={allVisible}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  className="cal-legend-toggle"
-                  onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
-                  disabled={noneVisible}
-                >
-                  None
-                </button>
-              </div>
-              <div className="cal-legend-list">
-                {filtered.length === 0 ? (
-                  <p className="cal-legend-empty">No coordinators match.</p>
-                ) : (
-                  filtered.map((coordinator) => {
-                    const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
-                    const visible = visibleIds.has(coordinator.coordinatorId);
-                    return (
-                      <button
-                        key={coordinator.coordinatorId}
-                        type="button"
-                        role="option"
-                        className={`cal-legend-item ${visible ? "on" : "off"}`}
-                        aria-selected={visible}
-                        onClick={() => { onToggle(coordinator.coordinatorId); }}
-                      >
-                        <span
-                          className="cal-legend-swatch"
-                          style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
-                        />
-                        <span className="cal-legend-name">{displayName(coordinator)}</span>
-                        <span className="cal-legend-count">{coordinator.events.length}</span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
+      {open && (
+        <div className="cal-legend-panel" role="listbox">
+          <div className="cal-legend-panel-header">
+            <span className="cal-legend-panel-title">Filter coordinators</span>
+            <button
+              type="button"
+              className="cal-legend-close"
+              onClick={() => setOpen(false)}
+              aria-label="Close filter"
+            >
+              ×
+            </button>
+          </div>
+          <input
+            className="cal-legend-search"
+            type="search"
+            placeholder="Search coordinators…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search coordinators"
+          />
+          <div className="cal-legend-actions">
+            <button
+              type="button"
+              className="cal-legend-toggle"
+              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              disabled={allVisible}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className="cal-legend-toggle"
+              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              disabled={noneVisible}
+            >
+              None
+            </button>
+          </div>
+          <div className="cal-legend-list">
+            {filtered.length === 0 ? (
+              <p className="cal-legend-empty">No coordinators match.</p>
+            ) : (
+              filtered.map((coordinator) => {
+                const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
+                const visible = visibleIds.has(coordinator.coordinatorId);
+                return (
+                  <label
+                    key={coordinator.coordinatorId}
+                    className="cal-legend-item"
+                  >
+                    <input
+                      type="checkbox"
+                      className="cal-legend-checkbox"
+                      checked={visible}
+                      onChange={() => onToggle(coordinator.coordinatorId)}
+                      aria-label={displayName(coordinator)}
+                    />
+                    <span
+                      className="cal-legend-swatch"
+                      style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
+                    />
+                    <span className="cal-legend-name">{displayName(coordinator)}</span>
+                    <span className="cal-legend-count">{coordinator.events.length}</span>
+                  </label>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1258,9 +1260,17 @@ export function CalendarView({
     defaultView,
   );
   const [internalCurrentDate, setInternalCurrentDate] = useState(new Date());
-  const [visibleIds, setVisibleIds] = useState<Set<number>>(
+  const [manualVisibleIds, setManualVisibleIds] = useState<Set<number>>(
     () => new Set(coordinators.map((c) => c.coordinatorId)),
   );
+
+  const visibleIds = useMemo(() => {
+    if (manualVisibleIds.size === 0 && coordinators.length > 0) {
+      return new Set(coordinators.map((c) => c.coordinatorId));
+    }
+    return manualVisibleIds;
+  }, [manualVisibleIds, coordinators]);
+
   const [popoverEvent, setPopoverEvent] = useState<LayoutEvent | null>(null);
   const [tooltipEvent, setTooltipEvent] = useState<{
     event: LayoutEvent;
@@ -1308,7 +1318,7 @@ export function CalendarView({
    };
 
   const toggleCoordinator = (id: number) => {
-    setVisibleIds((prev) => {
+    setManualVisibleIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -1432,6 +1442,7 @@ export function CalendarView({
           )}
         </div>
       </div>
+
 
       <CoordinatorLegend
         coordinators={coordinators}
