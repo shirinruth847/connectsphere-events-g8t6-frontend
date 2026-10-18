@@ -1,6 +1,5 @@
 import type { ComponentPropsWithRef, ReactNode } from "react";
-import type { EventStatus } from "@/lib/events";
-import { STATUS_PRESENTATION } from "@/lib/events";
+import { STATUS_PRESENTATION, statusPresentation } from "@/lib/events";
 
 export const buttonClasses = (variant: "primary" | "secondary" | "danger" | "quiet" = "primary") => {
   const variants = {
@@ -28,11 +27,15 @@ export function Button({ variant = "primary", fullWidth, className = "", ...prop
   );
 }
 
-export function StatusChip({ status, label }: { status: EventStatus; label?: string }) {
-  const config = STATUS_PRESENTATION[status];
+// `label` overrides the stored-state label, e.g. with the organiser label the
+// backend computes (Master section 3.5). Unknown states show their raw code.
+export function StatusChip({ status, label }: { status: string; label?: string }) {
+  const config = statusPresentation(status);
+  const known = Object.prototype.hasOwnProperty.call(STATUS_PRESENTATION, status);
   return (
     <span
       className={`inline-flex w-fit items-center rounded-chip px-2 py-1 text-[11px] font-semibold uppercase tracking-label ${config.chip}`}
+      title={known ? undefined : `Status "${status}" is not part of the ConnectSphere lifecycle`}
     >
       {label || config.label}
     </span>
@@ -79,9 +82,9 @@ export function SectionCard({
 }: {
   children: ReactNode;
   className?: string;
-  status?: EventStatus;
+  status?: string;
 }) {
-  const statusBorder = status ? STATUS_PRESENTATION[status].border : "border-t-transparent";
+  const statusBorder = status ? statusPresentation(status).border : "border-t-transparent";
   return (
     <section className={`rounded-panel border-t-4 ${statusBorder} bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5 ${className}`}>
       {children}

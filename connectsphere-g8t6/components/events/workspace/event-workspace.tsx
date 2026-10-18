@@ -1,36 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { SessionGate, useSessionProfile, type SessionProfile } from "@/components/auth/session-gate";
+import { useSessionUser } from "@/components/auth/auth-gate";
 import { EventRequestDetails } from "@/components/events/event-request-details";
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
-import { OrganiserShell } from "@/components/layout/organiser-shell";
 import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
+import { homeForRole, ROUTES } from "@/lib/auth";
 import { CoordinatorEventView } from "./coordinator-event-view";
 import { useEventView } from "./use-event-view";
 
 const parseEventId = (raw: string) => (/^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : null);
-
-const homeFor = (roles: string[]) => (roles.includes("COORDINATOR_LEAD") && !roles.includes("COORDINATOR") ? "/events" : "/dashboard");
-
-// The signed-in role picks the shell; what the page shows inside it comes from
-// the relationship the backend reports for this event.
-export function WorkspaceShell({ profile, children }: { profile: SessionProfile; children: ReactNode }) {
-  if (profile.roles.includes("COORDINATOR")) {
-    return <CoordinatorShell navigation="coordinator" userName={profile.name} userEmail={profile.email}>{children}</CoordinatorShell>;
-  }
-  if (profile.roles.includes("COORDINATOR_LEAD")) {
-    return <CoordinatorShell userName={profile.name} userEmail={profile.email}>{children}</CoordinatorShell>;
-  }
-  if (profile.roles.includes("ORGANISER")) {
-    return <OrganiserShell profile={profile}>{children}</OrganiserShell>;
-  }
-  // Venue Staff, Technical Support and Attendees get no event detail here (SPM-33 AC5);
-  // their own workspaces arrive with their tickets, so no role navigation is shown.
-  return <main className="mx-auto w-full max-w-[1280px] px-4 py-5 sm:px-7 sm:py-7">{children}</main>;
-}
 
 function EventUnavailable({ home }: { home: string }) {
   return (
@@ -71,22 +50,12 @@ function LoadedWorkspace({ eventId, home }: { eventId: number; home: string }) {
   return <EventRequestDetails event={state.event} />;
 }
 
-function WorkspaceContent({ rawEventId }: { rawEventId: string }) {
-  const profile = useSessionProfile();
+// /events/[eventId]: the role-aware event workspace (SPM-33). Render inside
+// DashboardWorkspace; what it shows comes from the relationship the backend
+// reports for this event, and unrelated events answer "not found".
+export function EventWorkspace({ eventId: rawEventId }: { eventId: string }) {
+  const user = useSessionUser();
   const eventId = parseEventId(rawEventId);
-  const home = homeFor(profile.roles);
-  return (
-    <WorkspaceShell profile={profile}>
-      {eventId === null ? <EventUnavailable home={home} /> : <LoadedWorkspace key={eventId} eventId={eventId} home={home} />}
-    </WorkspaceShell>
-  );
-}
-
-// /events/[eventId]: the role-aware event workspace (SPM-33).
-export function EventWorkspace({ eventId }: { eventId: string }) {
-  return (
-    <SessionGate>
-      <WorkspaceContent rawEventId={eventId} />
-    </SessionGate>
-  );
+  const home = user ? homeForRole(user.role) : ROUTES.dashboard;
+  return eventId === null ? <EventUnavailable home={home} /> : <LoadedWorkspace key={eventId} eventId={eventId} home={home} />;
 }

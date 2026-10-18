@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { AlertBanner, PageHeader, ReferenceIdTag, SectionCard } from "@/components/shared/primitives";
+import { AlertBanner, PageHeader, ReferenceIdTag, SectionCard, StatusChip } from "@/components/shared/primitives";
 import { CapacityBar } from "@/components/shared/capacity-bar";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
-import { getStatusPresentation, StatusChip } from "@/components/shared/status-chip";
+import { statusPresentation } from "@/lib/events";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { editableIdentityFields } from "@/lib/permissions/event-workspace";
@@ -52,7 +52,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
   const [notice, setNotice] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
   const editable = editableIdentityFields(event.permissions);
-  const statusLabel = getStatusPresentation(event.status).label;
+  const statusLabel = statusPresentation(event.status).label;
   const attendance = event.expectedAttendance ?? 0;
   const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
 

@@ -1,8 +1,7 @@
 "use client";
 
-import { Button } from "@/components/shared/primitives";
+import { Button, StatusChip } from "@/components/shared/primitives";
 import { Dialog } from "@/components/shared/dialog";
-import { StatusChip } from "@/components/shared/status-chip";
 import type { EventView, IdentityField } from "@/lib/api/event-workspace";
 import { formatTimestamp } from "@/lib/datetime";
 import { editableIdentityFields } from "@/lib/permissions/event-workspace";

@@ -3,7 +3,7 @@
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { PermissionPill } from "@/components/shared/permission-pill";
-import { getStatusPresentation } from "@/components/shared/status-chip";
+import { statusPresentation } from "@/lib/events";
 import { SectionHeading } from "@/components/shared/section-heading";
 import type { EventHistoryEntry, EventView } from "@/lib/api/event-workspace";
 import { formatTimestamp } from "@/lib/datetime";
@@ -33,7 +33,7 @@ const actionLabel = (entry: EventHistoryEntry) =>
 
 const formatValue = (field: string, value: unknown) => {
   if (value === null || value === undefined || value === "") return "—";
-  if (field === "status" && typeof value === "string") return getStatusPresentation(value).label;
+  if (field === "status" && typeof value === "string") return statusPresentation(value).label;
   if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "object") return JSON.stringify(value);

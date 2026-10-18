@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { AlertBanner, buttonClasses, PageHeader, ReferenceIdTag } from "@/components/shared/primitives";
+import { AlertBanner, buttonClasses, PageHeader, ReferenceIdTag, StatusChip } from "@/components/shared/primitives";
 import { CapacityBar } from "@/components/shared/capacity-bar";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
-import { getStatusPresentation, StatusChip } from "@/components/shared/status-chip";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
 import {
   equipmentItems,
@@ -19,14 +18,7 @@ import {
 } from "@/components/events/workspace/event-detail-rows";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
-
-// Organiser pages show the label the backend computes (Master section 3.5). The
-// backend currently labels only DRAFT and SUBMITTED and echoes the code for the
-// rest, so fall back to the shared status label when it does.
-const organiserStatusLabel = (event: EventView) =>
-  event.statusLabel && event.statusLabel !== event.status
-    ? event.statusLabel
-    : getStatusPresentation(event.status).label;
+import { eventStatusLabel } from "@/lib/events";
 
 function Card({ labelledBy, children }: { labelledBy: string; children: ReactNode }) {
   return (
@@ -67,7 +59,7 @@ function AccessNotice({ event }: { event: EventView }) {
 // same organisation, who sees submitted requests read-only.
 export function EventRequestDetails({ event }: { event: EventView }) {
   const isMember = event.viewerRelationship === "ORGANISATION_MEMBER";
-  const label = organiserStatusLabel(event);
+  const label = eventStatusLabel(event);
   const attendance = event.expectedAttendance ?? 0;
   const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
 

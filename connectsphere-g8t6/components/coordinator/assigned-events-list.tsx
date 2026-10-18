@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { AlertBanner, Button, buttonClasses, EmptyState, PageHeader, ReferenceIdTag, Skeleton } from "@/components/shared/primitives";
+import { PageContent } from "@/components/layout/page-content";
+import { AlertBanner, Button, buttonClasses, EmptyState, ReferenceIdTag, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { SectionHeading } from "@/components/shared/section-heading";
-import { getStatusPresentation, StatusChip } from "@/components/shared/status-chip";
 import { listAssignedEvents, type AssignedEvent } from "@/lib/api/event-workspace";
+import { ROLE_LABELS } from "@/lib/auth";
+import { statusPresentation } from "@/lib/events";
 import { formatEventWindow } from "@/lib/datetime";
 
 type ListState =
@@ -16,7 +18,7 @@ type ListState =
   | { status: "error"; message: string };
 
 function AssignedEventCard({ event }: { event: AssignedEvent }) {
-  const presentation = getStatusPresentation(event.status);
+  const presentation = statusPresentation(event.status);
   const titleId = `assigned-${event.eventId}-title`;
   return (
     <article
@@ -83,10 +85,9 @@ export function AssignedEventsList() {
   const needsAction = events.filter((event) => event.status === "AWAITING_CLARIFICATION").length;
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        eyebrow="Event coordinator workspace"
-        title="My assigned events"
+    <PageContent
+        eyebrow={ROLE_LABELS.COORDINATOR}
+        title={`${ROLE_LABELS.COORDINATOR} dashboard`}
         description="Events a Coordinator Lead has assigned to you, soonest first. Open one to review it, correct its title, purpose or description, and see its change history."
         action={
           state.status === "ready" ? (
@@ -100,8 +101,7 @@ export function AssignedEventsList() {
             </div>
           ) : null
         }
-      />
-
+      >
       <section aria-labelledby="assigned-heading" className="grid gap-4">
         <SectionHeading id="assigned-heading" title="Assigned events" description="Only events currently assigned to you appear here." />
         {state.status === "loading" ? (
@@ -124,6 +124,6 @@ export function AssignedEventsList() {
           </ul>
         )}
       </section>
-    </div>
+    </PageContent>
   );
 }
