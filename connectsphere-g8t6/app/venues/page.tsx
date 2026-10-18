@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
-import { getCurrentUser } from "@/lib/api/events";
-import { getVenueCatalogue, type Venue } from "@/lib/api/venues";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useRouter } from "next/navigation";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
+import { PageContent } from "@/components/layout/page-content";
+import { AlertBanner, Button, EmptyState, ReferenceIdTag, SectionCard, Skeleton } from "@/components/shared/primitives";
+import { useSessionUser } from "@/components/auth/auth-gate";
+import { getVenueCatalogue, type Venue } from "@/lib/api/venues";
 
 const formatValue = (value: string | string[] | null | undefined) => {
   if (Array.isArray(value)) return value.length ? value.join(", ") : "None listed";
@@ -14,6 +15,7 @@ const formatValue = (value: string | string[] | null | undefined) => {
 
 function VenueCatalogueContent() {
   const router = useRouter();
+  const user = useSessionUser();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "forbidden" | "error">("loading");
   const [error, setError] = useState("");
@@ -38,47 +40,110 @@ function VenueCatalogueContent() {
 
   useEffect(() => {
     let mounted = true;
-    const client = getSupabaseBrowserClient();
-    client.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
-      if (!session?.access_token) {
-        router.replace("/");
-        return;
-      }
-      try {
-        const result = await getCurrentUser(session.access_token);
-        const permitted = ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF", "SAFETY_OFFICER"].includes(result.user.role);
-        if (!permitted) {
-          setState("forbidden");
-          return;
-        }
-        await load();
-      } catch (caught) {
-        const typed = caught as Error & { status?: number };
-        setState(typed.status === 403 ? "forbidden" : "error");
-        setError(typed.message || "The venue catalogue could not be loaded.");
-      }
-    });
-    return () => { mounted = false; };
-  }, [load, router]);
+    const permitted = user ? ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(user.role) : false;
+    if (!mounted) return;
+    if (!user) {
+      setState("loading");
+      return;
+    }
+    if (!permitted) {
+      setState("forbidden");
+      return;
+    }
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, [load, user]);
 
-  if (state === "loading") return <div className="empty-state"><h2>Loading venue catalogue…</h2></div>;
-  if (state === "forbidden") return <div className="access-denied"><div className="access-card"><h1>Catalogue access required</h1><p>Your account does not have permission to view available venues.</p></div></div>;
-  if (state === "error") return <div className="access-denied"><div className="access-card"><h1>Unable to load venues</h1><p>{error}</p><button className="button button-primary" onClick={() => void load()}>Retry</button></div></div>;
+  if (state === "loading") {
+    return (
+      <PageContent title="Venue Catalogue" eyebrow="VENUE PLANNING" description="Review venues currently available for event planning.">
+        <Skeleton className="h-32 w-full" />
+      </PageContent>
+    );
+  }
 
-  return <>
-    <section className="section-heading"><div><span className="eyebrow">VENUE PLANNING</span><h1>Venue Catalogue</h1><p>Review venues currently available for event planning.</p></div></section>
-    {venues.length === 0 ? <div className="empty-state"><span className="empty-icon">⌂</span><h2>No venues are currently available</h2><p>There are no available venues to consider at this time.</p></div> : <div className="request-list">
-      {venues.map((venue) => <article className="request-card" key={venue.venueId}>
-        <div className="card-top"><span className="status-chip status-chip--primary">AVAILABLE</span><span className="reference-tag">VENUE-{venue.venueId}</span></div>
-        <div className="request-main"><div><h2>{venue.name}</h2><p className="description">{venue.address}</p></div><span className="submitted">Read-only catalogue</span></div>
-        <div className="details-panel"><div><span className="detail-label">CAPACITY</span><strong>{venue.maxCapacity.toLocaleString()} people</strong></div><div><span className="detail-label">OPERATING HOURS</span><strong>{venue.operatingHours || "Not listed"}</strong></div><div><span className="detail-label">ACCESSIBILITY</span><strong>{formatValue(venue.accessibilityFeatures)}</strong></div><div><span className="detail-label">ROOMS</span><strong>{venue.rooms.length ? venue.rooms.map((room) => `${room.layoutType} (${room.capacity})`).join(", ") : "None listed"}</strong></div></div>
-        <div className="card-footer"><span className="next-action">Facilities: {formatValue(venue.facilities)}</span><span className="next-action">Details: {venue.detailStatus === "CURRENT" ? "Current" : "Not checked"}</span></div>
-      </article>)}
-    </div>}
-  </>;
+  if (state === "forbidden") {
+    return (
+      <PageContent title="Catalogue access required" eyebrow="VENUE PLANNING">
+        <AlertBanner tone="error">Your account does not have permission to view available venues.</AlertBanner>
+      </PageContent>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <PageContent title="Venue Catalogue" eyebrow="VENUE PLANNING" description="Review venues currently available for event planning.">
+        <AlertBanner tone="error" title="Unable to load venues">
+          {error}
+        </AlertBanner>
+        <Button onClick={() => void load()}>Retry</Button>
+      </PageContent>
+    );
+  }
+
+  return (
+    <PageContent title="Venue Catalogue" eyebrow="VENUE PLANNING" description="Review venues currently available for event planning.">
+      {venues.length === 0 ? (
+        <EmptyState
+          title="No venues are currently available"
+          description="There are no available venues to consider at this time."
+        />
+      ) : (
+        <div className="space-y-4">
+          {venues.map((venue) => (
+            <SectionCard key={venue.venueId} className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-on-surface sm:text-xl">{venue.name}</h2>
+                  <p className="mt-1 text-sm text-on-surface-variant">{venue.address}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ReferenceIdTag value={VENUE-} />
+                  <span className="inline-flex rounded-chip bg-primary-fixed px-2 py-1 text-[11px] font-semibold uppercase tracking-label text-primary">
+                    Read-only catalogue
+                  </span>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-label text-on-surface-variant">Capacity</span>
+                  <p className="mt-1 text-sm font-medium text-on-surface">{venue.maxCapacity.toLocaleString()} people</p>
+                </div>
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-label text-on-surface-variant">Operating Hours</span>
+                  <p className="mt-1 text-sm font-medium text-on-surface">{venue.operatingHours || "Not listed"}</p>
+                </div>
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-label text-on-surface-variant">Accessibility</span>
+                  <p className="mt-1 text-sm font-medium text-on-surface">{formatValue(venue.accessibilityFeatures)}</p>
+                </div>
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-label text-on-surface-variant">Rooms</span>
+                  <p className="mt-1 text-sm font-medium text-on-surface">
+                    {venue.rooms.length
+                      ? venue.rooms.map((room) => ${room.layoutType} ()).join(", ")
+                      : "None listed"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4 text-sm text-on-surface-variant">
+                <span>Facilities: {formatValue(venue.facilities)}</span>
+                <span>Details: {venue.detailStatus === "CURRENT" ? "Current" : "Not checked"}</span>
+              </div>
+            </SectionCard>
+          ))}
+        </div>
+      )}
+    </PageContent>
+  );
 }
 
 export default function VenueCataloguePage() {
-  return <CoordinatorShell userName="Event Coordinator" userEmail="coordinator@connectsphere.test"><VenueCatalogueContent /></CoordinatorShell>;
+  return (
+    <DashboardWorkspace>
+      <VenueCatalogueContent />
+    </DashboardWorkspace>
+  );
 }
