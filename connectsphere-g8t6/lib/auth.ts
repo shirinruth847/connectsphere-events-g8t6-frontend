@@ -3,6 +3,7 @@ export type SessionUser = { user_id: number; name: string; email: string; role: 
 
 export const ROUTES = {
   login: "/login",
+  signup: "/signup",
   dashboard: "/dashboard",
   registrations: "/my-registrations",
   events: "/events",

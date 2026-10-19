@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 import { getSupabaseBrowserClient, SupabaseConfigurationError } from "@/lib/supabase";
-import { postLoginPath } from "@/lib/auth";
+import { postLoginPath, ROUTES } from "@/lib/auth";
 import { currentUser } from "@/lib/session";
 
 export function LoginForm() {
@@ -44,5 +45,6 @@ export function LoginForm() {
     <div><FormLabel htmlFor="email" required>Email</FormLabel><input id="email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} aria-invalid={Boolean(fields.email)} aria-describedby={fields.email ? "email-error" : undefined} className={fieldClasses} />{fields.email && <p id="email-error" role="alert" className="text-sm text-error">{fields.email}</p>}</div>
     <div><FormLabel htmlFor="password" required>Password</FormLabel><input id="password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} aria-invalid={Boolean(fields.password)} aria-describedby={fields.password ? "password-error" : undefined} className={fieldClasses} />{fields.password && <p id="password-error" role="alert" className="text-sm text-error">{fields.password}</p>}</div>
     <Button type="submit" disabled={busy} fullWidth>{busy ? "Signing in…" : "Sign in"}</Button>
+    <p className="text-center text-sm text-on-surface-variant">Don&apos;t have an account? <Link href={ROUTES.signup} className="font-semibold text-primary hover:underline">Sign up</Link></p>
   </form>;
 }

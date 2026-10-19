@@ -88,7 +88,17 @@ test('[SPM-37 Scenario 3] input idle resets timer; first POST then autosave PUT'
  const state=await installConnectSphereMocks(page);await page.clock.install();await page.goto('/events/new');await page.locator('#title').fill('Autosaved draft');await page.clock.fastForward(29000);expect(state.draftCreateRequests).toHaveLength(0);await page.mouse.move(20,20);await page.clock.fastForward(29000);expect(state.draftCreateRequests).toHaveLength(0);await page.clock.fastForward(1000);await expect.poll(()=>state.draftCreateRequests.length).toBe(1);await expect(page.getByText(/Last auto-saved at/)).toBeVisible();await page.locator('#purpose').fill('Updated purpose');await page.clock.fastForward(30000);await expect.poll(()=>state.draftUpdateRequests.length).toBe(1);expect(state.draftUpdateRequests[0].isAutoSave).toBe(true);expect(state.draftCreateRequests).toHaveLength(1);
 });
 test('[SPM-37 Scenario 3] slow autosave and manual save never create a second draft', async ({page}) => {
- const state=await installConnectSphereMocks(page);state.delay=800;await page.clock.install();await page.goto('/events/new');await page.locator('#title').fill('One draft');await page.clock.fastForward(29900);await page.getByRole('button',{name:'Save as Draft',exact:false}).click();await page.clock.fastForward(1000);await expect(page.getByText('Draft saved successfully.')).toBeVisible();expect(state.draftCreateRequests).toHaveLength(1);
+ const state=await installConnectSphereMocks(page);
+ state.delay=800;
+ await page.clock.install();
+ await page.goto('/events/new');
+ await page.locator('#title').fill('One draft');
+ await page.clock.fastForward(30000);
+ await expect.poll(()=>state.draftCreateRequests.length).toBe(1);
+ await page.getByRole('button',{name:'Save as Draft',exact:false}).click();
+ await expect(page.getByText('Draft saved successfully.')).toBeVisible();
+ expect(state.draftCreateRequests).toHaveLength(1);
+ expect(state.draftUpdateRequests).toHaveLength(1);
 });
 test('[SPM-37 Scenario 5] dirty link and browser Back show the in-app warning', async ({page}) => {
  await installConnectSphereMocks(page);await page.goto('/dashboard');await page.getByRole('link',{name:'New Event',exact:false}).click();await page.locator('#title').fill('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.goBack();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await page.getByRole('button',{name:'Leave page'}).click();await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toBeVisible();await expect(page.getByText('Draft saved successfully.')).toHaveCount(0);

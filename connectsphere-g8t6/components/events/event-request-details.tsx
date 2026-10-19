@@ -140,7 +140,8 @@ export function EventRequestDetails({ event }: { event: EventView }) {
             <KeyValuePanel
               rows={[
                 { icon: "organisation", label: "Organisation", value: event.organisation?.name ?? "Not provided" },
-                { icon: "person", label: "Coordinator", value: event.isAssignedToCoordinator ? "Assigned" : "Unassigned" },
+                { icon: "person", label: "Coordinator", value: event.isAssignedToCoordinator ? event.coordinatorName || "Assigned" : "Unassigned" },
+                ...(event.submittedAt ? [{ icon: "history" as const, label: "Submitted", value: formatTimestamp(event.submittedAt) }] : []),
                 ...registrationRows(event),
                 { icon: "history", label: "Last updated", value: formatTimestamp(event.updatedAt) },
               ]}
