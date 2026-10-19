@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getCoordinatorAvailability,
-  getCurrentUser,
   getUnassignedEvents,
   type ApiEvent,
   type CoordinatorAvailability,
 } from "@/lib/api/events";
 import { CalendarView, type CalendarEvent } from "@/components/calendar/calendar-view";
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
-import { useAuth } from "@/components/auth/auth-provider";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
+import { useSessionUser } from "@/components/auth/auth-gate";
+import { getAccessToken } from "@/lib/supabase";
 
 type ViewMode = "list" | "calendar";
 type EventRequest = Omit<ApiEvent, "organisation"> & { date: string; start: string; end: string; organiser: string; organisation: { organisationId: number; name: string } | null; venue: string; submitted: string };
@@ -52,8 +52,7 @@ function toCalendarEvent(event: EventRequest, coordinatorId?: number, coordinato
 
 function EventQueueContent() {
   const router = useRouter();
-  const { session, loading: authLoading } = useAuth();
-  const [authState, setAuthState] = useState<AuthState>("loading");
+  const user = useSessionUser();
   const [accessToken, setAccessToken] = useState("");
   const [requests, setRequests] = useState<EventRequest[]>([]);
   const [coordinators, setCoordinators] = useState<LiveCoordinator[]>([]);
@@ -61,6 +60,7 @@ function EventQueueContent() {
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [authState, setAuthState] = useState<AuthState>("loading");
 
   async function loadData(token: string) {
     setLoading(true);
@@ -82,35 +82,16 @@ function EventQueueContent() {
   useEffect(() => {
     let mounted = true;
     const run = async () => {
-      if (!mounted) return;
-      if (authLoading) return;
-      const token = session?.access_token ?? null;
-      if (!token) {
-        setAuthState("unauthenticated");
-        router.replace("/");
-        return;
-      }
+      if (!mounted || !user) return;
+      const token = await getAccessToken();
+      if (!token) return;
       setAccessToken(token);
-      try {
-        const result = await getCurrentUser(token);
-        const canManageRequests = result.user.role === "COORDINATOR_LEAD";
-        setAuthState(canManageRequests ? "ready" : "forbidden");
-        if (canManageRequests) await loadData(token);
-      } catch (loadError) {
-        const typedError = loadError as Error & { status?: number };
-        if (typedError.status === 401) {
-          setAccessToken("");
-          setAuthState("unauthenticated");
-          router.replace("/");
-        } else {
-          setError(typedError.message);
-          setAuthState("error");
-        }
-      }
+      setAuthState("ready");
+      await loadData(token);
     };
     void run();
     return () => { mounted = false; };
-  }, [session, authLoading, router]);
+  }, [user, router]);
 
   if (authState === "loading") {
     return <div className="empty-state"><h2>Loading requests…</h2></div>;
@@ -148,9 +129,5 @@ function EventQueueContent() {
 }
 
 export default function EventQueuePage() {
-  return (
-    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
-      <EventQueueContent />
-    </CoordinatorShell>
-  );
+  return <DashboardWorkspace role="COORDINATOR_LEAD"><EventQueueContent /></DashboardWorkspace>;
 }

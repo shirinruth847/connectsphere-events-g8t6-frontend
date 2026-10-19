@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import "./coordinator-shell.css";
 
 type NavIconName = "dashboard" | "event" | "assignments" | "calendar" | "logout" | "menu" | "close" | "settings";
 
@@ -126,7 +127,7 @@ export function CoordinatorShell({ children, userName, userEmail }: { children: 
   );
 
   return (
-    <div className="min-h-screen bg-[#f7f8fc] lg:flex">
+    <div className="coordinator-shell min-h-screen bg-[#f7f8fc] lg:flex">
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-[#4f46e5] px-4 text-white shadow-sm lg:hidden">
         <Link className="font-extrabold tracking-tight" href="/events">ConnectSphere</Link>
         <button aria-label={open ? "Close menu" : "Open menu"} className="rounded-lg p-2 hover:bg-white/10" onClick={() => setOpen(!open)}>

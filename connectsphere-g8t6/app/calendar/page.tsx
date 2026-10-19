@@ -1,118 +1,62 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CalendarView, CalendarCoordinator } from "@/components/calendar/calendar-view";
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
-import { getCurrentUser, getCoordinatorAvailability } from "@/lib/api/events";
-import { useAuth } from "@/components/auth/auth-provider";
-
-type AuthState = "loading" | "ready" | "forbidden" | "error";
+import { CalendarView, type CalendarCoordinator } from "@/components/calendar/calendar-view";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
+import { useSessionUser } from "@/components/auth/auth-gate";
+import { getAccessToken } from "@/lib/supabase";
+import { getCoordinatorAvailability } from "@/lib/api/events";
 
 export default function CalendarPage() {
-  const router = useRouter();
-  const { session, loading: authLoading } = useAuth();
-  const [authState, setAuthState] = useState<AuthState>("loading");
+  return <DashboardWorkspace role="COORDINATOR_LEAD"><CalendarContent /></DashboardWorkspace>;
+}
+
+function CalendarContent() {
+  const user = useSessionUser();
   const [coordinators, setCoordinators] = useState<CalendarCoordinator[]>([]);
-  const [userName, setUserName] = useState("Loading…");
-  const [userEmail, setUserEmail] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if (!mounted) return;
-      // Redirect decisions come from the single source of truth (AuthProvider)
-      // and only run once auth state has finished loading.
-      if (authLoading) return;
-      const token = session?.access_token ?? null;
-      if (!token) {
-        router.replace("/");
-        return;
-      }
+    let active = true;
+    async function load() {
+      if (!user) return;
       try {
-        const result = await getCurrentUser(token);
-        if (result.user.role !== "COORDINATOR_LEAD") {
-          setAuthState("forbidden");
-          return;
-        }
-        setAuthState("ready");
-        setUserName(result.user.name);
-        setUserEmail(result.user.email);
+        const token = await getAccessToken();
+        if (!token) throw new Error("Your session has expired. Sign in again.");
         const availability = await getCoordinatorAvailability(token);
-        if (!mounted) return;
-        setCoordinators(
-          availability.coordinators.map((c) => ({
-            coordinatorId: c.coordinatorId,
-            name: c.name,
-            events: c.events.map((e) => ({
-              eventId: e.eventId,
-              title: e.title,
-              startDatetime: e.startDatetime,
-              endDatetime: e.endDatetime,
-              coordinatorId: c.coordinatorId,
-              coordinatorName: c.name,
-              isRequested: false,
-              status: e.status,
-              requestId: e.requestId,
-              expectedAttendance: e.expectedAttendance,
-              organisation: e.organisation?.name ?? null,
-              createdAt: e.createdAt,
-            })),
-          }))
-        );
-      } catch (loadError) {
-        if (!mounted) return;
-        setError((loadError as Error).message);
-        setAuthState("error");
+        if (!active) return;
+        setCoordinators(availability.coordinators.map((coordinator) => ({
+          coordinatorId: coordinator.coordinatorId,
+          name: coordinator.name,
+          events: coordinator.events.map((event) => ({
+            eventId: event.eventId,
+            title: event.title,
+            startDatetime: event.startDatetime,
+            endDatetime: event.endDatetime,
+            coordinatorId: coordinator.coordinatorId,
+            coordinatorName: coordinator.name,
+            isRequested: false,
+            status: event.status,
+            requestId: event.requestId,
+            expectedAttendance: event.expectedAttendance,
+            organisation: event.organisation?.name ?? null,
+            createdAt: event.createdAt,
+          })),
+        })));
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : "Could not load coordinator availability.");
+      } finally {
+        if (active) setLoading(false);
       }
-    };
-    void run();
-    return () => { mounted = false; };
-  }, [session, authLoading, router]);
+    }
+    void load();
+    return () => { active = false; };
+  }, [user]);
 
-  if (authState === "loading") {
-    return (
-      <CoordinatorShell userName={userName} userEmail={userEmail}>
-        <div className="empty-state">
-          <h2>Loading calendar…</h2>
-        </div>
-      </CoordinatorShell>
-    );
-  }
-
-  if (authState === "forbidden") {
-    return (
-      <CoordinatorShell userName={userName} userEmail={userEmail}>
-        <div className="access-denied">
-          <div className="access-card">
-            <span className="eyebrow">ACCESS DENIED</span>
-            <h1>Lead access required</h1>
-            <p>This calendar is restricted to Event Coordinator Leads.</p>
-          </div>
-        </div>
-      </CoordinatorShell>
-    );
-  }
-
-  if (authState === "error") {
-    return (
-      <CoordinatorShell userName={userName} userEmail={userEmail}>
-        <div className="access-denied">
-          <div className="access-card">
-            <h1>Unable to load calendar</h1>
-            <p>{error}</p>
-          </div>
-        </div>
-      </CoordinatorShell>
-    );
-  }
-
-  return (
-    <CoordinatorShell userName={userName} userEmail={userEmail}>
-      <div className="calendar-page">
-        <CalendarView coordinators={coordinators} defaultView="month" />
-      </div>
-    </CoordinatorShell>
-  );
+  return <section className="lead-page">
+    <header className="lead-page-header"><div><span className="lead-eyebrow">COORDINATOR LEAD</span><h1>Coordinator calendar</h1><p>Review each coordinator’s scheduled events and availability.</p></div></header>
+    {error ? <div className="lead-alert" role="alert">{error}</div> : null}
+    {loading ? <div className="lead-empty">Loading coordinator calendar…</div> : <div className="calendar-panel"><CalendarView coordinators={coordinators} defaultView="month" /></div>}
+  </section>;
 }

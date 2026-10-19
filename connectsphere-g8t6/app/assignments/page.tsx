@@ -1,12 +1,16 @@
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
+import { PageContent } from "@/components/layout/page-content";
+import { SectionCard } from "@/components/shared/primitives";
 
 export default function AssignmentsPage() {
   return (
-    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
-      <div className="empty-state">
-        <h1>Covered in later scope</h1>
-        <p>Assignment oversight is out of scope for SPM-174.</p>
-      </div>
-    </CoordinatorShell>
+    <DashboardWorkspace role="COORDINATOR_LEAD">
+      <PageContent title="Assignments" eyebrow="Event Coordinator Lead">
+        <SectionCard>
+          <h2 className="text-xl font-semibold">Covered in later scope</h2>
+          <p className="mt-2 text-on-surface-variant">Assignment oversight is out of scope for SPM-174.</p>
+        </SectionCard>
+      </PageContent>
+    </DashboardWorkspace>
   );
 }

@@ -1,6 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
-import type { EventStatus } from "@/lib/events";
-import { statusPresentation } from "@/lib/events";
+import type { ComponentPropsWithRef, ReactNode } from "react";
+import { STATUS_PRESENTATION, statusPresentation } from "@/lib/events";
 
 export const buttonClasses = (variant: "primary" | "secondary" | "danger" | "quiet" = "primary") => {
   const variants = {
@@ -13,7 +12,8 @@ export const buttonClasses = (variant: "primary" | "secondary" | "danger" | "qui
   return `inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-4 py-2 text-sm font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-55 ${variants[variant]}`;
 };
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+// Includes `ref`, which React 19 passes through as a prop (e.g. to return focus to a button).
+interface ButtonProps extends ComponentPropsWithRef<"button"> {
   variant?: "primary" | "secondary" | "danger" | "quiet";
   fullWidth?: boolean;
 }
@@ -27,11 +27,15 @@ export function Button({ variant = "primary", fullWidth, className = "", ...prop
   );
 }
 
-export function StatusChip({ status, label }: { status: EventStatus; label?: string }) {
+// `label` overrides the stored-state label, e.g. with the organiser label the
+// backend computes (Master section 3.5). Unknown states show their raw code.
+export function StatusChip({ status, label }: { status: string; label?: string }) {
   const config = statusPresentation(status);
+  const known = Object.prototype.hasOwnProperty.call(STATUS_PRESENTATION, status);
   return (
     <span
       className={`inline-flex w-fit items-center rounded-chip px-2 py-1 text-[11px] font-semibold uppercase tracking-label ${config.chip}`}
+      title={known ? undefined : `Status "${status}" is not part of the ConnectSphere lifecycle`}
     >
       {label || config.label}
     </span>
@@ -78,7 +82,7 @@ export function SectionCard({
 }: {
   children: ReactNode;
   className?: string;
-  status?: EventStatus;
+  status?: string;
 }) {
   const statusBorder = status ? statusPresentation(status).border : "border-t-transparent";
   return (
@@ -92,10 +96,13 @@ export function AlertBanner({
   children,
   tone = "info",
   title,
+  live = true,
 }: {
   children: ReactNode;
   tone?: "info" | "success" | "warning" | "error";
   title?: string;
+  // Set false when a surrounding aria-live region already announces the banner.
+  live?: boolean;
 }) {
   const tones = {
     info: "border-primary/20 bg-primary-fixed text-on-surface",
@@ -104,7 +111,7 @@ export function AlertBanner({
     error: "border-error/25 bg-error-container text-on-error-container",
   };
   return (
-    <div className={`rounded-control border p-3 text-sm leading-relaxed ${tones[tone]}`} role={tone === "error" ? "alert" : "status"}>
+    <div className={`rounded-control border p-3 text-sm leading-relaxed ${tones[tone]}`} role={!live ? undefined : tone === "error" ? "alert" : "status"}>
       {title ? <p className="mb-1 font-semibold">{title}</p> : null}
       {children}
     </div>

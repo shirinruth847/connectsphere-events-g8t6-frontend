@@ -34,6 +34,8 @@ export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
+  if (pathname === "/events") return role === "COORDINATOR_LEAD";
+  if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   if (/^\/events\/(new|create|\d+)$/.test(pathname)) return role === "ORGANISER";
   return false;
 }

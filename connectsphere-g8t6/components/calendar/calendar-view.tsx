@@ -81,7 +81,10 @@ function getTextColor(backgroundColor: string): string {
   }
 
   const luminance = 0.2126 * sRGB(r) + 0.7152 * sRGB(g) + 0.0722 * sRGB(b);
-  return luminance > 0.5 ? "#1b1b21" : "#ffffff";
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  const darkLuminance = 0.2126 * sRGB(32) + 0.7152 * sRGB(33) + 0.0722 * sRGB(36);
+  const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+  return darkContrast >= whiteContrast ? "#202124" : "#ffffff";
 }
 
 function startOfDay(date: Date): Date {
@@ -204,8 +207,10 @@ function layoutDayEvents(
     .map((e) => {
       const startMs = new Date(e.startDatetime).getTime();
       const endMs = new Date(e.endDatetime).getTime();
-      const startMin = Math.max((startMs - dayStart.getTime()) / 60000, 0);
-      const endMin = Math.min((endMs - dayStart.getTime()) / 60000, 24 * 60);
+      // Calendar ticks are local Singapore time; convert event instants to the
+      // same local wall-clock before calculating their vertical position.
+      const startMin = Math.max(dateToMinutes(new Date(startMs)) + (new Date(startMs).getDate() !== dayStart.getDate() ? 0 : 0), 0);
+      const endMin = Math.min(dateToMinutes(new Date(endMs)), 24 * 60);
       return { ...e, startMin, endMin };
     })
     .sort((a, b) => a.startMin - b.startMin);
@@ -425,7 +430,6 @@ function EventBlock({
   onClick?: (event: LayoutEvent) => void;
   onHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
 }) {
-  const textColor = getTextColor(color);
   const isTerminal =
     event.status && ["COMPLETED", "REJECTED", "CANCELLED"].includes(event.status);
   const heightPct = event.height;
@@ -436,16 +440,16 @@ function EventBlock({
     height: `${event.height}%`,
     left: `${event.left}%`,
     width: `${event.width}%`,
-    backgroundColor: color,
-    color: textColor,
+    backgroundColor: `color-mix(in srgb, ${color} 16%, white)`,
+    color: "#202124",
     borderLeftColor: color,
-    opacity: isTerminal ? 0.7 : 1,
-    textDecoration: isTerminal ? "line-through" : "none",
+    borderColor: `color-mix(in srgb, ${color} 28%, white)`,
+    opacity: 1,
   };
 
   return (
     <div
-      className="cal-event-block"
+      className={`cal-event-block${isTerminal ? " terminal" : ""}`}
       style={style}
       onClick={(e) => {
         e.stopPropagation();
@@ -456,21 +460,21 @@ function EventBlock({
         onHover?.(event, rect.left + 8, rect.top + 8);
       }}
       onMouseLeave={() => onHover?.(null)}
-      aria-label={event.title}
+      aria-label={`${formatTime(new Date(event.startDatetime))}–${formatTime(new Date(event.endDatetime))}: ${event.title}; ${statusLabel}`}
     >
       <span className="cal-event-color-strip" style={{ backgroundColor: color }} />
-      <strong className="cal-event-title" title={event.title}>
-        {event.title}
-      </strong>
       {heightPct > 10 && (
         <>
-      <span className="cal-tag" title={statusLabel}>
-        {statusLabel}
-      </span>
           <small className="cal-event-time">
             {formatTime(new Date(event.startDatetime))} –{" "}
             {formatTime(new Date(event.endDatetime))}
           </small>
+          <strong className="cal-event-title" title={event.title}>
+            {event.title}
+          </strong>
+          <span className="cal-event-meta">
+            {statusLabel}{event.organisation ? ` · ${event.organisation}` : ""}
+          </span>
         </>
       )}
       {heightPct > 4 && heightPct <= 10 && (
@@ -478,7 +482,7 @@ function EventBlock({
           className="cal-event-mini"
           title={`${event.title} · ${statusLabel} · ${formatTime(new Date(event.startDatetime))} – ${formatTime(new Date(event.endDatetime))}`}
         >
-          {event.title} · {statusLabel} · {formatTime(new Date(event.startDatetime))} – {formatTime(new Date(event.endDatetime))}
+          {formatTime(new Date(event.startDatetime))} · {event.title}
         </span>
       )}
       {heightPct <= 4 && (

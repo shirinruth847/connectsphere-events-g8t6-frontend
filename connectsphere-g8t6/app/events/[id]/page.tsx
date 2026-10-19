@@ -1,12 +1,7 @@
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
+import { RoleEventContent } from "@/components/events/role-event-content";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
 
-export default function EventRequestPage() {
-  return (
-    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
-      <div className="empty-state">
-        <h1>Covered in later scope</h1>
-        <p>Event request details are out of scope for SPM-174.</p>
-      </div>
-    </CoordinatorShell>
-  );
+export default async function EventRequestPage({ params }: PageProps<"/events/[id]">) {
+  const { id } = await params;
+  return <DashboardWorkspace><RoleEventContent id={id} /></DashboardWorkspace>;
 }
