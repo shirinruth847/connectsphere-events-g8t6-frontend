@@ -1,0 +1,161 @@
+"use client";
+
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
+import { AlertBanner, PageHeader, ReferenceIdTag, SectionCard, StatusChip } from "@/components/shared/primitives";
+import { CapacityBar } from "@/components/shared/capacity-bar";
+import { Icon } from "@/components/shared/icon";
+import { KeyValuePanel } from "@/components/shared/key-value-panel";
+import { PermissionPill } from "@/components/shared/permission-pill";
+import { SectionHeading } from "@/components/shared/section-heading";
+import { statusPresentation } from "@/lib/events";
+import type { EventView } from "@/lib/api/event-workspace";
+import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
+import { editableIdentityFields } from "@/lib/permissions/event-workspace";
+import {
+  equipmentItems,
+  registrationRows,
+  RequirementList,
+  scheduleRows,
+  venueRows,
+} from "./event-detail-rows";
+import { EventHistoryPanel } from "./event-history-panel";
+import { EventIdentityEditor } from "./event-identity-editor";
+
+interface CoordinatorEventViewProps {
+  event: EventView;
+  onEventChange: (event: EventView) => void;
+  onAccessChanged: () => void;
+}
+
+function ReviewSection({ step, title, description, action, children }: {
+  step: number;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <SectionCard className="grid gap-4">
+      <SectionHeading step={step} title={title} description={description} action={action} />
+      {children}
+    </SectionCard>
+  );
+}
+
+const significantPill = <PermissionPill tone="read-only">Change request only</PermissionPill>;
+
+// The assigned coordinator's review of one event (Figma 50:2842, trimmed to SPM-33:
+// the SLA clock, conflict matrix, overrides, sign-off matrix and message thread
+// belong to other tickets or are outside the baseline).
+export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: CoordinatorEventViewProps) {
+  const [notice, setNotice] = useState("");
+  const [historyKey, setHistoryKey] = useState(0);
+  const editable = editableIdentityFields(event.permissions);
+  const statusLabel = statusPresentation(event.status).label;
+  const attendance = event.expectedAttendance ?? 0;
+  const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
+
+  return (
+    <div className="grid gap-5">
+      <Link href="/dashboard" className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+        <Icon name="arrow-back" size={16} />My assigned events
+      </Link>
+
+      <PageHeader
+        eyebrow="Event coordinator review"
+        title={event.title || "Untitled request"}
+        description={`Requested by ${event.organiser?.name ?? "the organiser"}${event.organisation ? ` · ${event.organisation.name}` : ""}`}
+        action={<StatusChip status={event.status} />}
+      />
+
+      <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <ReferenceIdTag value={event.requestId} />
+        <span className="text-sm text-on-surface-variant">{formatEventWindow(event.startDatetime, event.endDatetime)}</span>
+        {editable.length ? (
+          <PermissionPill tone="edit">Assigned coordinator • Title, purpose &amp; description editable</PermissionPill>
+        ) : (
+          <PermissionPill tone="read-only">Read-only while {statusLabel.toLowerCase()}</PermissionPill>
+        )}
+      </div>
+
+      <div aria-live="polite" role="status">
+        {notice ? (
+          <AlertBanner tone="success" title="Changes saved" live={false}>{notice}</AlertBanner>
+        ) : null}
+      </div>
+
+      {!editable.length ? (
+        <AlertBanner tone="info" title="Direct edits are closed for this status">
+          You can edit the title, purpose and description while the event is under review, in planning, in safety review, confirmed or in preparation.
+        </AlertBanner>
+      ) : null}
+
+      <div className="grid items-start gap-5 xl:grid-cols-12">
+        <div className="grid gap-5 xl:col-span-8">
+          <ReviewSection
+            step={1}
+            title="Event identity & purpose"
+            description="The organiser's request, including any edits you have made."
+            action={editable.length ? <PermissionPill tone="edit">Editable</PermissionPill> : <PermissionPill tone="read-only">Read-only</PermissionPill>}
+          >
+            <EventIdentityEditor
+              event={event}
+              onSaved={(saved, message) => {
+                onEventChange(saved);
+                setHistoryKey((value) => value + 1);
+                setNotice(`${message} The organiser is notified which fields changed.`);
+              }}
+              onEventReplaced={(latest) => {
+                setNotice("");
+                onEventChange(latest);
+                setHistoryKey((value) => value + 1);
+              }}
+              onAccessChanged={onAccessChanged}
+            />
+          </ReviewSection>
+
+          <ReviewSection step={2} title="Schedule & attendance" description="Date, duration and attendance changes are significant and go through a change request." action={significantPill}>
+            <KeyValuePanel rows={scheduleRows(event)} />
+            {capacity > 0 && attendance > 0 ? (
+              <CapacityBar label="Expected attendance vs registration capacity" value={attendance} total={capacity} unit="people" />
+            ) : null}
+          </ReviewSection>
+
+          <ReviewSection step={3} title="Venue & layout" description="Ranked venue preferences from the request." action={significantPill}>
+            <KeyValuePanel rows={venueRows(event)} />
+          </ReviewSection>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <ReviewSection step={4} title="Accessibility" action={significantPill}>
+              <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
+            </ReviewSection>
+            <ReviewSection step={5} title="Technical & equipment" action={significantPill}>
+              <RequirementList items={equipmentItems(event)} empty="No equipment was requested." />
+            </ReviewSection>
+          </div>
+
+          <ReviewSection step={6} title="Registration" action={<PermissionPill tone="read-only">Read-only</PermissionPill>}>
+            <KeyValuePanel rows={registrationRows(event)} />
+          </ReviewSection>
+        </div>
+
+        <aside className="grid gap-5 xl:col-span-4" aria-label="Coordination and history">
+          <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
+            <SectionHeading id="coordination-heading" title="Coordination" />
+            <KeyValuePanel
+              className="mt-4"
+              rows={[
+                { icon: "person", label: "Coordinator", value: "You" },
+                { icon: "person", label: "Organiser", value: event.organiser?.name ?? "Not available" },
+                { icon: "organisation", label: "Organisation", value: event.organisation?.name ?? "Not provided" },
+                { icon: "history", label: "Last updated", value: formatTimestamp(event.updatedAt) },
+              ]}
+            />
+          </section>
+          <EventHistoryPanel event={event} refreshKey={historyKey} />
+        </aside>
+      </div>
+    </div>
+  );
+}

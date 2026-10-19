@@ -33,6 +33,7 @@ If hydration reports an extra `data-scribe-recorder-ready` attribute on
 use a browser profile with extensions disabled. This attribute is not rendered
 by the application. Do not suppress hydration diagnostics globally to hide it.
 
+<<<<<<< HEAD
 ## Sign-up (SPM-123)
 
 - `/signup` (`components/auth/signup-form.tsx`) lets visitors register as an
@@ -44,6 +45,21 @@ by the application. Do not suppress hydration diagnostics globally to hide it.
   `currentUser()` (`GET /api/auth/me`) and `postLoginPath`.
 - If the account is created but automatic sign-in fails, the page says so and
   links to `/login`; it never submits the sign-up again.
+=======
+## Authentication and access (SPM-32)
+
+- `/login` (`components/auth/login-form.tsx`) signs in with Supabase Auth via
+  the single client in `lib/supabase.ts`, then `currentUser()` in
+  `lib/session.ts` calls `GET /api/auth/me` for the trusted role. `/` redirects
+  to `/login`.
+- `postLoginPath` in `lib/auth.ts` sends the user to a safe, permitted `?next=`
+  path or to the role home. `safeNextPath` validates the normalised path, and
+  `canViewPath` denies any route not listed for the role.
+- Protected pages use `DashboardWorkspace`/`AuthGate`, which redirect to
+  `/login?next=…` without a verified session and re-check on Back/Forward.
+- Logout (`signOut` in `lib/session.ts`) calls `POST /api/auth/logout`, then
+  clears this device's Supabase session.
+>>>>>>> 6d3657ecc746be2294e461d51828747b8a9e4e7d
 
 ## Checks
 
