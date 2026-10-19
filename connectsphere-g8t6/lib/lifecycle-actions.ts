@@ -54,6 +54,20 @@ export interface LifecycleRefusal {
   failures: ReadinessFailure[];
 }
 
+// Refusals the panel explains in its own words; any other refusal shows the
+// backend's message (which names the current status for TRANSITION_NOT_ALLOWED).
+const REFUSAL_MESSAGES = new Map<string | undefined, string>([
+  ["READINESS_BLOCKED", "The event is not ready yet. Resolve these items, then try again."],
+  ["SAFETY_APPROVAL_REQUIRED", "The event needs a safety approval for its current arrangements before you can confirm it."],
+  ["EVENT_NOT_ENDED", "The event can be completed only after it has ended."],
+  ["EVENT_VERSION_CONFLICT", "This event changed after you opened it. Review the latest details, then try again."],
+]);
+
+const fallbackMessage = (code?: string) =>
+  code === "TRANSITION_NOT_ALLOWED"
+    ? "This action is not allowed in the event's current status."
+    : "The action could not be completed. Try again.";
+
 // Turns an ApiError-like value (code, message, details) into what the panel shows.
 export function describeLifecycleRefusal(error: {
   code?: string;
@@ -61,18 +75,6 @@ export function describeLifecycleRefusal(error: {
   details?: Record<string, unknown>;
 }): LifecycleRefusal {
   const failures = Array.isArray(error.details?.failures) ? (error.details.failures as ReadinessFailure[]) : [];
-  switch (error.code) {
-    case "READINESS_BLOCKED":
-      return { message: "The event is not ready yet. Resolve these items, then try again.", failures };
-    case "SAFETY_APPROVAL_REQUIRED":
-      return { message: "The event needs a safety approval for its current arrangements before you can confirm it.", failures };
-    case "EVENT_NOT_ENDED":
-      return { message: "The event can be completed only after it has ended.", failures };
-    case "EVENT_VERSION_CONFLICT":
-      return { message: "This event changed after you opened it. Review the latest details, then try again.", failures };
-    case "TRANSITION_NOT_ALLOWED":
-      return { message: error.message || "This action is not allowed in the event's current status.", failures };
-    default:
-      return { message: error.message || "The action could not be completed. Try again.", failures };
-  }
+  const message = REFUSAL_MESSAGES.get(error.code) ?? (error.message || fallbackMessage(error.code));
+  return { message, failures };
 }
