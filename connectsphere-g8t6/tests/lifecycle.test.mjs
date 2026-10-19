@@ -39,3 +39,18 @@ test('[SPM-173 AC3 / AC9] refusals are explained, with readiness items when give
   );
   assert.match(describeLifecycleRefusal({ code: 'EVENT_VERSION_CONFLICT' }).message, /changed/);
 });
+
+test('[SPM-173] each refusal keeps its exact wording', () => {
+  const message = (error) => describeLifecycleRefusal(error).message;
+  const backend = { message: 'Backend wording.' };
+  assert.equal(message({ code: 'READINESS_BLOCKED', ...backend }), 'The event is not ready yet. Resolve these items, then try again.');
+  assert.equal(message({ code: 'SAFETY_APPROVAL_REQUIRED', ...backend }), 'The event needs a safety approval for its current arrangements before you can confirm it.');
+  assert.equal(message({ code: 'EVENT_NOT_ENDED', ...backend }), 'The event can be completed only after it has ended.');
+  assert.equal(message({ code: 'EVENT_VERSION_CONFLICT', ...backend }), 'This event changed after you opened it. Review the latest details, then try again.');
+  assert.equal(message({ code: 'TRANSITION_NOT_ALLOWED' }), "This action is not allowed in the event's current status.");
+  assert.equal(message({ code: 'TRANSITION_NOT_ALLOWED', message: '' }), "This action is not allowed in the event's current status.");
+  assert.equal(message({ code: 'FORBIDDEN', ...backend }), 'Backend wording.');
+  assert.equal(message({ code: 'constructor' }), 'The action could not be completed. Try again.');
+  assert.equal(message({}), 'The action could not be completed. Try again.');
+  assert.deepEqual(describeLifecycleRefusal({ code: 'EVENT_NOT_ENDED', details: { failures: 'x' } }).failures, []);
+});
