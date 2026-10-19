@@ -11,6 +11,7 @@ export type ApiEvent = {
   equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
   organisation?: { organisationId: number; name: string } | null;
   createdAt: string;
+  submittedAt?: string | null;
 };
 
 export type CoordinatorAvailability = {

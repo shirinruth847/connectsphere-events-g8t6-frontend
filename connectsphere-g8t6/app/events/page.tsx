@@ -28,8 +28,10 @@ function toRequest(event: ApiEvent): EventRequest {
     end: end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
     organiser: "Event organiser",
     organisation: event.organisation ?? null,
-    venue: event.venuePreferences?.length ? event.venuePreferences.join(", ") : "No venue preference",
-    submitted: new Date(event.createdAt).toLocaleString(),
+    venue: event.venuePreferences?.length
+      ? event.venuePreferences.map((venueId, index) => `Preference ${index + 1}: Venue #${venueId}`).join(" · ")
+      : "No venue preference",
+    submitted: new Date(event.submittedAt ?? event.createdAt).toLocaleString(),
   };
 }
 
@@ -137,7 +139,7 @@ function EventQueueContent() {
             coordinators={calendarCoordinators}
           />
         </div>
-      ) : loading ? <div className="empty-state"><h2>Loading requests…</h2></div> : unassigned.length === 0 ? <div className="empty-state"><span className="empty-icon">✓</span><h2>Queue cleared</h2><p>Every submitted request has an Event Coordinator assigned.</p></div> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.requestId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `Equipment ${item.equipmentId} × ${item.quantity}`).join(", ") : "None"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled title="Event coordinator assignment is covered in later scope.">Assign coordinator</button></footer></article>)}</div>}
+      ) : loading ? <div className="empty-state"><h2>Loading requests…</h2></div> : unassigned.length === 0 ? <div className="empty-state"><span className="empty-icon">✓</span><h2>Queue cleared</h2><p>Every submitted request has an Event Coordinator assigned.</p></div> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.requestId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `Equipment #${item.equipmentId}: ${item.quantity} ${item.quantity === 1 ? "unit" : "units"} requested`).join(" · ") : "None requested"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled title="Event coordinator assignment is covered in later scope.">Assign coordinator</button></footer></article>)}</div>}
     </>
   );
 }

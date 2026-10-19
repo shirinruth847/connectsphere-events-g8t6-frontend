@@ -68,9 +68,12 @@ test('[SPM-174] Lead login opens the unassigned queue and can navigate to calend
  await page.getByRole('button',{name:'Sign in',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
  await expect(page.getByText('Unassigned lead queue event',{exact:true})).toBeVisible();
+ const expectedSubmittedAt = await page.evaluate(() => new Date('2026-10-20T08:30:00.000Z').toLocaleString());
+ await expect(page.locator('.submitted')).toHaveText(`Submitted ${expectedSubmittedAt}`);
  await expect(page.getByText('Purpose: Community outreach',{exact:true})).toBeVisible();
- await expect(page.locator('.details-panel > div').nth(2).locator('strong')).toHaveText('1');
- await expect(page.getByText('Equipment 4 × 2',{exact:true})).toBeVisible();
+ await expect(page.locator('.details-panel > div').nth(2).locator('strong')).toHaveText('Preference 1: Venue #1');
+ await expect(page.getByText('Preference 1: Venue #1',{exact:true})).toBeVisible();
+ await expect(page.getByText('Equipment #4: 2 units requested',{exact:true})).toBeVisible();
  const navigation=page.getByRole('navigation',{name:'Main Navigation',exact:true});
  await expect(navigation.getByRole('link',{name:'Unassigned Queue',exact:true})).toHaveAttribute('aria-current','page');
  await navigation.getByRole('link',{name:'Calendar',exact:true}).click();
