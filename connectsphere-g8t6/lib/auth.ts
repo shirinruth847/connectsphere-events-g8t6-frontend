@@ -6,6 +6,7 @@ export const ROUTES = {
   signup: "/signup",
   dashboard: "/dashboard",
   registrations: "/my-registrations",
+  events: "/events",
   newEvent: "/events/new",
   createEvent: "/events/create",
   drafts: "/dashboard?status=DRAFT#my-drafts",
@@ -35,7 +36,7 @@ export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
-  if (pathname === "/events") return role === "COORDINATOR_LEAD";
+  if (pathname === "/events") return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.

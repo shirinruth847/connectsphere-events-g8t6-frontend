@@ -24,7 +24,10 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   ],
   VENUE_STAFF: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
-  ATTENDEE: [{ id: "home", title: "My Registrations", icon: "registrations", href: ROUTES.registrations }],
+  ATTENDEE: [
+    { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
+    { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
+  ],
 };
 
 export function navigationForRole(role: UserRole): NavigationGroup[] {
@@ -42,6 +45,7 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === "/calendar") return "calendar";
     return "home";
   }
+  if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
   if (role !== "ORGANISER") return "home";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   getCoordinatorAvailability,
   getUnassignedEvents,
@@ -11,6 +12,7 @@ import {
 import { CalendarView, type CalendarEvent } from "@/components/calendar/calendar-view";
 import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
 import { useSessionUser } from "@/components/auth/auth-gate";
+import { AttendeeEventDiscovery } from "@/components/attendee/discovery/attendee-event-discovery";
 import { getAccessToken } from "@/lib/supabase";
 
 type ViewMode = "list" | "calendar";
@@ -145,5 +147,12 @@ function EventQueueContent() {
 }
 
 export default function EventQueuePage() {
-  return <DashboardWorkspace role="COORDINATOR_LEAD"><EventQueueContent /></DashboardWorkspace>;
+  return <DashboardWorkspace><RoleEventsContent /></DashboardWorkspace>;
+}
+
+function RoleEventsContent() {
+  const user = useSessionUser();
+  if (user?.role === "ATTENDEE") return <AttendeeEventDiscovery />;
+  if (user?.role === "COORDINATOR_LEAD") return <EventQueueContent />;
+  return <main className="mx-auto mt-16 max-w-xl p-5"><div className="access-denied"><div className="access-card"><h1>Access denied</h1><p>This page is not available for your role. <Link className="underline" href="/dashboard">Go to your dashboard</Link></p></div></div></main>;
 }
