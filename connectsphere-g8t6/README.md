@@ -33,6 +33,18 @@ If hydration reports an extra `data-scribe-recorder-ready` attribute on
 use a browser profile with extensions disabled. This attribute is not rendered
 by the application. Do not suppress hydration diagnostics globally to hide it.
 
+## Sign-up (SPM-123)
+
+- `/signup` (`components/auth/signup-form.tsx`) lets visitors register as an
+  Attendee or Event Organiser only (`SIGNUP_ACCOUNT_TYPES` in `lib/signup.ts`).
+  Staff roles are never self-registered; the backend enforces the same rules.
+- It sends `{ accountType, name, email, password }` to `POST /api/auth/signup`.
+  The account is usable immediately, but no session is returned, so the form
+  then signs in like `/login`: `signInWithPassword` on the shared client,
+  `currentUser()` (`GET /api/auth/me`) and `postLoginPath`.
+- If the account is created but automatic sign-in fails, the page says so and
+  links to `/login`; it never submits the sign-up again.
+
 ## Authentication and access (SPM-32)
 
 - `/login` (`components/auth/login-form.tsx`) signs in with Supabase Auth via
