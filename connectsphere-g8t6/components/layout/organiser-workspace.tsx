@@ -1,9 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
-import { OrganiserGate } from "@/components/auth/organiser-gate";
-import { OrganiserShell } from "@/components/layout/organiser-shell";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
 
 export function OrganiserWorkspace({ children }: { children: ReactNode }) {
-  return <OrganiserGate><OrganiserShell>{children}</OrganiserShell></OrganiserGate>;
+  return <DashboardWorkspace role="ORGANISER">{children}</DashboardWorkspace>;
 }

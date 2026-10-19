@@ -1,3 +1,6 @@
+import { StatusChip as SharedStatusChip } from "@/components/shared/primitives";
+import { STATUS_PRESENTATION } from "@/lib/events";
+
 export const EVENT_STATUS_CONFIG = {
   DRAFT: { label: "Draft", tone: "neutral", cardTone: "neutral" },
   SUBMITTED: { label: "Submitted", tone: "primary", cardTone: "primary" },
@@ -12,13 +15,14 @@ export const EVENT_STATUS_CONFIG = {
   CANCELLED: { label: "Cancelled", tone: "muted", cardTone: "muted" },
 } as const;
 
-export type EventStatus = keyof typeof EVENT_STATUS_CONFIG;
+export type ReassignableEventStatus = keyof typeof EVENT_STATUS_CONFIG;
 
-export function isMappedEventStatus(status: string): status is EventStatus {
+export function isMappedEventStatus(status: string): status is ReassignableEventStatus {
   return Object.prototype.hasOwnProperty.call(EVENT_STATUS_CONFIG, status);
 }
 
 export function StatusChip({ status }: { status: string }) {
   const config = isMappedEventStatus(status) ? EVENT_STATUS_CONFIG[status] : null;
-  return <span className={`status-chip${config ? ` status-chip--${config.tone}` : " status-chip--unknown"}`}>{config?.label ?? status}</span>;
+  const knownToMain = Object.prototype.hasOwnProperty.call(STATUS_PRESENTATION, status);
+  return <SharedStatusChip status={status} label={config?.label ?? (knownToMain ? undefined : status)} />;
 }
