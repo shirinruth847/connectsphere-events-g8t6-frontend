@@ -81,7 +81,10 @@ function getTextColor(backgroundColor: string): string {
   }
 
   const luminance = 0.2126 * sRGB(r) + 0.7152 * sRGB(g) + 0.0722 * sRGB(b);
-  return luminance > 0.5 ? "#1b1b21" : "#ffffff";
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  const darkLuminance = 0.014;
+  const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+  return darkContrast >= whiteContrast ? "#202124" : "#ffffff";
 }
 
 function startOfDay(date: Date): Date {
@@ -340,6 +343,17 @@ function CoordinatorLegend({
       </button>
       {open && (
         <div className="cal-legend-panel" role="listbox">
+          <div className="cal-legend-panel-header">
+            <span className="cal-legend-panel-title">Filter coordinators</span>
+            <button
+              type="button"
+              className="cal-legend-close"
+              onClick={() => setOpen(false)}
+              aria-label="Close filter"
+            >
+              ×
+            </button>
+          </div>
           <input
             className="cal-legend-search"
             type="search"
@@ -413,7 +427,6 @@ function EventBlock({
   onClick?: (event: LayoutEvent) => void;
   onHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
 }) {
-  const textColor = getTextColor(color);
   const isTerminal =
     event.status && ["COMPLETED", "REJECTED", "CANCELLED"].includes(event.status);
   const heightPct = event.height;
@@ -424,16 +437,17 @@ function EventBlock({
     height: `${event.height}%`,
     left: `${event.left}%`,
     width: `${event.width}%`,
-    backgroundColor: color,
-    color: textColor,
+    backgroundColor: `color-mix(in srgb, ${color} 16%, white)`,
+    color: "#202124",
+    borderColor: `color-mix(in srgb, ${color} 28%, white)`,
     borderLeftColor: color,
-    opacity: isTerminal ? 0.7 : 1,
+    opacity: 1,
     textDecoration: isTerminal ? "line-through" : "none",
   };
 
   return (
     <div
-      className="cal-event-block"
+      className={`cal-event-block${isTerminal ? " terminal" : ""}`}
       style={style}
       onClick={(e) => {
         e.stopPropagation();

@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarView, CalendarCoordinator } from "@/components/calendar/calendar-view";
+import { type CalendarCoordinator } from "@/components/calendar/calendar-view";
+import { CoordinatorAvailabilityCalendar } from "@/components/calendar/coordinator-availability-calendar";
 import { CoordinatorShell } from "@/components/layout/coordinator-shell";
+import { PageContent } from "@/components/layout/page-content";
+import { AlertBanner } from "@/components/shared/primitives";
 import { getCurrentUser, getCoordinatorAvailability } from "@/lib/api/events";
 import { useAuth } from "@/components/auth/auth-provider";
 
@@ -35,7 +38,6 @@ export default function CalendarPage() {
           setAuthState("forbidden");
           return;
         }
-        setAuthState("ready");
         setUserName(result.user.name);
         setUserEmail(result.user.email);
         const availability = await getCoordinatorAvailability(token);
@@ -60,6 +62,7 @@ export default function CalendarPage() {
             })),
           }))
         );
+        setAuthState("ready");
       } catch (loadError) {
         if (!mounted) return;
         setError((loadError as Error).message);
@@ -97,21 +100,18 @@ export default function CalendarPage() {
   if (authState === "error") {
     return (
       <CoordinatorShell userName={userName} userEmail={userEmail}>
-        <div className="access-denied">
-          <div className="access-card">
-            <h1>Unable to load calendar</h1>
-            <p>{error}</p>
-          </div>
-        </div>
+        <PageContent eyebrow="COORDINATOR LEAD" title="Coordinator calendar" description="Review each coordinator’s scheduled events and availability.">
+          <AlertBanner tone="error" title="Unable to load calendar">{error}</AlertBanner>
+        </PageContent>
       </CoordinatorShell>
     );
   }
 
   return (
     <CoordinatorShell userName={userName} userEmail={userEmail}>
-      <div className="calendar-page">
-        <CalendarView coordinators={coordinators} defaultView="month" />
-      </div>
+      <PageContent eyebrow="COORDINATOR LEAD" title="Coordinator calendar" description="Review each coordinator’s scheduled events and availability.">
+        <CoordinatorAvailabilityCalendar coordinators={coordinators} />
+      </PageContent>
     </CoordinatorShell>
   );
 }

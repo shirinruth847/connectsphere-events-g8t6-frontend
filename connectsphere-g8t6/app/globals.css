@@ -2173,6 +2173,39 @@ select:focus-visible {
   gap: 6px;
 }
 
+.cal-legend-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 6px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.cal-legend-panel-title {
+  color: var(--on-surface);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cal-legend-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.cal-legend-close:hover {
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+}
+
 .cal-legend-search {
   width: 100%;
   padding: 6px 8px;
