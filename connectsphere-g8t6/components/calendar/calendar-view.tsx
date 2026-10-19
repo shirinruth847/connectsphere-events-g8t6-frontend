@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -1249,9 +1248,7 @@ export function CalendarView({
     defaultView,
   );
   const [internalCurrentDate, setInternalCurrentDate] = useState(new Date());
-  const [visibleIds, setVisibleIds] = useState<Set<number>>(
-    () => new Set(coordinators.map((c) => c.coordinatorId)),
-  );
+  const [hiddenIds, setHiddenIds] = useState<Set<number>>(() => new Set());
   const [popoverEvent, setPopoverEvent] = useState<LayoutEvent | null>(null);
   const [tooltipEvent, setTooltipEvent] = useState<{
     event: LayoutEvent;
@@ -1270,11 +1267,10 @@ export function CalendarView({
     return map;
   }, [coordinators]);
 
-  useEffect(() => {
-    if (visibleIds.size === 0 && coordinators.length > 0) {
-      setVisibleIds(new Set(coordinators.map((c) => c.coordinatorId)));
-    }
-  }, [coordinators, visibleIds.size]);
+  const visibleIds = useMemo(
+    () => new Set(coordinators.filter((coordinator) => !hiddenIds.has(coordinator.coordinatorId)).map((coordinator) => coordinator.coordinatorId)),
+    [coordinators, hiddenIds],
+  );
 
   const visibleCoordinators = coordinators.filter((c) =>
     visibleIds.has(c.coordinatorId),
@@ -1305,7 +1301,7 @@ export function CalendarView({
    };
 
   const toggleCoordinator = (id: number) => {
-    setVisibleIds((prev) => {
+    setHiddenIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
