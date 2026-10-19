@@ -176,11 +176,6 @@ select:focus-visible {
   color: white;
   background: var(--primary);
 }
-nav {
-  display: flex;
-  gap: 26px;
-  flex: 1;
-}
 .nav-link {
   padding: 23px 0;
   color: var(--on-surface-variant);
@@ -573,12 +568,6 @@ nav {
   height: 7px;
   border-radius: 50%;
   background: var(--success);
-}
-h1,
-h2,
-h3,
-p {
-  margin: 0;
 }
 .page-header h1 {
   margin: 14px 0 7px;
@@ -1006,13 +995,6 @@ p {
   justify-content: space-between;
   align-items: end;
   margin: 21px 0 9px;
-}
-label {
-  display: block;
-  margin: 0 0 4px;
-  color: var(--on-surface-variant);
-  font-size: 12px;
-  font-weight: 700;
 }
 .calendar-heading span,
 .selection-hint {
