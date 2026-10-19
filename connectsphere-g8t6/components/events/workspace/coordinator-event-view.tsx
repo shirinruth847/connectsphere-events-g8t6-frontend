@@ -21,6 +21,7 @@ import {
 } from "./event-detail-rows";
 import { EventHistoryPanel } from "./event-history-panel";
 import { EventIdentityEditor } from "./event-identity-editor";
+import { LifecyclePanel } from "@/components/coordinator/lifecycle-panel";
 
 interface CoordinatorEventViewProps {
   event: EventView;
@@ -50,6 +51,7 @@ const significantPill = <PermissionPill tone="read-only">Change request only</Pe
 // belong to other tickets or are outside the baseline).
 export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: CoordinatorEventViewProps) {
   const [notice, setNotice] = useState("");
+  const [statusNotice, setStatusNotice] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
   const editable = editableIdentityFields(event.permissions);
   const statusLabel = statusPresentation(event.status).label;
@@ -82,6 +84,9 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
       <div aria-live="polite" role="status">
         {notice ? (
           <AlertBanner tone="success" title="Changes saved" live={false}>{notice}</AlertBanner>
+        ) : null}
+        {statusNotice ? (
+          <AlertBanner tone="success" title="Status updated" live={false}>{statusNotice}</AlertBanner>
         ) : null}
       </div>
 
@@ -141,6 +146,16 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         </div>
 
         <aside className="grid gap-5 xl:col-span-4" aria-label="Coordination and history">
+          <LifecyclePanel
+            event={event}
+            onEventChange={(updated, message) => {
+              onEventChange(updated);
+              setHistoryKey((value) => value + 1);
+              setNotice("");
+              setStatusNotice(message ?? "");
+            }}
+            onAccessChanged={onAccessChanged}
+          />
           <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
             <SectionHeading id="coordination-heading" title="Coordination" />
             <KeyValuePanel

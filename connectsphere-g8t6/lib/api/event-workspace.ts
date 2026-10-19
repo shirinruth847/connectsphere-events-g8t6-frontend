@@ -58,6 +58,9 @@ export interface EventView {
   // Only returned to the assigned coordinator.
   coordinatorId?: number | null;
   organiser?: { userId: number; name: string } | null;
+  // SPM-173: counts changes to venue bookings, technical arrangements and
+  // attendance; a safety approval is valid only for the version it reviewed.
+  arrangementVersion?: number;
 }
 
 export interface EventHistoryChange {
@@ -144,6 +147,52 @@ export function getEventHistory(
   const query = new URLSearchParams({ limit: String(options.limit ?? 20) });
   if (options.cursor) query.set("cursor", options.cursor);
   return apiRequest<EventHistoryPage>(`/events/${eventId}/history?${query}`);
+}
+
+// ---------- SPM-173 coordinator lifecycle actions ----------
+// Backend README, "Event Lifecycle (SPM-173)". Codes are the backend's.
+
+export interface ReadinessFailure {
+  code: string;
+  message: string;
+}
+
+export interface EventReadiness {
+  ready: boolean;
+  failures: ReadinessFailure[];
+  status: string;
+  version: number;
+  arrangementVersion: number;
+}
+
+export const LIFECYCLE_ACTION_PATHS = {
+  submitForSafetyReview: "submit-for-safety-review",
+  confirm: "confirm",
+  startPreparation: "start-preparation",
+  complete: "complete",
+} as const;
+export type LifecycleAction = keyof typeof LIFECYCLE_ACTION_PATHS;
+
+// GET /api/events/:id/readiness — assigned coordinator only; 404 otherwise.
+export function getEventReadiness(eventId: number): Promise<EventReadiness> {
+  return apiRequest<EventReadiness>(`/events/${eventId}/readiness`);
+}
+
+// POST /api/events/:id/<action> with the loaded version and an Idempotency-Key.
+// Errors: 403 TRANSITION_NOT_ALLOWED (details.currentStatus), 409
+// EVENT_VERSION_CONFLICT (details.event), 409 READINESS_BLOCKED
+// (details.failures), 409 SAFETY_APPROVAL_REQUIRED, 409 EVENT_NOT_ENDED.
+export async function runLifecycleAction(
+  eventId: number,
+  action: LifecycleAction,
+  version: number,
+  idempotencyKey: string,
+): Promise<{ message: string; event: EventView }> {
+  const result = await apiRequest<{ message: string; event: RawEventView }>(
+    `/events/${eventId}/${LIFECYCLE_ACTION_PATHS[action]}`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ version }) },
+  );
+  return { message: result.message, event: toEventView(result.event) };
 }
 
 // GET /api/events/assigned — COORDINATOR only; soonest event first.
