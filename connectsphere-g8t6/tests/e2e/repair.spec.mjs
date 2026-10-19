@@ -68,6 +68,9 @@ test('[SPM-174] Lead login opens the unassigned queue and can navigate to calend
  await page.getByRole('button',{name:'Sign in',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
  await expect(page.getByText('Unassigned lead queue event',{exact:true})).toBeVisible();
+ await expect(page.getByText('Purpose: Community outreach',{exact:true})).toBeVisible();
+ await expect(page.locator('.details-panel > div').nth(2).locator('strong')).toHaveText('1');
+ await expect(page.getByText('Equipment 4 × 2',{exact:true})).toBeVisible();
  const navigation=page.getByRole('navigation',{name:'Main Navigation',exact:true});
  await expect(navigation.getByRole('link',{name:'Unassigned Queue',exact:true})).toHaveAttribute('aria-current','page');
  await navigation.getByRole('link',{name:'Calendar',exact:true}).click();
@@ -76,6 +79,18 @@ test('[SPM-174] Lead login opens the unassigned queue and can navigate to calend
  await navigation.getByRole('link',{name:'Assignments',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Assignments',exact:true})).toBeVisible();
  await expect(page.getByText('Covered in later scope',{exact:true})).toBeVisible();
+});
+
+test('[SPM-174] the unassigned queue remains available when coordinator calendar data fails', async ({page}) => {
+ const state=await installConnectSphereMocks(page);
+ state.role='COORDINATOR_LEAD';
+ state.failure={path:'/api/events/coordinator-availability',status:500,body:{error:'Calendar service unavailable.'}};
+ await page.goto('/events');
+ await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
+ await expect(page.getByText('Unassigned lead queue event',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Calendar',exact:true}).click();
+ await expect(page.locator('.calendar-panel').getByRole('alert')).toContainText('Availability unavailable');
+ await expect(page.getByText('No coordinators with events to display.',{exact:true})).toBeVisible();
 });
 test('[SPM-32 TC-008–010] blank login fields show inline errors', async ({page}) => {
  await installLoginMock(page);await page.goto('/login');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByText('Email is required.')).toBeVisible();await expect(page.getByText('Password is required.')).toBeVisible();

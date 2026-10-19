@@ -28,7 +28,7 @@ function toRequest(event: ApiEvent): EventRequest {
     end: end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
     organiser: "Event organiser",
     organisation: event.organisation ?? null,
-    venue: "Assigned after review",
+    venue: event.venuePreferences?.length ? event.venuePreferences.join(", ") : "No venue preference",
     submitted: new Date(event.createdAt).toLocaleString(),
   };
 }
@@ -59,17 +59,30 @@ function EventQueueContent() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  const [calendarError, setCalendarError] = useState("");
   const [loading, setLoading] = useState(false);
   const [authState, setAuthState] = useState<AuthState>("loading");
 
   async function loadData(token: string) {
     setLoading(true);
     setError("");
+    setCalendarError("");
     setFeedback("");
     try {
-      const [queue, availability] = await Promise.all([getUnassignedEvents(token), getCoordinatorAvailability(token)]);
+      // The unassigned queue is the primary Lead workflow. Calendar data is
+      // useful context, but a calendar outage must not hide submitted requests.
+      const queue = await getUnassignedEvents(token);
       setRequests(queue.events.map(toRequest));
-      setCoordinators(availability.coordinators.map((coordinator) => ({ ...coordinator, events: coordinator.events.map(toRequest) })));
+      setAuthState("ready");
+
+      try {
+        const availability = await getCoordinatorAvailability(token);
+        setCoordinators(availability.coordinators.map((coordinator) => ({ ...coordinator, events: coordinator.events.map(toRequest) })));
+      } catch (availabilityError) {
+        const typedError = availabilityError as Error;
+        setCoordinators([]);
+        setCalendarError(typedError.message || "Coordinator availability is temporarily unavailable.");
+      }
     } catch (loadError) {
       const typedError = loadError as Error & { status?: number };
       setError(typedError.status === 403 ? "Your account is not permitted to view this queue." : typedError.message);
@@ -119,11 +132,12 @@ function EventQueueContent() {
       {viewMode === "calendar" ? (
         <div className="calendar-panel">
           <div className="calendar-panel-header"><strong>Coordinator availability</strong><span>Live data from the backend</span></div>
+          {calendarError && <div className="error-alert" role="alert"><strong>Availability unavailable</strong><span>{calendarError}</span></div>}
           <CalendarView
             coordinators={calendarCoordinators}
           />
         </div>
-      ) : loading ? <div className="empty-state"><h2>Loading requests…</h2></div> : unassigned.length === 0 ? <div className="empty-state"><span className="empty-icon">✓</span><h2>Queue cleared</h2><p>Every submitted request has an Event Coordinator assigned.</p></div> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.requestId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p></div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE REQUIREMENT</span><strong>{request.venue}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled title="Event coordinator assignment is covered in later scope.">Assign coordinator</button></footer></article>)}</div>}
+      ) : loading ? <div className="empty-state"><h2>Loading requests…</h2></div> : unassigned.length === 0 ? <div className="empty-state"><span className="empty-icon">✓</span><h2>Queue cleared</h2><p>Every submitted request has an Event Coordinator assigned.</p></div> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.requestId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `Equipment ${item.equipmentId} × ${item.quantity}`).join(", ") : "None"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled title="Event coordinator assignment is covered in later scope.">Assign coordinator</button></footer></article>)}</div>}
     </>
   );
 }

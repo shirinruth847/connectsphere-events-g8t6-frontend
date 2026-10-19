@@ -6,6 +6,9 @@ export type ApiEvent = {
   startDatetime: string;
   endDatetime: string;
   expectedAttendance: number;
+  purpose?: string | null;
+  venuePreferences?: number[];
+  equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
   organisation?: { organisationId: number; name: string } | null;
   createdAt: string;
 };
