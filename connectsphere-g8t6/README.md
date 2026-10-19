@@ -33,7 +33,6 @@ If hydration reports an extra `data-scribe-recorder-ready` attribute on
 use a browser profile with extensions disabled. This attribute is not rendered
 by the application. Do not suppress hydration diagnostics globally to hide it.
 
-<<<<<<< HEAD
 ## Sign-up (SPM-123)
 
 - `/signup` (`components/auth/signup-form.tsx`) lets visitors register as an
@@ -45,7 +44,7 @@ by the application. Do not suppress hydration diagnostics globally to hide it.
   `currentUser()` (`GET /api/auth/me`) and `postLoginPath`.
 - If the account is created but automatic sign-in fails, the page says so and
   links to `/login`; it never submits the sign-up again.
-=======
+
 ## Authentication and access (SPM-32)
 
 - `/login` (`components/auth/login-form.tsx`) signs in with Supabase Auth via
@@ -59,7 +58,6 @@ by the application. Do not suppress hydration diagnostics globally to hide it.
   `/login?next=…` without a verified session and re-check on Back/Forward.
 - Logout (`signOut` in `lib/session.ts`) calls `POST /api/auth/logout`, then
   clears this device's Supabase session.
->>>>>>> 6d3657ecc746be2294e461d51828747b8a9e4e7d
 
 ## Checks
 
