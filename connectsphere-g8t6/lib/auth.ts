@@ -42,7 +42,10 @@ export function canViewPath(role: UserRole, path: string) {
 
 export function postLoginPath(user: SessionUser, next: string | null) {
   const path = safeNextPath(next);
-  return path && canViewPath(user.role, path) ? path : homeForRole(user.role);
+  if (path && canViewPath(user.role, path)) return path;
+  // Keep the SPM-174 lead workflow's queue as its landing page. Coordinators
+  // and other staff use main's role-aware dashboard; attendees go to registrations.
+  return user.role === "COORDINATOR_LEAD" ? "/events" : homeForRole(user.role);
 }
 
 export function loginUrl(path: string) {

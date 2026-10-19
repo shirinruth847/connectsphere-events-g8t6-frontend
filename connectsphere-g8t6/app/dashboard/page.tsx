@@ -1,7 +1,7 @@
 import { Suspense } from "react";
-import { OrganiserWorkspace } from "@/components/layout/organiser-workspace";
-import { EventRequestDashboard } from "@/components/events/event-request-dashboard";
+import { AuthGate } from "@/components/auth/auth-gate";
+import { RoleDashboard } from "@/components/auth/role-dashboard";
 
 export default function DashboardPage() {
-  return <OrganiserWorkspace><Suspense fallback={<p className="text-sm text-on-surface-variant">Loading requests…</p>}><EventRequestDashboard /></Suspense></OrganiserWorkspace>;
+  return <AuthGate><Suspense fallback={<p>Loading dashboard…</p>}><RoleDashboard /></Suspense></AuthGate>;
 }

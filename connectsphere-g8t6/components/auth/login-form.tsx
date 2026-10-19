@@ -1,16 +1,28 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 import { getSupabaseBrowserClient, SupabaseConfigurationError } from "@/lib/supabase";
+import { postLoginPath } from "@/lib/auth";
+import { currentUser } from "@/lib/session";
 
 export function LoginForm() {
   const router = useRouter();
+  const params = useSearchParams();
+  const next = params.get("next");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void currentUser()
+      .then((user) => { if (user && alive) router.replace(postLoginPath(user, next)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [next, router]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -20,8 +32,9 @@ export function LoginForm() {
       const client = getSupabaseBrowserClient();
       const { error: authError } = await client.auth.signInWithPassword({ email: email.trim(), password });
       if (authError) throw authError;
-      // Session is now established. Let the home page handle role-based routing.
-      router.replace("/");
+      const user = await currentUser();
+      if (!user) throw new Error("Unable to sign in. Check your email and password.");
+      router.replace(postLoginPath(user, next));
     } catch (caught) {
       setError(caught instanceof SupabaseConfigurationError
         ? "Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to .env.local, then restart Next.js."
@@ -34,6 +47,6 @@ export function LoginForm() {
     {error ? <AlertBanner tone="error">{error}</AlertBanner> : null}
     <div><FormLabel htmlFor="email" required>Email</FormLabel><input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} className={fieldClasses} /></div>
     <div><FormLabel htmlFor="password" required>Password</FormLabel><input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className={fieldClasses} /></div>
-    <Button disabled={busy} fullWidth>{busy ? "Signing in…" : "Sign in"}</Button>
+    <Button type="submit" disabled={busy} fullWidth>{busy ? "Signing in…" : "Sign in"}</Button>
   </form>;
 }
