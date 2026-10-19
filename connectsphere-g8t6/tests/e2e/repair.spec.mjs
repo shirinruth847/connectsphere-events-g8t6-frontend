@@ -33,7 +33,7 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations'],['COORDINATOR_LEAD','Event Coordinator Lead dashboard']]) {
+for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations'],['COORDINATOR_LEAD','Assignment queue']]) {
  test(`[SPM-32] ${role} login reaches its authorised workspace`, async ({page}) => {
   await installLoginMock(page,{role});await page.goto('/login');await page.getByLabel('Email',{exact:false}).fill('user@example.com');await page.getByLabel('Password',{exact:false}).fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible();
@@ -60,6 +60,23 @@ for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event
   await expect(page).toHaveURL(/\/login/);
  });
 }
+test('[SPM-174] Lead login opens the unassigned queue and can navigate to calendar and assignments', async ({page}) => {
+ await installLoginMock(page,{role:'COORDINATOR_LEAD'});
+ await page.goto('/login');
+ await page.locator('#email').fill('user@example.com');
+ await page.locator('#password').fill('Valid-password9');
+ await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
+ await expect(page.getByText('Unassigned lead queue event',{exact:true})).toBeVisible();
+ const navigation=page.getByRole('navigation',{name:'Main Navigation',exact:true});
+ await expect(navigation.getByRole('link',{name:'Unassigned Queue',exact:true})).toHaveAttribute('aria-current','page');
+ await navigation.getByRole('link',{name:'Calendar',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Coordinator calendar',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:/20 Test Coordinator has an event/})).toBeVisible();
+ await navigation.getByRole('link',{name:'Assignments',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Assignments',exact:true})).toBeVisible();
+ await expect(page.getByText('Covered in later scope',{exact:true})).toBeVisible();
+});
 test('[SPM-32 TC-008–010] blank login fields show inline errors', async ({page}) => {
  await installLoginMock(page);await page.goto('/login');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByText('Email is required.')).toBeVisible();await expect(page.getByText('Password is required.')).toBeVisible();
 });
@@ -76,7 +93,7 @@ test('[SPM-32 TC-012] malicious normalised next cannot redirect off-site', async
  await installLoginMock(page);await page.goto('/login?next=%2F..%2F%2Fevil.example');await page.locator('#email').fill('user@example.com');await page.locator('#password').fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page).toHaveURL(/127\.0\.0\.1:3100\/dashboard/);
 });
 test('[SPM-35 AC1–4] Next never submits; registration is configured before explicit Submit', async ({page}) => {
- const state=await installConnectSphereMocks(page);await page.goto('/events/new');await enterCompleteRequestThroughSubmit(page);expect(state.createEventRequests).toHaveLength(0);await page.getByLabel('Enable event registration').check();await page.getByLabel('Registration capacity').fill('180');await page.getByRole('button',{name:'Submit Request',exact:true}).click();await expect(page.getByText('Your event request has been submitted successfully.')).toBeVisible();expect(state.createEventRequests).toHaveLength(1);expect(state.createEventRequests[0].payload.registrationCapacity).toBe(180);await expect(page.locator('article').getByText('Pending Approval',{exact:true}).first()).toBeVisible();
+ const state=await installConnectSphereMocks(page);await page.goto('/events/new');await enterCompleteRequestThroughSubmit(page);expect(state.createEventRequests).toHaveLength(0);await page.getByLabel('Enable event registration').check();await page.getByLabel('Registration capacity').fill('180');await page.getByRole('button',{name:'Submit Request',exact:true}).click();await expect(page.getByText('Your event request has been submitted successfully.')).toBeVisible();expect(state.createEventRequests).toHaveLength(1);expect(state.createEventRequests[0].payload.registrationCapacity).toBe(180);await expect(page.locator('article').getByText('Submitted',{exact:true}).first()).toBeVisible();
 });
 test('[SPM-35 AC2] Next blocks missing required fields', async ({page}) => {
  await installConnectSphereMocks(page);await page.goto('/events/new');await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByText('Event Title is required.')).toBeVisible();await expect(page.getByText('Event Purpose is required.')).toBeVisible();await expect(page.getByRole('heading',{name:'Event Identity & Core Purpose',exact:true})).toBeVisible();
@@ -88,7 +105,17 @@ test('[SPM-37 Scenario 3] input idle resets timer; first POST then autosave PUT'
  const state=await installConnectSphereMocks(page);await page.clock.install();await page.goto('/events/new');await page.locator('#title').fill('Autosaved draft');await page.clock.fastForward(29000);expect(state.draftCreateRequests).toHaveLength(0);await page.mouse.move(20,20);await page.clock.fastForward(29000);expect(state.draftCreateRequests).toHaveLength(0);await page.clock.fastForward(1000);await expect.poll(()=>state.draftCreateRequests.length).toBe(1);await expect(page.getByText(/Last auto-saved at/)).toBeVisible();await page.locator('#purpose').fill('Updated purpose');await page.clock.fastForward(30000);await expect.poll(()=>state.draftUpdateRequests.length).toBe(1);expect(state.draftUpdateRequests[0].isAutoSave).toBe(true);expect(state.draftCreateRequests).toHaveLength(1);
 });
 test('[SPM-37 Scenario 3] slow autosave and manual save never create a second draft', async ({page}) => {
- const state=await installConnectSphereMocks(page);state.delay=800;await page.clock.install();await page.goto('/events/new');await page.locator('#title').fill('One draft');await page.clock.fastForward(29900);await page.getByRole('button',{name:'Save as Draft',exact:false}).click();await page.clock.fastForward(1000);await expect(page.getByText('Draft saved successfully.')).toBeVisible();expect(state.draftCreateRequests).toHaveLength(1);
+ const state=await installConnectSphereMocks(page);
+ state.delay=800;
+ await page.clock.install();
+ await page.goto('/events/new');
+ await page.locator('#title').fill('One draft');
+ await page.clock.fastForward(30000);
+ await expect.poll(()=>state.draftCreateRequests.length).toBe(1);
+ await page.getByRole('button',{name:'Save as Draft',exact:false}).click();
+ await expect(page.getByText('Draft saved successfully.')).toBeVisible();
+ expect(state.draftCreateRequests).toHaveLength(1);
+ expect(state.draftUpdateRequests).toHaveLength(1);
 });
 test('[SPM-37 Scenario 5] dirty link and browser Back show the in-app warning', async ({page}) => {
  await installConnectSphereMocks(page);await page.goto('/dashboard');await page.getByRole('link',{name:'New Event',exact:false}).click();await page.locator('#title').fill('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.goBack();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await page.getByRole('button',{name:'Leave page'}).click();await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toBeVisible();await expect(page.getByText('Draft saved successfully.')).toHaveCount(0);

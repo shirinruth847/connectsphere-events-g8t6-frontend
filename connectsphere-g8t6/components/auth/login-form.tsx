@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 import { getSupabaseBrowserClient, SupabaseConfigurationError } from "@/lib/supabase";
-import { postLoginPath } from "@/lib/auth";
+import { postLoginPath, ROUTES } from "@/lib/auth";
 import { currentUser } from "@/lib/session";
 
 export function LoginForm() {
@@ -48,5 +49,6 @@ export function LoginForm() {
     <div><FormLabel htmlFor="email" required>Email</FormLabel><input id="email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} className={fieldClasses} /></div>
     <div><FormLabel htmlFor="password" required>Password</FormLabel><input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className={fieldClasses} /></div>
     <Button type="submit" disabled={busy} fullWidth>{busy ? "Signing in…" : "Sign in"}</Button>
+    <p className="text-center text-sm text-on-surface-variant">Don&apos;t have an account? <Link href={ROUTES.signup} className="font-semibold text-primary hover:underline">Sign up</Link></p>
   </form>;
 }

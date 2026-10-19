@@ -47,7 +47,7 @@ function LoadedWorkspace({ eventId, home }: { eventId: number; home: string }) {
   if (state.event.viewerRelationship === "ASSIGNED_COORDINATOR") {
     return <CoordinatorEventView event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
   }
-  return <EventRequestDetails />;
+  return <EventRequestDetails event={state.event} />;
 }
 
 // /events/[eventId]: the role-aware event workspace (SPM-33). Render inside

@@ -3,6 +3,7 @@ export type SessionUser = { user_id: number; name: string; email: string; role: 
 
 export const ROUTES = {
   login: "/login",
+  signup: "/signup",
   dashboard: "/dashboard",
   registrations: "/my-registrations",
   newEvent: "/events/new",
@@ -36,7 +37,9 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
   if (pathname === "/events") return role === "COORDINATOR_LEAD";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
-  if (/^\/events\/(new|create|\d+)$/.test(pathname)) return role === "ORGANISER";
+  if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
+  // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR";
   return false;
 }
 
