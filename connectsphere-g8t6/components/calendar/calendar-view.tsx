@@ -81,7 +81,10 @@ function getTextColor(backgroundColor: string): string {
   }
 
   const luminance = 0.2126 * sRGB(r) + 0.7152 * sRGB(g) + 0.0722 * sRGB(b);
-  return luminance > 0.5 ? "#1b1b21" : "#ffffff";
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  const darkLuminance = 0.014;
+  const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+  return darkContrast >= whiteContrast ? "#202124" : "#ffffff";
 }
 
 function startOfDay(date: Date): Date {
@@ -340,6 +343,17 @@ function CoordinatorLegend({
       </button>
       {open && (
         <div className="cal-legend-panel" role="listbox">
+          <div className="cal-legend-panel-header">
+            <span className="cal-legend-panel-title">Filter coordinators</span>
+            <button
+              type="button"
+              className="cal-legend-close"
+              onClick={() => setOpen(false)}
+              aria-label="Close filter"
+            >
+              ×
+            </button>
+          </div>
           <input
             className="cal-legend-search"
             type="search"
@@ -352,7 +366,10 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              onClick={() => {
+                coordinators.filter((c) => !visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId));
+                setOpen(false);
+              }}
               disabled={allVisible}
             >
               All
@@ -360,7 +377,10 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              onClick={() => {
+                coordinators.filter((c) => visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId));
+                setOpen(false);
+              }}
               disabled={noneVisible}
             >
               None
@@ -413,7 +433,6 @@ function EventBlock({
   onClick?: (event: LayoutEvent) => void;
   onHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
 }) {
-  const textColor = getTextColor(color);
   const isTerminal =
     event.status && ["COMPLETED", "REJECTED", "CANCELLED"].includes(event.status);
   const heightPct = event.height;
@@ -424,16 +443,16 @@ function EventBlock({
     height: `${event.height}%`,
     left: `${event.left}%`,
     width: `${event.width}%`,
-    backgroundColor: color,
-    color: textColor,
+    backgroundColor: `color-mix(in srgb, ${color} 16%, white)`,
+    color: "#202124",
     borderLeftColor: color,
-    opacity: isTerminal ? 0.7 : 1,
-    textDecoration: isTerminal ? "line-through" : "none",
+    borderColor: `color-mix(in srgb, ${color} 28%, white)`,
+    opacity: 1,
   };
 
   return (
     <div
-      className="cal-event-block"
+      className={`cal-event-block${isTerminal ? " terminal" : ""}`}
       style={style}
       onClick={(e) => {
         e.stopPropagation();
@@ -444,21 +463,21 @@ function EventBlock({
         onHover?.(event, rect.left + 8, rect.top + 8);
       }}
       onMouseLeave={() => onHover?.(null)}
-      aria-label={event.title}
+      aria-label={`${formatTime(new Date(event.startDatetime))}–${formatTime(new Date(event.endDatetime))}: ${event.title}; ${statusLabel}`}
     >
       <span className="cal-event-color-strip" style={{ backgroundColor: color }} />
-      <strong className="cal-event-title" title={event.title}>
-        {event.title}
-      </strong>
       {heightPct > 10 && (
         <>
-      <span className="cal-tag" title={statusLabel}>
-        {statusLabel}
-      </span>
           <small className="cal-event-time">
             {formatTime(new Date(event.startDatetime))} –{" "}
             {formatTime(new Date(event.endDatetime))}
           </small>
+          <strong className="cal-event-title" title={event.title}>
+            {event.title}
+          </strong>
+          <span className="cal-event-meta">
+            {statusLabel}{event.organisation ? ` · ${event.organisation}` : ""}
+          </span>
         </>
       )}
       {heightPct > 4 && heightPct <= 10 && (
@@ -466,7 +485,7 @@ function EventBlock({
           className="cal-event-mini"
           title={`${event.title} · ${statusLabel} · ${formatTime(new Date(event.startDatetime))} – ${formatTime(new Date(event.endDatetime))}`}
         >
-          {event.title} · {statusLabel} · {formatTime(new Date(event.startDatetime))} – {formatTime(new Date(event.endDatetime))}
+          {formatTime(new Date(event.startDatetime))} · {event.title}
         </span>
       )}
       {heightPct <= 4 && (
@@ -1248,9 +1267,9 @@ export function CalendarView({
     defaultView,
   );
   const [internalCurrentDate, setInternalCurrentDate] = useState(new Date());
-  const [visibleIds, setVisibleIds] = useState<Set<number>>(
-    () => new Set(coordinators.map((c) => c.coordinatorId)),
-  );
+  // Keep the coordinator selection in the same hidden-id model as SPM-177.
+  // Deriving visible ids from current props also handles data arriving async.
+  const [hiddenIds, setHiddenIds] = useState<Set<number>>(() => new Set());
   const [popoverEvent, setPopoverEvent] = useState<LayoutEvent | null>(null);
   const [tooltipEvent, setTooltipEvent] = useState<{
     event: LayoutEvent;
@@ -1268,6 +1287,15 @@ export function CalendarView({
     );
     return map;
   }, [coordinators]);
+
+  const visibleIds = useMemo(
+    () => new Set(
+      coordinators
+        .filter((coordinator) => !hiddenIds.has(coordinator.coordinatorId))
+        .map((coordinator) => coordinator.coordinatorId),
+    ),
+    [coordinators, hiddenIds],
+  );
 
   const visibleCoordinators = coordinators.filter((c) =>
     visibleIds.has(c.coordinatorId),
@@ -1298,7 +1326,7 @@ export function CalendarView({
    };
 
   const toggleCoordinator = (id: number) => {
-    setVisibleIds((prev) => {
+    setHiddenIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);

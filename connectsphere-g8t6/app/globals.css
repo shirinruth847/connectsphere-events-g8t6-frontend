@@ -2109,81 +2109,89 @@ select:focus-visible {
 /* ---------- Coordinator Legend ---------- */
 
 .cal-legend {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: var(--surface-container);
-  border-bottom: 1px solid var(--outline);
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  position: relative;
+  margin-left: 10px;
 }
 
 .cal-legend-toggle {
-  padding: 4px 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--outline);
   border-radius: 6px;
-  background: transparent;
-  font-size: 13px;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-size: 10px;
   font-weight: 600;
-  color: #333;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .cal-legend-toggle:hover {
-  background: var(--surface-inset);
-  color: var(--on-surface);
+  background: var(--surface-container-high);
+  border-color: var(--primary);
+}
+
+.cal-legend-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .cal-legend-item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 4px 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
-  background: var(--surface-container-low);
-  font-size: 14px;
-  color: #444;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--on-surface);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .cal-legend-item:hover {
-  background: var(--surface-container-high);
+  background: var(--surface-inset);
 }
 
-.cal-legend-item.on {
-  border-color: var(--outline);
-  color: var(--on-surface);
-}
-
-.cal-legend-item.on .cal-legend-swatch {
-  opacity: 1;
-}
-
-.cal-legend-item.off .cal-legend-swatch {
-  opacity: 0.3;
+.cal-legend-item .cal-legend-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .cal-legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
   flex-shrink: 0;
-  transition: opacity 0.15s ease;
+}
+
+.cal-legend-item .cal-legend-swatch {
+  opacity: 1;
 }
 
 .cal-legend-name {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .cal-legend-count {
-  margin-left: 4px;
+  margin-left: auto;
   padding: 1px 5px;
   background: var(--surface-container-high);
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--on-surface-variant);
 }
 
@@ -2954,6 +2962,40 @@ select:focus-visible {
   max-width: 100%;
 }
 
+.calendar-route-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.calendar-route-header {
+  padding: 22px 24px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 12px;
+  background: var(--surface-container-lowest);
+}
+
+.calendar-route-header .eyebrow {
+  display: inline-block;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.calendar-route-header h1 {
+  margin: 8px 0 4px;
+  color: var(--on-surface);
+  font-size: clamp(24px, 2.5vw, 32px);
+  letter-spacing: -0.03em;
+}
+
+.calendar-route-header p {
+  margin: 0;
+  color: var(--on-surface-variant);
+}
+
 .calendar-view {
   width: 100%;
   min-height: 0;
@@ -3005,9 +3047,19 @@ select:focus-visible {
   background: var(--primary-container);
 }
 
+.calendar-toolbar .cal-btn:not(.cal-btn--today) {
+  font-size: 18px;
+}
+
+.calendar-toolbar .cal-btn--today {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px;
+}
+
 .calendar-title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--on-surface);
   margin: 0;
 }
@@ -3024,8 +3076,8 @@ select:focus-visible {
   padding: 6px 12px;
   border: 0;
   border-radius: 6px;
-  color: var(--on-surface-variant);
   background: transparent;
+  color: var(--on-surface-variant);
   font-size: 11px;
   font-weight: 600;
   transition: all 0.15s ease;
@@ -3037,8 +3089,30 @@ select:focus-visible {
 }
 
 .cal-view-btn.active {
-  color: white;
+  color: #ffffff;
   background: var(--primary);
+}
+
+.calendar-panel {
+  padding: 20px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 12px;
+  background: var(--surface-container-lowest);
+  box-shadow: var(--shadow-soft);
+}
+
+.calendar-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  color: var(--on-surface);
+  font-size: 13px;
+}
+
+.calendar-panel-header span {
+  color: var(--on-surface-variant);
+  font-size: 11px;
 }
 
 .cal-legend {
@@ -3100,6 +3174,39 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.cal-legend-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 6px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.cal-legend-panel-title {
+  color: var(--on-surface);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cal-legend-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.cal-legend-close:hover {
+  background: var(--surface-container-low);
+  color: var(--on-surface);
 }
 
 .cal-legend-search {
