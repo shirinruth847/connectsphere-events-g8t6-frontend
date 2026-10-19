@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   assignCoordinator,
@@ -13,8 +14,11 @@ import {
 import { AvailabilityMatrix } from "@/components/assignments/availability-matrix";
 import { type CalendarEvent } from "@/components/calendar/calendar-view";
 import { CoordinatorAvailabilityCalendar } from "@/components/calendar/coordinator-availability-calendar";
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useSessionUser } from "@/components/auth/auth-gate";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
+import { AttendeeEventDiscovery } from "@/components/attendee/discovery/attendee-event-discovery";
+import { homeForRole } from "@/lib/auth";
 
 type ViewMode = "list" | "calendar";
 type EventRequest = Omit<ApiEvent, "organisation"> & { date: string; start: string; end: string; organiser: string; organisation: { organisationId: number; name: string } | null; venue: string; submitted: string };
@@ -105,7 +109,7 @@ function EventQueueContent() {
       setAccessToken(token);
       try {
         const result = await getCurrentUser(token);
-        const canManageRequests = result.user.role === "COORDINATOR_LEAD";
+        const canManageRequests = result.user.role === "COORDINATOR" || result.user.role === "COORDINATOR_LEAD";
         setAuthState(canManageRequests ? "ready" : "forbidden");
         if (canManageRequests) await loadData(token);
       } catch (loadError) {
@@ -266,10 +270,21 @@ function EventQueueContent() {
   );
 }
 
-export default function EventQueuePage() {
+function RoleEventContent() {
+  const user = useSessionUser();
+  if (user?.role === "ATTENDEE") return <AttendeeEventDiscovery />;
+  if (user?.role === "COORDINATOR" || user?.role === "COORDINATOR_LEAD") return <EventQueueContent />;
+  if (!user) return null;
   return (
-    <CoordinatorShell userName="Coordinator Lead" userEmail="coordinator@connectsphere.test">
-      <EventQueueContent />
-    </CoordinatorShell>
+    <main className="mx-auto mt-16 max-w-xl p-5">
+      <div className="access-denied"><div className="access-card">
+        <h1>Access denied</h1>
+        <p>This page is not available for your role. <Link className="underline" href={homeForRole(user.role)}>Go to your dashboard</Link></p>
+      </div></div>
+    </main>
   );
+}
+
+export default function EventsPage() {
+  return <DashboardWorkspace><RoleEventContent /></DashboardWorkspace>;
 }

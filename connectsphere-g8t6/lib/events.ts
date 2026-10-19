@@ -36,6 +36,8 @@ export interface EventRequest {
   isOwner?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  submittedAt?: string | null;
+  coordinatorName?: string | null;
 }
 
 export interface EventListItem {
@@ -52,6 +54,7 @@ export interface EventListItem {
   isOwner?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  submittedAt?: string | null;
 }
 
 export interface EventFormValues {

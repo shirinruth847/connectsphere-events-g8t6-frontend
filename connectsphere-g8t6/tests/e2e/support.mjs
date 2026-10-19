@@ -20,6 +20,12 @@ export const makeDraft = (overrides = {}) => ({
   venuePreferences: [],
   equipmentRequirements: [],
   updatedAt: FIXED_SAVED_AT,
+  submittedAt: null,
+  coordinatorName: null,
+  isAssignedToCoordinator: false,
+  isOwner: true,
+  viewerRelationship: "OWNER",
+  permissions: { canEdit: true, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false },
   ...overrides,
 });
 
@@ -35,6 +41,19 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     revoked: false,
     failure: null,
     delay: 0,
+    unassignedEvents: [{
+      eventId: 84,
+      requestId: "REQ-000084",
+      status: "SUBMITTED",
+      title: "Queued event request",
+      startDatetime: "2026-11-01T09:00:00.000Z",
+      endDatetime: "2026-11-01T11:00:00.000Z",
+      expectedAttendance: 80,
+      organisation: { organisationId: 4, name: "Test Organisation" },
+      createdAt: FIXED_SAVED_AT,
+    }],
+    coordinators: [{ coordinatorId: 22, name: "Alex Coordinator", events: [] }],
+    coordinatorAssignmentRequests: [],
   };
 
   if (authenticated) {
@@ -73,6 +92,16 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/auth/me") return state.revoked ? json({ error: "Please log in to continue." }, 401) : json({ user: { user_id: 11, name: "Test User", email: "user@example.com", role: state.role } });
     if (pathname === "/api/auth/logout") { state.revoked = true; return route.fulfill({ status: 204 }); }
     if (pathname === "/api/events/assigned") return json({ events: [{ eventId: 42, title: "Assigned coordinator event", status: "UNDER_REVIEW" }] });
+    if (pathname === "/api/events/unassigned" && method === "GET") return json({ events: state.unassignedEvents });
+    if (pathname === "/api/events/coordinator-availability" && method === "GET") return json({ coordinators: state.coordinators });
+    const assignmentMatch = pathname.match(/^\/api\/events\/(\d+)\/coordinator$/);
+    if (assignmentMatch && method === "PATCH") {
+      const body = request.postDataJSON();
+      state.coordinatorAssignmentRequests.push({ eventId: Number(assignmentMatch[1]), body, method });
+      const event = state.unassignedEvents.find(item => item.eventId === Number(assignmentMatch[1]));
+      state.unassignedEvents = state.unassignedEvents.filter(item => item.eventId !== Number(assignmentMatch[1]));
+      return json({ event: { ...event, status: "UNDER_REVIEW", coordinatorId: body.coordinatorId } });
+    }
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 
@@ -89,9 +118,11 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       return json({ message: "Draft saved successfully.", event: state.draft, savedAt: FIXED_SAVED_AT }, 201);
     }
 
+    if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
-      if (state.draft && Number(eventMatch[1]) === state.draft.eventId) return json({ event: state.draft });
+      const event = state.events.find(event => event.eventId === Number(eventMatch[1]));
+      if (event) return json({ event });
       return json({ error: "Event not found." }, 404);
     }
 
@@ -112,11 +143,13 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (submitMatch && method === "PUT") {
       const payload = request.postDataJSON();
       state.submitDraftRequests.push(payload);
+      if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
+      if (state.draft?.status !== "DRAFT") return json({ error: "Only draft requests can be changed or submitted.", code: "EVENT_NOT_DRAFT" }, 409);
       const missingAttendance = !payload.expectedAttendance;
       if (missingAttendance) {
         return json({ error: "Please fix the highlighted fields.", fields: { expectedAttendance: "Expected Attendance is required for submission." } }, 400);
       }
-      state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Submitted" });
+      state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = state.events.map((event) => event.eventId === state.draft.eventId ? state.draft : event);
       return json({ message: "Your event request has been submitted successfully.", event: state.draft });
     }
@@ -124,7 +157,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/events" && method === "POST") {
       const payload = request.postDataJSON();
       state.createEventRequests.push({ payload, headers: request.headers() });
-      const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Submitted" });
+      const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = [event, ...state.events];
       return json({ message: "Your event request has been submitted successfully.", event }, 201);
     }

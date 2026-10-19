@@ -15,7 +15,10 @@ const organiserItems: NavigationItem[] = [
 
 const mainItems: Record<UserRole, NavigationItem[]> = {
   ORGANISER: organiserItems,
-  COORDINATOR: [{ id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }],
+  COORDINATOR: [
+    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard },
+    { id: "unassigned", title: "Unassigned Queue", icon: "event", href: ROUTES.events },
+  ],
   COORDINATOR_LEAD: [
     { id: "queue", title: "Unassigned Queue", icon: "event", href: "/events" },
     { id: "assignments", title: "Assignments", icon: "event", href: "/assignments" },
@@ -23,7 +26,10 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   ],
   VENUE_STAFF: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
-  ATTENDEE: [{ id: "home", title: "My Registrations", icon: "registrations", href: ROUTES.registrations }],
+  ATTENDEE: [
+    { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
+    { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
+  ],
 };
 
 export function navigationForRole(role: UserRole): NavigationGroup[] {
@@ -35,11 +41,13 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
 }
 
 export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
+  if (role === "COORDINATOR") return pathname === ROUTES.events ? "unassigned" : "home";
   if (role === "COORDINATOR_LEAD") {
     if (pathname === "/calendar") return "calendar";
     if (pathname === "/assignments") return "assignments";
     return "queue";
   }
+  if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
   if (role !== "ORGANISER") return "home";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";

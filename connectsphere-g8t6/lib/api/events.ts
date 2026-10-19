@@ -70,7 +70,9 @@ export function getLeadAssignments(accessToken: string) {
 
 export function assignCoordinator(eventId: number, coordinatorId: number, accessToken: string) {
   return request<{ event: ApiEvent }>(`/api/events/${eventId}/coordinator`, accessToken, {
-    method: "POST",
+    // PATCH without expectedCoordinatorId is initial assignment for both roles.
+    // POST remains the Lead-only compatibility route.
+    method: "PATCH",
     body: JSON.stringify({ coordinatorId }),
   });
 }
