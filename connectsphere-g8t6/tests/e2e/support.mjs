@@ -20,6 +20,12 @@ export const makeDraft = (overrides = {}) => ({
   venuePreferences: [],
   equipmentRequirements: [],
   updatedAt: FIXED_SAVED_AT,
+  submittedAt: null,
+  coordinatorName: null,
+  isAssignedToCoordinator: false,
+  isOwner: true,
+  viewerRelationship: "OWNER",
+  permissions: { canEdit: true, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false },
   ...overrides,
 });
 
@@ -89,9 +95,11 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       return json({ message: "Draft saved successfully.", event: state.draft, savedAt: FIXED_SAVED_AT }, 201);
     }
 
+    if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
-      if (state.draft && Number(eventMatch[1]) === state.draft.eventId) return json({ event: state.draft });
+      const event = state.events.find(event => event.eventId === Number(eventMatch[1]));
+      if (event) return json({ event });
       return json({ error: "Event not found." }, 404);
     }
 
@@ -112,11 +120,13 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (submitMatch && method === "PUT") {
       const payload = request.postDataJSON();
       state.submitDraftRequests.push(payload);
+      if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
+      if (state.draft?.status !== "DRAFT") return json({ error: "Only draft requests can be changed or submitted.", code: "EVENT_NOT_DRAFT" }, 409);
       const missingAttendance = !payload.expectedAttendance;
       if (missingAttendance) {
         return json({ error: "Please fix the highlighted fields.", fields: { expectedAttendance: "Expected Attendance is required for submission." } }, 400);
       }
-      state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Submitted" });
+      state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = state.events.map((event) => event.eventId === state.draft.eventId ? state.draft : event);
       return json({ message: "Your event request has been submitted successfully.", event: state.draft });
     }
@@ -124,7 +134,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/events" && method === "POST") {
       const payload = request.postDataJSON();
       state.createEventRequests.push({ payload, headers: request.headers() });
-      const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Submitted" });
+      const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = [event, ...state.events];
       return json({ message: "Your event request has been submitted successfully.", event }, 201);
     }
