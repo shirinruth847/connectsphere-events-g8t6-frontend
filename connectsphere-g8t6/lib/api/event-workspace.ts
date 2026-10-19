@@ -48,6 +48,8 @@ export interface EventView {
   registrationCapacity: number | null;
   createdAt: string;
   updatedAt: string;
+  submittedAt?: string | null;
+  coordinatorName?: string | null;
   // Send back unchanged when saving; a save against an older version is refused.
   version: number;
   organisation: { organisationId: number; name: string } | null;

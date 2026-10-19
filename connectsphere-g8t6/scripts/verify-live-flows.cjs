@@ -63,7 +63,7 @@ async function main() {
     await page.getByRole('link',{name:'New Event',exact:false}).click();await complete(page,runId+' submitted request');
     assert(ids.size===0,'Next submitted before explicit Submit');
     const createRequest=page.waitForRequest(request=>request.url()===api+'/api/events'&&request.method()==='POST');
-    await page.getByRole('button',{name:'Submit Request',exact:true}).click();const submittedPayload=(await createRequest).postDataJSON();await page.getByText('Your event request has been submitted successfully.',{exact:true}).waitFor();await Promise.all(tracked);
+    await page.getByRole('button',{name:'Submit Request',exact:true}).click();const submittedPayload=(await createRequest).postDataJSON();await page.getByText(/^Your event request has been submitted successfully\. REQ-\d+ · Submitted\./).waitFor();await Promise.all(tracked);
     const submittedId=[...ids][0];assert(submittedId,'Missing submitted event');
     const row=check(await supabase.from('event').select('status,registration_capacity,coordinator_id,title,purpose,description,start_datetime,end_datetime,expected_attendance,preferred_layout_type,accessibility_needs').eq('event_id',submittedId).single());
     assert(row.status==='SUBMITTED'&&row.registration_capacity===30&&row.coordinator_id===null,'Incorrect submission state');
@@ -83,7 +83,7 @@ async function main() {
     await page.locator('#purpose').fill('');await page.getByRole('button',{name:'Save as Draft',exact:false}).click();await page.getByText('Draft saved successfully.',{exact:true}).waitFor();
     const cleared=check(await supabase.from('event').select('purpose,status').eq('event_id',draftId).single());assert(cleared.purpose===null&&cleared.status==='DRAFT','Cleared draft field did not persist');
     await page.goto(base+'/events/new?draft='+draftId);await complete(page,runId+' resumable draft');
-    const finalResponse=page.waitForResponse(r=>r.url()===api+`/api/events/${draftId}/submit`&&r.request().method()==='PUT');await page.getByRole('button',{name:'Submit Request',exact:true}).click();assert((await finalResponse).status()===200,'Saved draft submit failed');await page.getByText('Your event request has been submitted successfully.',{exact:true}).waitFor();
+    const finalResponse=page.waitForResponse(r=>r.url()===api+`/api/events/${draftId}/submit`&&r.request().method()==='PUT');await page.getByRole('button',{name:'Submit Request',exact:true}).click();assert((await finalResponse).status()===200,'Saved draft submit failed');await page.getByText(/^Your event request has been submitted successfully\. REQ-\d+ · Submitted\./).waitFor();
     record('SPM-37 save, exact resume, clear and submit',{eventId:draftId});
     await page.getByRole('link',{name:'New Event',exact:false}).click();await page.locator('#title').waitFor();await page.clock.install();await page.locator('#title').fill(runId+' idle autosave');
     const autoCreate=page.waitForResponse(r=>r.url()===api+'/api/events/drafts'&&r.request().method()==='POST');await page.clock.fastForward(30000);const autoDraft=await(await autoCreate).json();await Promise.all(tracked);const autoId=autoDraft.event.eventId;
