@@ -33,6 +33,20 @@ If hydration reports an extra `data-scribe-recorder-ready` attribute on
 use a browser profile with extensions disabled. This attribute is not rendered
 by the application. Do not suppress hydration diagnostics globally to hide it.
 
+## Authentication and access (SPM-32)
+
+- `/login` (`components/auth/login-form.tsx`) signs in with Supabase Auth via
+  the single client in `lib/supabase.ts`, then `currentUser()` in
+  `lib/session.ts` calls `GET /api/auth/me` for the trusted role. `/` redirects
+  to `/login`.
+- `postLoginPath` in `lib/auth.ts` sends the user to a safe, permitted `?next=`
+  path or to the role home. `safeNextPath` validates the normalised path, and
+  `canViewPath` denies any route not listed for the role.
+- Protected pages use `DashboardWorkspace`/`AuthGate`, which redirect to
+  `/login?next=…` without a verified session and re-check on Back/Forward.
+- Logout (`signOut` in `lib/session.ts`) calls `POST /api/auth/logout`, then
+  clears this device's Supabase session.
+
 ## Checks
 
 Team members: read [the shared UI workflow](docs/team-ui-workflow.md) before
