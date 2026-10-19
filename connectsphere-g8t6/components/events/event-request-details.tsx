@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { AlertBanner, buttonClasses, PageHeader, ReferenceIdTag, StatusChip } from "@/components/shared/primitives";
 import { CapacityBar } from "@/components/shared/capacity-bar";
 import { Icon } from "@/components/shared/icon";
@@ -9,6 +9,9 @@ import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { ClarificationPanel } from "@/components/events/workspace/clarification-panel";
+import { ClarificationResponseForm } from "@/components/events/workspace/clarification-response-form";
+import { openRound, useEventClarifications } from "@/components/events/workspace/use-event-clarifications";
 import {
   equipmentItems,
   registrationRows,
@@ -19,6 +22,7 @@ import {
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { eventStatusLabel } from "@/lib/events";
+import { canResubmit } from "@/lib/permissions/event-workspace";
 
 function Card({ labelledBy, children }: { labelledBy: string; children: ReactNode }) {
   return (
@@ -56,8 +60,18 @@ function AccessNotice({ event }: { event: EventView }) {
 }
 
 // The organiser's event view: the owner (draft or submitted) or a member of the
-// same organisation, who sees submitted requests read-only.
-export function EventRequestDetails({ event }: { event: EventView }) {
+// same organisation, who sees submitted requests read-only. While the request is
+// returned for clarification, the owner answers and resubmits here (SPM-41).
+export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
+  event: EventView;
+  onEventChange?: (event: EventView) => void;
+  onAccessChanged?: () => void;
+}) {
+  const [historyKey, setHistoryKey] = useState(0);
+  const [clarificationKey, setClarificationKey] = useState(0);
+  const [resubmitted, setResubmitted] = useState(false);
+  const clarifications = useEventClarifications(event.eventId, clarificationKey);
+  const responding = canResubmit(event.permissions);
   const isMember = event.viewerRelationship === "ORGANISATION_MEMBER";
   const label = eventStatusLabel(event);
   const attendance = event.expectedAttendance ?? 0;
@@ -93,10 +107,33 @@ export function EventRequestDetails({ event }: { event: EventView }) {
         )}
       </div>
 
-      <AccessNotice event={event} />
+      <div aria-live="polite" role="status">
+        {resubmitted ? (
+          <AlertBanner tone="success" title="Request resubmitted" live={false}>
+            Your coordinator has been notified and is reviewing your request again. The clarification request stays in the list below.
+          </AlertBanner>
+        ) : null}
+      </div>
+
+      {responding ? null : <AccessNotice event={event} />}
 
       <div className="grid items-start gap-5 xl:grid-cols-12">
         <div className="grid gap-5 xl:col-span-8">
+          {responding ? (
+            <ClarificationResponseForm
+              event={event}
+              question={openRound(clarifications.state)}
+              onResubmitted={(updated) => {
+                setResubmitted(true);
+                onEventChange?.(updated);
+                setHistoryKey((value) => value + 1);
+                setClarificationKey((value) => value + 1);
+              }}
+              onEventReplaced={(latest) => onEventChange?.(latest)}
+              onAccessChanged={() => onAccessChanged?.()}
+            />
+          ) : null}
+
           <Card labelledBy="about-heading">
             <SectionHeading id="about-heading" title="About this event" />
             <dl className="grid gap-3">
@@ -147,7 +184,10 @@ export function EventRequestDetails({ event }: { event: EventView }) {
               ]}
             />
           </Card>
-          <EventHistoryPanel event={event} refreshKey={0} />
+          {event.status !== "DRAFT" ? (
+            <ClarificationPanel eventId={event.eventId} state={clarifications.state} onRetry={clarifications.retry} />
+          ) : null}
+          <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
       </div>
     </div>

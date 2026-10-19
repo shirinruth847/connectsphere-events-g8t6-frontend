@@ -23,6 +23,10 @@ export interface EventPermissions {
   editableFields: string[];
   canViewDraftHistory: boolean;
   canViewStaffHistory: boolean;
+  // SPM-41. Sent by the backend once the request-clarification and resubmit
+  // routes exist; until then they are absent and the controls stay hidden.
+  canRequestClarification?: boolean;
+  canResubmit?: boolean;
 }
 
 export interface EventView {
@@ -146,6 +150,78 @@ export function getEventHistory(
   const query = new URLSearchParams({ limit: String(options.limit ?? 20) });
   if (options.cursor) query.set("cursor", options.cursor);
   return apiRequest<EventHistoryPage>(`/events/${eventId}/history?${query}`);
+}
+
+// ---------- SPM-41 clarification rounds ----------
+
+// Backend limit for the coordinator's question and the organiser's response.
+export const CLARIFICATION_TEXT_LIMIT = 2000;
+
+export interface ClarificationRound {
+  clarificationId: number;
+  round: number;
+  status: "OPEN" | "RESPONDED";
+  message: string;
+  requestedAt: string;
+  requestedBy: { userId: number; name: string | null };
+  // Null when the organiser answered by amending the event only.
+  response: string | null;
+  respondedAt: string | null;
+  respondedBy: { userId: number; name: string | null } | null;
+}
+
+// The submission fields an owner may amend while the event is returned
+// (registration settings and organisation are not among them).
+export interface ResubmitChanges {
+  title?: string;
+  purpose?: string | null;
+  description?: string | null;
+  startDatetime?: string | null;
+  endDatetime?: string | null;
+  expectedAttendance?: number | null;
+  preferredLayoutType?: string;
+  venuePreferences?: number[];
+  accessibilityNeeds?: string[];
+  equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
+}
+
+// GET /api/events/:id/clarifications — owner, same-organisation organisers and
+// the assigned coordinator; newest round first.
+export function getEventClarifications(eventId: number): Promise<{ clarifications: ClarificationRound[] }> {
+  return apiRequest<{ clarifications: ClarificationRound[] }>(`/events/${eventId}/clarifications`);
+}
+
+// POST /api/events/:id/clarifications — assigned coordinator, UNDER_REVIEW only.
+// Agreed contract; the backend route is added with the SPM-173 lifecycle engine.
+export async function requestClarification(
+  eventId: number,
+  message: string,
+  version: number,
+  idempotencyKey: string,
+): Promise<{ event: EventView; clarification: ClarificationRound }> {
+  const result = await apiRequest<{ event: RawEventView; clarification: ClarificationRound }>(`/events/${eventId}/clarifications`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ message, version }),
+  });
+  return { event: toEventView(result.event), clarification: result.clarification };
+}
+
+// POST /api/events/:id/resubmit — owner, AWAITING_CLARIFICATION only. Needs a
+// response, at least one changed field, or both. Agreed contract; the backend
+// route is added with the SPM-173 lifecycle engine.
+export async function resubmitEvent(
+  eventId: number,
+  body: { response?: string; changes?: ResubmitChanges },
+  version: number,
+  idempotencyKey: string,
+): Promise<{ event: EventView; clarification: ClarificationRound }> {
+  const result = await apiRequest<{ event: RawEventView; clarification: ClarificationRound }>(`/events/${eventId}/resubmit`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ ...body, version }),
+  });
+  return { event: toEventView(result.event), clarification: result.clarification };
 }
 
 // GET /api/events/assigned — COORDINATOR only; soonest event first.

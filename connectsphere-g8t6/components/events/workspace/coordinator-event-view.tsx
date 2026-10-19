@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { AlertBanner, PageHeader, ReferenceIdTag, SectionCard, StatusChip } from "@/components/shared/primitives";
+import { AlertBanner, Button, PageHeader, ReferenceIdTag, SectionCard, StatusChip } from "@/components/shared/primitives";
 import { CapacityBar } from "@/components/shared/capacity-bar";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
@@ -11,7 +11,10 @@ import { SectionHeading } from "@/components/shared/section-heading";
 import { statusPresentation } from "@/lib/events";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
-import { editableIdentityFields } from "@/lib/permissions/event-workspace";
+import { canRequestClarification, editableIdentityFields } from "@/lib/permissions/event-workspace";
+import { ClarificationPanel } from "./clarification-panel";
+import { RequestClarificationDialog } from "./request-clarification-dialog";
+import { useEventClarifications } from "./use-event-clarifications";
 import {
   equipmentItems,
   registrationRows,
@@ -45,12 +48,16 @@ function ReviewSection({ step, title, description, action, children }: {
 
 const significantPill = <PermissionPill tone="read-only">Change request only</PermissionPill>;
 
-// The assigned coordinator's review of one event (Figma 50:2842, trimmed to SPM-33:
-// the SLA clock, conflict matrix, overrides, sign-off matrix and message thread
-// belong to other tickets or are outside the baseline).
+// The assigned coordinator's review of one event (Figma 50:2842, trimmed to SPM-33
+// and SPM-41: the SLA clock, conflict matrix, overrides, sign-off matrix, other
+// action-bar actions and internal staff notes belong to other tickets or are
+// outside the baseline).
 export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: CoordinatorEventViewProps) {
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
+  const [clarificationKey, setClarificationKey] = useState(0);
+  const [requesting, setRequesting] = useState(false);
+  const clarifications = useEventClarifications(event.eventId, clarificationKey);
   const editable = editableIdentityFields(event.permissions);
   const statusLabel = statusPresentation(event.status).label;
   const attendance = event.expectedAttendance ?? 0;
@@ -66,7 +73,16 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         eyebrow="Event coordinator review"
         title={event.title || "Untitled request"}
         description={`Requested by ${event.organiser?.name ?? "the organiser"}${event.organisation ? ` · ${event.organisation.name}` : ""}`}
-        action={<StatusChip status={event.status} />}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusChip status={event.status} />
+            {canRequestClarification(event.permissions) ? (
+              <Button variant="secondary" onClick={() => setRequesting(true)}>
+                <Icon name="help" size={16} />Request Clarification
+              </Button>
+            ) : null}
+          </div>
+        }
       />
 
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -81,7 +97,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
 
       <div aria-live="polite" role="status">
         {notice ? (
-          <AlertBanner tone="success" title="Changes saved" live={false}>{notice}</AlertBanner>
+          <AlertBanner tone="success" title={notice.title} live={false}>{notice.message}</AlertBanner>
         ) : null}
       </div>
 
@@ -104,10 +120,10 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               onSaved={(saved, message) => {
                 onEventChange(saved);
                 setHistoryKey((value) => value + 1);
-                setNotice(`${message} The organiser is notified which fields changed.`);
+                setNotice({ title: "Changes saved", message: `${message} The organiser is notified which fields changed.` });
               }}
               onEventReplaced={(latest) => {
-                setNotice("");
+                setNotice(null);
                 onEventChange(latest);
                 setHistoryKey((value) => value + 1);
               }}
@@ -153,9 +169,26 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               ]}
             />
           </section>
+          <ClarificationPanel eventId={event.eventId} state={clarifications.state} onRetry={clarifications.retry} />
           <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
       </div>
+
+      {requesting ? (
+        <RequestClarificationDialog
+          event={event}
+          onClose={() => setRequesting(false)}
+          onRequested={(updated) => {
+            setRequesting(false);
+            onEventChange(updated);
+            setHistoryKey((value) => value + 1);
+            setClarificationKey((value) => value + 1);
+            setNotice({ title: "Clarification requested", message: "The organiser has been notified and can amend and resubmit the request. It stays assigned to you." });
+          }}
+          onEventReplaced={onEventChange}
+          onAccessChanged={onAccessChanged}
+        />
+      ) : null}
     </div>
   );
 }

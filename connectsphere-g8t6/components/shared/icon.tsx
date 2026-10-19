@@ -17,6 +17,8 @@ const PATHS = {
   edit: <><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
   lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
+  help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01" /></>,
+  forum: <><path d="M4 5h11v8H8l-4 3V5Z" /><path d="M15 9h5v10l-3-2.5h-7V13" /></>,
   warning: <><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" /></>,
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   "arrow-back": <path d="M19 12H5M11 6l-6 6 6 6" />,

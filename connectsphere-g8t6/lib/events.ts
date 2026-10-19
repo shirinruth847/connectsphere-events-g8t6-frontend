@@ -275,6 +275,45 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   equipmentRequirements: values.equipmentRequirements.map(item => ({ ...item })),
 });
 
+// SPM-41: fields an owner may amend while the event is returned for clarification.
+// Registration settings and organisation are not among them.
+export const AMENDABLE_FIELDS = [
+  "title",
+  "purpose",
+  "description",
+  "startDatetime",
+  "endDatetime",
+  "expectedAttendance",
+  "preferredLayoutType",
+  "venuePreferences",
+  "accessibilityNeeds",
+  "equipmentRequirements",
+] as const;
+export type AmendableField = (typeof AMENDABLE_FIELDS)[number];
+export type EventAmendments = Partial<Pick<EventRequestPayload, AmendableField>>;
+
+// Only the amendable fields whose submitted value differs from the event as loaded.
+export const amendedFields = (original: EventFormValues, current: EventFormValues): EventAmendments => {
+  const before = toPayload(original);
+  const after = toPayload(current);
+  const changes: EventAmendments = {};
+  for (const field of AMENDABLE_FIELDS) {
+    if (JSON.stringify(before[field]) !== JSON.stringify(after[field])) {
+      (changes as Record<string, unknown>)[field] = after[field];
+    }
+  }
+  return changes;
+};
+
+// A resubmission needs a written response, at least one amended field, or both.
+export const resubmissionProblem = (response: string, changes: EventAmendments, limit = 2000) => {
+  if (response.length > limit) return `Use ${limit.toLocaleString()} characters or fewer.`;
+  if (!response.trim() && Object.keys(changes).length === 0) {
+    return "Write a response or change at least one detail before resubmitting.";
+  }
+  return null;
+};
+
 export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
   const savedNeeds = Array.isArray(event.accessibilityNeeds)
     ? event.accessibilityNeeds
