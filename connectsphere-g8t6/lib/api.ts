@@ -7,10 +7,7 @@ function expireSession() {
   }
 }
 
-const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000").replace(
-  /\/$/,
-  "",
-);
+const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
 
 interface ApiErrorBody {
   error?: string;
@@ -25,7 +22,7 @@ export class ApiError extends Error {
   fields: Record<string, string>;
   status: number;
 
-  constructor(message: string, status: number, code = "REQUEST_FAILED", fields = {}) {
+  constructor(message: string, status: number, code = "REQUEST_FAILED", fields: Record<string, string> = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;

@@ -21,7 +21,9 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export function homeForRole(role: UserRole) {
-  return role === 'ATTENDEE' ? ROUTES.registrations : ROUTES.dashboard;
+  if (role === 'ATTENDEE') return ROUTES.registrations;
+  if (role === 'COORDINATOR' || role === 'VENUE_STAFF') return ROUTES.venues;
+  return ROUTES.dashboard;
 }
 
 export function safeNextPath(value: string | null): string | null {
@@ -29,7 +31,7 @@ export function safeNextPath(value: string | null): string | null {
   try {
     const base = 'https://connectsphere.invalid';
     const url = new URL(value, base);
-    const path = ${url.pathname};
+    const path = `${url.pathname}${url.search}`;
     return url.origin === base && !path.startsWith('//') ? path : null;
   } catch {
     return null;
@@ -51,5 +53,5 @@ export function postLoginPath(user: SessionUser, next: string | null) {
 }
 
 export function loginUrl(path: string) {
-  return ${ROUTES.login}?next=&reason=required;
+  return `${ROUTES.login}?next=${encodeURIComponent(path)}&reason=required`;
 }

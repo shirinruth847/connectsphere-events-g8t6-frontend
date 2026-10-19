@@ -12,15 +12,22 @@ export type Venue = {
   address: string;
   maxCapacity: number;
   operatingHours: string | null;
-  accessibilityFeatures: string | string[] | null;
+  accessibilityFeatures: string[] | null;
   setupTurnaroundMinutes: number | null;
   rooms: VenueRoom[];
+  // The only signal for the detail fields below: CURRENT (detail read),
+  // NOT_AVAILABLE (no detail recorded) or NOT_CHECKED (detail service down).
   detailStatus: "CURRENT" | "NOT_AVAILABLE" | "NOT_CHECKED";
   description: string | null;
-  facilities: string[] | string;
-  supportedLayouts: string[] | string;
+  facilities: string[] | null;
+  supportedLayouts: string[] | null;
   emergencyAccess: string | null;
-  knownRestrictions: string[] | string;
+  knownRestrictions: string[] | null;
 };
 
-export const getVenueCatalogue = () => apiRequest<{ venues: Venue[] }>("/venues");
+export type VenueCatalogue = {
+  venues: Venue[];
+  detailsAvailable: boolean;
+};
+
+export const getVenueCatalogue = () => apiRequest<VenueCatalogue>("/venues");
