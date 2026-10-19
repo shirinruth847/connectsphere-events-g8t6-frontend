@@ -91,22 +91,24 @@ export function AttendeeEventDiscovery() {
           </AlertBanner>
         ) : null}
 
-        {discovery.status === "ready" && discovery.events.length === 0 ? (
+        {discovery.status === "ready" && discovery.events.length === 0 && !discovery.nextCursor ? (
           <EmptyState
             title="No events to discover right now"
             description="There are no confirmed events open to attendees at the moment. Newly published events will be listed here, so check back later."
           />
         ) : null}
 
-        {discovery.status === "ready" && discovery.events.length > 0 ? (
+        {discovery.status === "ready" ? (
           <>
-            <ul className="flex flex-col gap-3" aria-labelledby="discovery-list-heading">
-              {discovery.events.map((event) => (
-                <li key={event.eventId}>
-                  <EventDiscoveryCard event={event} onViewDetails={openDetails} />
-                </li>
-              ))}
-            </ul>
+            {discovery.events.length > 0 ? (
+              <ul className="flex flex-col gap-3" aria-labelledby="discovery-list-heading">
+                {discovery.events.map((event) => (
+                  <li key={event.eventId}>
+                    <EventDiscoveryCard event={event} onViewDetails={openDetails} />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             {discovery.loadMoreError ? (
               <AlertBanner tone="error" title="Could not load more events">

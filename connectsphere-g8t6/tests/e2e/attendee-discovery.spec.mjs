@@ -131,6 +131,36 @@ test('[SPM-34 AC3/AC6] details modal shows the latest details and a disabled act
   await expect(page.getByRole('button', { name: 'View event details for SMU Tech Summit', exact: true })).toBeFocused();
 });
 
+test('[SPM-34 AC1/AC6] pagination and retry survive every loaded event becoming unavailable', async ({ page }) => {
+  const events = Array.from({ length: 10 }, (_, index) => makeEvent({ eventId: 201 + index, title: `Removed event ${index}` }));
+  const { requests } = await installDiscoveryMocks(page, {
+    pages: {
+      '': { events, nextCursor: 'page-2' },
+      'page-2': { events: [makeEvent({ eventId: 301, title: 'Still available' })], nextCursor: null },
+    },
+  });
+  await page.goto('/events');
+  await expect(page.getByRole('article')).toHaveCount(10);
+  for (const event of events) {
+    await page.getByRole('button', { name: `View event details for ${event.title}`, exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('This event is no longer available', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Close event details', exact: true }).click();
+    await expect(dialog).toBeHidden();
+  }
+  await expect(page.getByRole('article')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'No events to discover right now', exact: true })).toHaveCount(0);
+  await page.route('**/api/events/discovery?*', (route) => route.fulfill({
+    status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporarily unavailable' }),
+  }), { times: 1 });
+  await page.getByRole('button', { name: 'Load more events', exact: true }).click();
+  await expect(page.getByText('Could not load more events', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(card(page, 'Still available')).toBeVisible();
+  expect(requests.list).toEqual(['', 'page-2']);
+  await expect(page.getByText('You have reached the end of the list.', { exact: true })).toBeVisible();
+});
+
 test('[SPM-34 AC3] waitlist and notify actions are shown as unavailable', async ({ page }) => {
   const waitlist = makeEvent({ eventId: 106, title: 'Full Workshop', registrationAvailability: 'FULL_WAITLIST' });
   // Opens far in the future, so the browser clock always reads it as not yet open.
