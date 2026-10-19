@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EMPTY_EVENT_FORM, toPayload, formValuesFromEvent, validateEventStep, eventStatusLabel, statusPresentation } from '../lib/events.ts';
+import { EMPTY_EVENT_FORM, toPayload, formValuesFromEvent, validateEventStep, eventStatusLabel, statusPresentation, ORGANISER_LABEL_ORDER } from '../lib/events.ts';
 test('[SPM-37 Scenario 4] empty draft fields explicitly clear persisted values', () => {
  const payload = toPayload({...EMPTY_EVENT_FORM,title:'Only title'});
  for (const key of ['purpose','description','startDatetime','endDatetime','expectedAttendance','registrationCapacity']) assert.equal(payload[key],null,key);
@@ -20,5 +20,14 @@ test('[SPM-35 AC2 / SPM-37 Scenario 1] drafts allow incomplete fields; Next requ
  const values={...EMPTY_EVENT_FORM,title:'Title'};assert.deepEqual(validateEventStep(values,0,false),{});assert.ok(validateEventStep(values,0,true).purpose);assert.ok(validateEventStep(values,1,true).expectedAttendance);
 });
 test('[SPM-35 dashboard] use API labels and tolerate unknown states', () => {
- assert.equal(eventStatusLabel({status:'SUBMITTED',statusLabel:'Pending Approval'}),'Pending Approval');assert.ok(statusPresentation('APPROVED').border);
+ assert.equal(eventStatusLabel({status:'SUBMITTED',statusLabel:'Submitted'}),'Submitted');assert.ok(statusPresentation('APPROVED').border);
+});
+test('[Master 3.5] organiser fallbacks use the eight labels, never stored states', () => {
+ const expected={DRAFT:'Draft',SUBMITTED:'Submitted',UNDER_REVIEW:'Under Review',AWAITING_CLARIFICATION:'Under Review',PLANNING:'Approved & Planning',SAFETY_REVIEW:'Approved & Planning',CONFIRMED:'Confirmed',PREPARATION:'Confirmed',COMPLETED:'Completed',REJECTED:'Rejected',CANCELLED:'Cancelled'};
+ for (const [status,label] of Object.entries(expected)) {
+  assert.equal(eventStatusLabel({status}),label,status);
+  assert.equal(eventStatusLabel({status,statusLabel:status}),label,`${status} echoed by the API`);
+ }
+ assert.equal(statusPresentation('SAFETY_REVIEW').label,'Safety Review');
+ assert.deepEqual(ORGANISER_LABEL_ORDER,['Draft','Submitted','Under Review','Approved & Planning','Confirmed','Completed','Cancelled','Rejected']);
 });

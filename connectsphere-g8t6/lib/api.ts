@@ -24,13 +24,23 @@ export class ApiError extends Error {
   code: string;
   fields: Record<string, string>;
   status: number;
+  // The full error body, for responses that carry more than a message
+  // (e.g. a 409 EVENT_VERSION_CONFLICT includes the current event).
+  details: Record<string, unknown>;
 
-  constructor(message: string, status: number, code = "REQUEST_FAILED", fields = {}) {
+  constructor(
+    message: string,
+    status: number,
+    code = "REQUEST_FAILED",
+    fields: Record<string, string> = {},
+    details: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.fields = fields;
+    this.details = details;
   }
 }
 
@@ -71,6 +81,7 @@ export const apiRequest = async <T>(path: string, init: RequestInit = {}): Promi
       response.status,
       body.code,
       body.fields ?? body.errors,
+      body as Record<string, unknown>,
     );
   }
 

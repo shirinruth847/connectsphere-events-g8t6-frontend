@@ -116,7 +116,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       if (missingAttendance) {
         return json({ error: "Please fix the highlighted fields.", fields: { expectedAttendance: "Expected Attendance is required for submission." } }, 400);
       }
-      state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Pending Approval" });
+      state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Submitted" });
       state.events = state.events.map((event) => event.eventId === state.draft.eventId ? state.draft : event);
       return json({ message: "Your event request has been submitted successfully.", event: state.draft });
     }
@@ -124,7 +124,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/events" && method === "POST") {
       const payload = request.postDataJSON();
       state.createEventRequests.push({ payload, headers: request.headers() });
-      const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Pending Approval" });
+      const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Submitted" });
       state.events = [event, ...state.events];
       return json({ message: "Your event request has been submitted successfully.", event }, 201);
     }

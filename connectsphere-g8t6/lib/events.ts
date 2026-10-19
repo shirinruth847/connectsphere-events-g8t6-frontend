@@ -4,7 +4,9 @@ export const EVENT_STATUSES = [
   "UNDER_REVIEW",
   "AWAITING_CLARIFICATION",
   "PLANNING",
+  "SAFETY_REVIEW",
   "CONFIRMED",
+  "PREPARATION",
   "COMPLETED",
   "REJECTED",
   "CANCELLED",
@@ -90,6 +92,8 @@ export const ACCESSIBILITY_OPTIONS = [
   "Gender-neutral restroom proximity",
 ] as const;
 
+// Stored states (Master section 5.2) as staff see them. Organiser screens show
+// the backend's statusLabel instead (Master section 3.5); see eventStatusLabel.
 export const STATUS_PRESENTATION: Record<
   EventStatus,
   { label: string; chip: string; border: string }
@@ -100,7 +104,7 @@ export const STATUS_PRESENTATION: Record<
     border: "border-t-[#4B5563]",
   },
   SUBMITTED: {
-    label: "Pending Approval",
+    label: "Submitted",
     chip: "bg-[#EEF2FF] text-[#4338CA]",
     border: "border-t-[#4338CA]",
   },
@@ -110,7 +114,7 @@ export const STATUS_PRESENTATION: Record<
     border: "border-t-[#92400E]",
   },
   AWAITING_CLARIFICATION: {
-    label: "Under Review",
+    label: "Awaiting Clarification",
     chip: "bg-[#FEF3C7] text-[#92400E]",
     border: "border-t-[#92400E]",
   },
@@ -119,8 +123,18 @@ export const STATUS_PRESENTATION: Record<
     chip: "bg-[#E0F2FE] text-[#0369A1]",
     border: "border-t-[#0369A1]",
   },
+  SAFETY_REVIEW: {
+    label: "Safety Review",
+    chip: "bg-[#E0F2FE] text-[#0369A1]",
+    border: "border-t-[#0369A1]",
+  },
   CONFIRMED: {
     label: "Confirmed",
+    chip: "bg-[#DCFCE7] text-[#166534]",
+    border: "border-t-[#166534]",
+  },
+  PREPARATION: {
+    label: "Preparation",
     chip: "bg-[#DCFCE7] text-[#166534]",
     border: "border-t-[#166534]",
   },
@@ -143,7 +157,27 @@ export const STATUS_PRESENTATION: Record<
 
 export const displayEventStatus = (status: EventStatus, assigned = false): EventStatus => { void assigned; return status; };
 export const statusPresentation = (status: string) => STATUS_PRESENTATION[status as EventStatus] ?? { label: status.replaceAll("_", " "), chip: "bg-slate-100 text-slate-700", border: "border-t-slate-400" };
-export const eventStatusLabel = (event: Pick<EventListItem, "status" | "statusLabel">) => event.statusLabel || statusPresentation(event.status).label;
+
+// The eight organiser labels (Master section 3.5). The backend computes them;
+// this copy is only the fallback for a response without a usable label.
+export const ORGANISER_STATUS_LABELS: Record<EventStatus, string> = {
+  DRAFT: "Draft",
+  SUBMITTED: "Submitted",
+  UNDER_REVIEW: "Under Review",
+  AWAITING_CLARIFICATION: "Under Review",
+  PLANNING: "Approved & Planning",
+  SAFETY_REVIEW: "Approved & Planning",
+  CONFIRMED: "Confirmed",
+  PREPARATION: "Confirmed",
+  COMPLETED: "Completed",
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
+};
+// A label equal to the raw state code means the backend had none to give.
+export const eventStatusLabel = (event: { status: string; statusLabel?: string | null }) =>
+  (event.statusLabel && event.statusLabel !== event.status ? event.statusLabel : null)
+  ?? ORGANISER_STATUS_LABELS[event.status as EventStatus]
+  ?? statusPresentation(event.status).label;
 
 export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
 export function validateEventStep(values: EventFormValues, index: number, required = false, now = Date.now()) {
@@ -182,11 +216,16 @@ export const EVENT_STATUS_ORDER: EventStatus[] = [
   "UNDER_REVIEW",
   "AWAITING_CLARIFICATION",
   "PLANNING",
+  "SAFETY_REVIEW",
   "CONFIRMED",
+  "PREPARATION",
   "COMPLETED",
   "CANCELLED",
   "REJECTED",
 ];
+
+// Organiser labels in lifecycle order, each once, for the organiser's status filter.
+export const ORGANISER_LABEL_ORDER = [...new Set(EVENT_STATUS_ORDER.map(status => ORGANISER_STATUS_LABELS[status]))];
 
 export const EMPTY_EVENT_FORM: EventFormValues = {
   title: "",
