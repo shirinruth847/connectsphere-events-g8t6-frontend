@@ -7,9 +7,10 @@ test("[SPM-35 TC-001] submits a valid event and shows its request ID and API sta
   await enterCompleteRequestThroughSubmit(page);
   await page.getByRole("button", { name: /Submit request/i }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\?submitted=1&requestId=REQ-000600/);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByText("REQ-000600", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tech Conference 2026" }).first()).toBeVisible();
-  await expect(page.getByText("Pending Approval").first()).toBeVisible();
+  await expect(page.locator("article").getByText("Submitted", { exact: true })).toBeVisible();
   expect(state.createEventRequests).toHaveLength(1);
   expect(state.createEventRequests[0].payload.expectedAttendance).toBe(150);
   expect(state.createEventRequests[0].payload.preferredLayoutType).toBe("NO_PREFERENCE");
@@ -32,8 +33,14 @@ test("[SPM-35 TC-003] rejects a start date 24 hours away with the 48-hour valida
   const state = await installConnectSphereMocks(page);
   await page.clock.setFixedTime(new Date("2026-10-13T12:00:00"));
   await page.goto("/events/create");
-  await enterCompleteRequestThroughSubmit(page, { startHours: 24 });
-  await page.getByRole("button", { name: /Submit request/i }).click();
+  await page.getByLabel("Event Title").fill("Too soon event");
+  await page.getByLabel("Event Purpose").fill("Test scheduling validation");
+  await page.getByLabel("Executive Abstract & Event Scope").fill("A request starting within 48 hours.");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByLabel("Primary Proposed Date").fill("2026-10-14T12:00");
+  await page.getByLabel("Event End Date & Time").fill("2026-10-14T14:00");
+  await page.getByLabel("Targeted In-Person Headcount").fill("150");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 
   await expect(page.getByText("Event date must be at least 48 hours in advance.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Scheduling & Attendance Estimates" })).toBeVisible();
@@ -45,8 +52,8 @@ test("[SPM-35 TC-004] redirects a logged-out visitor from /events/create to logi
   await installConnectSphereMocks(page, { authenticated: false });
   await page.goto("/events/create");
 
-  await expect(page).toHaveURL(/\/login\?next=%2Fevents%2Fcreate&reason=login-required/);
-  await expect(page.getByText("Please log in to access this page.")).toBeVisible();
+  await expect(page).toHaveURL(/\/login\?next=%2Fevents%2Fcreate&reason=required/);
+  await expect(page.getByText("Please log in first to continue.")).toBeVisible();
   await attachScreenshot(testInfo, page, "SPM-35-TC-004-pass");
 });
 
@@ -57,7 +64,7 @@ test("[SPM-35 boundary] permits an event starting exactly 48 hours from now", as
   await enterCompleteRequestThroughSubmit(page, { startHours: 48 });
   await page.getByRole("button", { name: /Submit request/i }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\?submitted=1/);
+  await expect(page).toHaveURL(/\/dashboard$/);
   expect(state.createEventRequests).toHaveLength(1);
   await attachScreenshot(testInfo, page, "SPM-35-48-hour-boundary-pass");
 });

@@ -1,0 +1,33 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { EMPTY_EVENT_FORM, toPayload, formValuesFromEvent, validateEventStep, eventStatusLabel, statusPresentation, ORGANISER_LABEL_ORDER } from '../lib/events.ts';
+test('[SPM-37 Scenario 4] empty draft fields explicitly clear persisted values', () => {
+ const payload = toPayload({...EMPTY_EVENT_FORM,title:'Only title'});
+ for (const key of ['purpose','description','startDatetime','endDatetime','expectedAttendance','registrationCapacity']) assert.equal(payload[key],null,key);
+ assert.deepEqual(payload.accessibilityNeeds,[]);
+});
+test('[SPM-35 AC1 / SPM-37 Scenario 4] preserve venue, layout and equipment on resume', () => {
+ const event={title:'Saved',status:'DRAFT',preferredLayoutType:'THEATRE',venuePreferences:[4,2],equipmentRequirements:[{equipmentId:8,quantity:3}],accessibilityNeeds:['Custom note']};
+ const payload=toPayload(formValuesFromEvent(event));
+ assert.equal(payload.preferredLayoutType,'THEATRE'); assert.deepEqual(payload.venuePreferences,[4,2]);assert.deepEqual(payload.equipmentRequirements,event.equipmentRequirements);assert.deepEqual(payload.accessibilityNeeds,['Custom note']);
+});
+test('[SPM-35 TC-003] exactly 48 hours is valid; earlier is rejected', () => {
+ const now=Date.parse('2027-01-01T10:00:00Z');const values={...EMPTY_EVENT_FORM,startDatetime:'2027-01-03T10:00:00Z',endDatetime:'2027-01-03T12:00:00Z',expectedAttendance:'1'};
+ assert.deepEqual(validateEventStep(values,1,true,now),{});
+ assert.match(validateEventStep({...values,startDatetime:'2027-01-03T09:59:59Z'},1,true,now).startDatetime,/48 hours/);
+});
+test('[SPM-35 AC2 / SPM-37 Scenario 1] drafts allow incomplete fields; Next requires them', () => {
+ const values={...EMPTY_EVENT_FORM,title:'Title'};assert.deepEqual(validateEventStep(values,0,false),{});assert.ok(validateEventStep(values,0,true).purpose);assert.ok(validateEventStep(values,1,true).expectedAttendance);
+});
+test('[SPM-35 dashboard] use API labels and tolerate unknown states', () => {
+ assert.equal(eventStatusLabel({status:'SUBMITTED',statusLabel:'Submitted'}),'Submitted');assert.ok(statusPresentation('APPROVED').border);
+});
+test('[Master 3.5] organiser fallbacks use the eight labels, never stored states', () => {
+ const expected={DRAFT:'Draft',SUBMITTED:'Submitted',UNDER_REVIEW:'Under Review',AWAITING_CLARIFICATION:'Under Review',PLANNING:'Approved & Planning',SAFETY_REVIEW:'Approved & Planning',CONFIRMED:'Confirmed',PREPARATION:'Confirmed',COMPLETED:'Completed',REJECTED:'Rejected',CANCELLED:'Cancelled'};
+ for (const [status,label] of Object.entries(expected)) {
+  assert.equal(eventStatusLabel({status}),label,status);
+  assert.equal(eventStatusLabel({status,statusLabel:status}),label,`${status} echoed by the API`);
+ }
+ assert.equal(statusPresentation('SAFETY_REVIEW').label,'Safety Review');
+ assert.deepEqual(ORGANISER_LABEL_ORDER,['Draft','Submitted','Under Review','Approved & Planning','Confirmed','Completed','Cancelled','Rejected']);
+});

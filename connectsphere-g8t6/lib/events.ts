@@ -4,7 +4,9 @@ export const EVENT_STATUSES = [
   "UNDER_REVIEW",
   "AWAITING_CLARIFICATION",
   "PLANNING",
+  "SAFETY_REVIEW",
   "CONFIRMED",
+  "PREPARATION",
   "COMPLETED",
   "REJECTED",
   "CANCELLED",
@@ -63,19 +65,22 @@ export interface EventFormValues {
   accessibilityNotes: string;
   isRegistrationEnabled: boolean;
   registrationCapacity: string;
+  preferredLayoutType: string;
+  venuePreferences: number[];
+  equipmentRequirements: Array<{ equipmentId: number; quantity: number }>;
 }
 
 export interface EventRequestPayload {
   title: string;
-  purpose?: string;
-  description?: string;
-  startDatetime?: string;
-  endDatetime?: string;
-  expectedAttendance?: number;
-  preferredLayoutType: "NO_PREFERENCE";
-  accessibilityNeeds?: string[];
+  purpose: string | null;
+  description: string | null;
+  startDatetime: string | null;
+  endDatetime: string | null;
+  expectedAttendance: number | null;
+  preferredLayoutType: string;
+  accessibilityNeeds: string[];
   isRegistrationEnabled: boolean;
-  registrationCapacity?: number;
+  registrationCapacity: number | null;
   venuePreferences: number[];
   equipmentRequirements: Array<{ equipmentId: number; quantity: number }>;
 }
@@ -87,6 +92,8 @@ export const ACCESSIBILITY_OPTIONS = [
   "Gender-neutral restroom proximity",
 ] as const;
 
+// Stored states (Master section 5.2) as staff see them. Organiser screens show
+// the backend's statusLabel instead (Master section 3.5); see eventStatusLabel.
 export const STATUS_PRESENTATION: Record<
   EventStatus,
   { label: string; chip: string; border: string }
@@ -107,17 +114,27 @@ export const STATUS_PRESENTATION: Record<
     border: "border-t-[#92400E]",
   },
   AWAITING_CLARIFICATION: {
-    label: "Under Review",
+    label: "Awaiting Clarification",
     chip: "bg-[#FEF3C7] text-[#92400E]",
     border: "border-t-[#92400E]",
   },
   PLANNING: {
-    label: "Approved & Planning",
+    label: "Planning",
+    chip: "bg-[#E0F2FE] text-[#0369A1]",
+    border: "border-t-[#0369A1]",
+  },
+  SAFETY_REVIEW: {
+    label: "Safety Review",
     chip: "bg-[#E0F2FE] text-[#0369A1]",
     border: "border-t-[#0369A1]",
   },
   CONFIRMED: {
     label: "Confirmed",
+    chip: "bg-[#DCFCE7] text-[#166534]",
+    border: "border-t-[#166534]",
+  },
+  PREPARATION: {
+    label: "Preparation",
     chip: "bg-[#DCFCE7] text-[#166534]",
     border: "border-t-[#166534]",
   },
@@ -138,56 +155,60 @@ export const STATUS_PRESENTATION: Record<
   },
 };
 
-export const displayEventStatus = (status: EventStatus): EventStatus =>
-  status === "AWAITING_CLARIFICATION" ? "UNDER_REVIEW" : status;
+export const displayEventStatus = (status: EventStatus, assigned = false): EventStatus => { void assigned; return status; };
+export const statusPresentation = (status: string) => STATUS_PRESENTATION[status as EventStatus] ?? { label: status.replaceAll("_", " "), chip: "bg-slate-100 text-slate-700", border: "border-t-slate-400" };
 
-export const eventStatusLabel = (event: Pick<EventListItem, "status" | "statusLabel">) =>
-  event.statusLabel || STATUS_PRESENTATION[displayEventStatus(event.status)].label;
+// The eight organiser labels (Master section 3.5). The backend computes them;
+// this copy is only the fallback for a response without a usable label.
+export const ORGANISER_STATUS_LABELS: Record<EventStatus, string> = {
+  DRAFT: "Draft",
+  SUBMITTED: "Submitted",
+  UNDER_REVIEW: "Under Review",
+  AWAITING_CLARIFICATION: "Under Review",
+  PLANNING: "Approved & Planning",
+  SAFETY_REVIEW: "Approved & Planning",
+  CONFIRMED: "Confirmed",
+  PREPARATION: "Confirmed",
+  COMPLETED: "Completed",
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
+};
+// A label equal to the raw state code means the backend had none to give.
+export const eventStatusLabel = (event: { status: string; statusLabel?: string | null }) =>
+  (event.statusLabel && event.statusLabel !== event.status ? event.statusLabel : null)
+  ?? ORGANISER_STATUS_LABELS[event.status as EventStatus]
+  ?? statusPresentation(event.status).label;
 
-export const validateEventStep = (values: EventFormValues, index: number, requireStepFields = false) => {
+export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
+export function validateEventStep(values: EventFormValues, index: number, required = false, now = Date.now()) {
   const errors: Record<string, string> = {};
   if (index === 0) {
     if (!values.title.trim()) errors.title = "Event Title is required.";
-    if (values.title.trim().length > 200) errors.title = "The title must be 200 characters or fewer.";
-    if (requireStepFields && !values.purpose.trim()) errors.purpose = "Enter the event purpose.";
-    if (values.purpose.length > 2000) errors.purpose = "Purpose must be 2,000 characters or fewer.";
-    if (requireStepFields && !values.description.trim()) errors.description = "Enter an event description.";
-    if (values.description.length > 5000) errors.description = "Description must be 5,000 characters or fewer.";
+    if (values.title.trim().length > 200) errors.title = "Event Title must be 200 characters or fewer.";
+    if (required && !values.purpose.trim()) errors.purpose = "Event Purpose is required.";
+    if (values.purpose.trim().length > 2000) errors.purpose = "Event Purpose must be 2,000 characters or fewer.";
+    if (required && !values.description.trim()) errors.description = "Event Description is required.";
+    if (values.description.trim().length > 5000) errors.description = "Event Description must be 5,000 characters or fewer.";
   }
   if (index === 1) {
-    if (requireStepFields && !values.startDatetime) errors.startDatetime = "Choose a start date and time.";
-    if (requireStepFields && !values.endDatetime) errors.endDatetime = "Choose an end date and time.";
-    if (values.startDatetime && values.endDatetime && new Date(values.endDatetime) <= new Date(values.startDatetime)) errors.endDatetime = "End time must be after the start time.";
-    if (requireStepFields && !values.expectedAttendance.trim()) errors.expectedAttendance = "Expected Attendance is required for submission.";
-    if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1)) errors.expectedAttendance = "Enter a whole number greater than zero.";
+    const start = Date.parse(values.startDatetime); const end = Date.parse(values.endDatetime);
+    if (required && !values.startDatetime) errors.startDatetime = "Event start date and time is required.";
+    else if (values.startDatetime && !Number.isFinite(start)) errors.startDatetime = "Please enter a valid date and time.";
+    else if (required && start < now + 48 * 60 * 60 * 1000) errors.startDatetime = "Event date must be at least 48 hours in advance.";
+    if (required && !values.endDatetime) errors.endDatetime = "Event end date and time is required.";
+    else if (values.endDatetime && !Number.isFinite(end)) errors.endDatetime = "Please enter a valid date and time.";
+    else if (Number.isFinite(start) && end <= start) errors.endDatetime = "End time must be after start time.";
+    if (required && !values.expectedAttendance.trim()) errors.expectedAttendance = "Expected Attendance is required for submission";
+    else if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1 || Number(values.expectedAttendance) > 2147483647)) errors.expectedAttendance = "Expected Attendance must be a positive whole number.";
   }
-  if (index === 3 && values.accessibilityNotes.length > 200) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
-  if (index === 5 && values.isRegistrationEnabled && requireStepFields && !values.registrationCapacity.trim()) errors.registrationCapacity = "Enter a registration capacity.";
-  if (index === 5 && values.isRegistrationEnabled && values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1)) errors.registrationCapacity = "Enter a whole number greater than zero.";
+  if (index === 2 && required && !values.preferredLayoutType) errors.preferredLayoutType = "Preferred layout is required.";
+  if (index === 3 && values.accessibilityNotes.split("\n").some(line => line.length > 200)) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
+  if (index === 5) {
+    if (required && values.isRegistrationEnabled && !values.registrationCapacity.trim()) errors.registrationCapacity = "Registration capacity is required when registration is enabled.";
+    else if (values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1 || Number(values.registrationCapacity) > 2147483647)) errors.registrationCapacity = "Registration capacity must be a positive whole number.";
+  }
   return errors;
-};
-
-export const submitEventRequest = async (
-  request: (path: string, init?: RequestInit) => Promise<unknown>,
-  eventId: number | null,
-  payload: EventRequestPayload,
-  idempotencyKey: string,
-) => {
-  const body = JSON.stringify(payload);
-  if (eventId) {
-    await request(`/events/${eventId}/draft`, {
-      method: "PUT",
-      body: JSON.stringify({ ...payload, isAutoSave: false }),
-    });
-    return request(`/events/${eventId}/submit`, { method: "PUT", body });
-  }
-
-  return request("/events", {
-    method: "POST",
-    headers: { "Idempotency-Key": idempotencyKey },
-    body,
-  });
-};
+}
 
 export const EVENT_STATUS_ORDER: EventStatus[] = [
   "DRAFT",
@@ -195,11 +216,16 @@ export const EVENT_STATUS_ORDER: EventStatus[] = [
   "UNDER_REVIEW",
   "AWAITING_CLARIFICATION",
   "PLANNING",
+  "SAFETY_REVIEW",
   "CONFIRMED",
+  "PREPARATION",
   "COMPLETED",
   "CANCELLED",
   "REJECTED",
 ];
+
+// Organiser labels in lifecycle order, each once, for the organiser's status filter.
+export const ORGANISER_LABEL_ORDER = [...new Set(EVENT_STATUS_ORDER.map(status => ORGANISER_STATUS_LABELS[status]))];
 
 export const EMPTY_EVENT_FORM: EventFormValues = {
   title: "",
@@ -212,6 +238,9 @@ export const EMPTY_EVENT_FORM: EventFormValues = {
   accessibilityNotes: "",
   isRegistrationEnabled: false,
   registrationCapacity: "",
+  preferredLayoutType: "NO_PREFERENCE",
+  venuePreferences: [],
+  equipmentRequirements: [],
 };
 
 export const toLocalDateTimeInput = (value?: string | null) => {
@@ -228,35 +257,20 @@ export const localDateTimeToIso = (value: string) => {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 };
 
-export const toPayload = (values: EventFormValues): EventRequestPayload => {
-  const accessibilityNeeds = [
-    ...values.accessibilityNeeds,
-    ...(values.accessibilityNotes.trim() ? [values.accessibilityNotes.trim()] : []),
-  ];
-
-  return {
-    title: values.title.trim(),
-    ...(values.purpose.trim() ? { purpose: values.purpose.trim() } : {}),
-    ...(values.description.trim() ? { description: values.description.trim() } : {}),
-    ...(localDateTimeToIso(values.startDatetime)
-      ? { startDatetime: localDateTimeToIso(values.startDatetime) }
-      : {}),
-    ...(localDateTimeToIso(values.endDatetime)
-      ? { endDatetime: localDateTimeToIso(values.endDatetime) }
-      : {}),
-    ...(values.expectedAttendance.trim()
-      ? { expectedAttendance: Number(values.expectedAttendance) }
-      : {}),
-    preferredLayoutType: "NO_PREFERENCE",
-    ...(accessibilityNeeds.length ? { accessibilityNeeds } : {}),
-    isRegistrationEnabled: values.isRegistrationEnabled,
-    ...(values.isRegistrationEnabled && values.registrationCapacity.trim()
-      ? { registrationCapacity: Number(values.registrationCapacity) }
-      : {}),
-    venuePreferences: [],
-    equipmentRequirements: [],
-  };
-};
+export const toPayload = (values: EventFormValues): EventRequestPayload => ({
+  title: values.title.trim(),
+  purpose: values.purpose.trim() || null,
+  description: values.description.trim() || null,
+  startDatetime: localDateTimeToIso(values.startDatetime) ?? null,
+  endDatetime: localDateTimeToIso(values.endDatetime) ?? null,
+  expectedAttendance: values.expectedAttendance.trim() ? Number(values.expectedAttendance) : null,
+  preferredLayoutType: values.preferredLayoutType,
+  accessibilityNeeds: [...values.accessibilityNeeds, ...values.accessibilityNotes.split("\n").map(line => line.trim()).filter(Boolean)],
+  isRegistrationEnabled: values.isRegistrationEnabled,
+  registrationCapacity: values.isRegistrationEnabled && values.registrationCapacity.trim() ? Number(values.registrationCapacity) : null,
+  venuePreferences: [...values.venuePreferences],
+  equipmentRequirements: values.equipmentRequirements.map(item => ({ ...item })),
+});
 
 export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
   const savedNeeds = Array.isArray(event.accessibilityNeeds)
@@ -282,6 +296,9 @@ export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
     accessibilityNotes: notes.join("\n"),
     isRegistrationEnabled: event.isRegistrationEnabled ?? false,
     registrationCapacity: event.registrationCapacity?.toString() ?? "",
+    preferredLayoutType: event.preferredLayoutType ?? "NO_PREFERENCE",
+    venuePreferences: event.venuePreferences ?? [],
+    equipmentRequirements: event.equipmentRequirements ?? [],
   };
 };
 
