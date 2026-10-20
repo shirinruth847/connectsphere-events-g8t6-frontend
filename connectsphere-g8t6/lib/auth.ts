@@ -7,6 +7,8 @@ export const ROUTES = {
   dashboard: "/dashboard",
   registrations: "/my-registrations",
   events: "/events",
+  assignments: "/assignments",
+  calendar: "/calendar",
   newEvent: "/events/new",
   createEvent: "/events/create",
   drafts: "/dashboard?status=DRAFT#my-drafts",

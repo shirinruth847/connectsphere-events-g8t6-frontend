@@ -22,6 +22,24 @@ export type CoordinatorAvailability = {
   events: ApiEvent[];
 };
 
+export type LeadAssignment = ApiEvent & {
+  coordinatorId: number;
+  coordinatorName: string;
+  supervisingLeadId: number | null;
+  hasScheduleConflict: boolean;
+};
+
+export function getLeadAssignments() {
+  return apiRequest<{ assignments: LeadAssignment[] }>("/events/assignments");
+}
+
+export function reassignCoordinator(eventId: number, coordinatorId: number, expectedCoordinatorId: number) {
+  return apiRequest<{ event: { eventId: number; coordinatorId: number }; coordinator: { coordinatorId: number; name: string } }>(`/events/${eventId}/coordinator`, {
+    method: "PATCH",
+    body: JSON.stringify({ coordinatorId, expectedCoordinatorId }),
+  });
+}
+
 export function getUnassignedEvents() {
   return apiRequest<{ events: ApiEvent[] }>("/events/unassigned");
 }

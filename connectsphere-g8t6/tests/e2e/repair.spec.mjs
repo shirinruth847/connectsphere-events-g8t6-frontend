@@ -67,7 +67,7 @@ test('[SPM-174] Lead login opens the unassigned queue and can navigate to calend
  await page.locator('#password').fill('Valid-password9');
  await page.getByRole('button',{name:'Sign in',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
- await expect(page.getByText('Unassigned lead queue event',{exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Unassigned lead queue event',exact:true})).toBeVisible();
  const expectedSubmittedAt = await page.evaluate(() => new Date('2026-10-20T08:30:00.000Z').toLocaleString());
  await expect(page.locator('.submitted')).toHaveText(`Submitted ${expectedSubmittedAt}`);
  await expect(page.getByText('Purpose: Community outreach',{exact:true})).toBeVisible();
@@ -81,7 +81,7 @@ test('[SPM-174] Lead login opens the unassigned queue and can navigate to calend
  await expect(page.getByRole('button',{name:/20 Test Coordinator has an event/})).toBeVisible();
  await navigation.getByRole('link',{name:'Assignments',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Assignments',exact:true})).toBeVisible();
- await expect(page.getByText('Covered in later scope',{exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'No active assignments',exact:true})).toBeVisible();
 });
 
 test('[SPM-174] the unassigned queue remains available when coordinator calendar data fails', async ({page}) => {
@@ -90,7 +90,7 @@ test('[SPM-174] the unassigned queue remains available when coordinator calendar
  state.failure={path:'/api/events/coordinator-availability',status:500,body:{error:'Calendar service unavailable.'}};
  await page.goto('/events');
  await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
- await expect(page.getByText('Unassigned lead queue event',{exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Unassigned lead queue event',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Calendar',exact:true}).click();
  await expect(page.locator('.calendar-panel').getByRole('alert')).toContainText('Availability unavailable');
  await expect(page.getByText('No coordinators with events to display.',{exact:true})).toBeVisible();

@@ -42,6 +42,9 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     failure: null,
     delay: 0,
     requestLog: [],
+    assignments: [],
+    queueEvents: null,
+    coordinatorChanges: [],
     coordinators: [{ coordinatorId: 21, name: "Test Coordinator", events: [{ eventId: 72, requestId: "REQ-000072", status: "CONFIRMED", title: "Coordinator availability event", startDatetime: "2026-10-20T12:00:00.000Z", endDatetime: "2026-10-20T13:00:00.000Z", expectedAttendance: 80, organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-02T09:00:00.000Z" }] }],
   };
 
@@ -82,7 +85,30 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/auth/me") return state.revoked ? json({ error: "Please log in to continue." }, 401) : json({ user: { user_id: 11, name: "Test User", email: "user@example.com", role: state.role } });
     if (pathname === "/api/auth/logout") { state.revoked = true; return route.fulfill({ status: 204 }); }
     if (pathname === "/api/events/assigned") return json({ events: [{ eventId: 42, title: "Assigned coordinator event", status: "UNDER_REVIEW" }] });
-    if (pathname === "/api/events/unassigned") return json({ events: [{ eventId: 71, requestId: "REQ-000071", status: "SUBMITTED", title: "Unassigned lead queue event", purpose: "Community outreach", startDatetime: "2026-10-20T09:00:00.000Z", endDatetime: "2026-10-20T11:00:00.000Z", expectedAttendance: 120, venuePreferences: [1], equipmentRequirements: [{ equipmentId: 4, quantity: 2 }], organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-01T09:00:00.000Z", submittedAt: "2026-10-20T08:30:00.000Z" }] });
+    if (pathname === "/api/events/unassigned") {
+      if (state.queueEvents === null) state.queueEvents = { events: [{ eventId: 71, requestId: "REQ-000071", status: "SUBMITTED", title: "Unassigned lead queue event", purpose: "Community outreach", startDatetime: "2026-10-20T09:00:00.000Z", endDatetime: "2026-10-20T11:00:00.000Z", expectedAttendance: 120, venuePreferences: [1], equipmentRequirements: [{ equipmentId: 4, quantity: 2 }], organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-01T09:00:00.000Z", submittedAt: "2026-10-20T08:30:00.000Z" }] }.events;
+      return json({ events: state.queueEvents });
+    }
+    if (pathname === "/api/events/assignments") return json({ assignments: state.assignments });
+    const coordinatorChange = pathname.match(/^\/api\/events\/(\d+)\/coordinator$/);
+    if (coordinatorChange && method === "PATCH") {
+      const payload = request.postDataJSON();
+      state.coordinatorChanges.push(payload);
+      if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
+      const id = Number(coordinatorChange[1]);
+      const reassign = payload.expectedCoordinatorId !== undefined;
+      const event = (reassign ? state.assignments : state.queueEvents || []).find(event => event.eventId === id);
+      if (!event) return json({ error: "Event not found.", code: "EVENT_NOT_FOUND" }, 404);
+      if (reassign && event.coordinatorId !== payload.expectedCoordinatorId) return json({ error: "Assignment changed. Refresh and try again.", code: "ASSIGNMENT_CHANGED" }, 409);
+      const target = state.coordinators.find(coordinator => coordinator.coordinatorId === payload.coordinatorId);
+      if (!target) return json({ error: "Invalid coordinator.", code: "INVALID_COORDINATOR" }, 409);
+      for (const coordinator of state.coordinators) coordinator.events = coordinator.events.filter(other => other.eventId !== id);
+      const assigned = { ...event, status: reassign ? event.status : "UNDER_REVIEW", coordinatorId: target.coordinatorId, coordinatorName: target.name, supervisingLeadId: 11, hasScheduleConflict: false };
+      state.assignments = [...state.assignments.filter(other => other.eventId !== id), assigned];
+      state.queueEvents = (state.queueEvents || []).filter(other => other.eventId !== id);
+      target.events.push(assigned);
+      return json({ event: assigned, coordinator: { coordinatorId: target.coordinatorId, name: target.name } });
+    }
     if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });

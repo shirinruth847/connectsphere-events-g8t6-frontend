@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
+import { shiftCalendarMonth } from "@/lib/coordinator-availability";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
 
@@ -146,9 +147,7 @@ function addWeeks(date: Date, weeks: number): Date {
 }
 
 function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
+  return shiftCalendarMonth(date, months);
 }
 
 function addYears(date: Date, years: number): Date {

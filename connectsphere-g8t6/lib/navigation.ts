@@ -19,8 +19,8 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   COORDINATOR_LEAD: [
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
     { id: "unassigned", title: "Unassigned Queue", icon: "event", href: "/events" },
-    { id: "assignments", title: "Assignments", icon: "assignments", href: "/assignments" },
-    { id: "calendar", title: "Calendar", icon: "calendar", href: "/calendar" },
+    { id: "assignments", title: "Assignments", icon: "assignments", href: ROUTES.assignments },
+    { id: "calendar", title: "Calendar", icon: "calendar", href: ROUTES.calendar },
   ],
   VENUE_STAFF: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
