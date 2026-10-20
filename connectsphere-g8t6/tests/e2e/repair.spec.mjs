@@ -95,6 +95,54 @@ test('[SPM-174] the unassigned queue remains available when coordinator calendar
  await expect(page.locator('.calendar-panel').getByRole('alert')).toContainText('Availability unavailable');
  await expect(page.getByText('No coordinators with events to display.',{exact:true})).toBeVisible();
 });
+
+test('[SPM-174] queue 401 expires the session and returns the Lead to sign-in', async ({page}) => {
+ const state=await installConnectSphereMocks(page,{role:'COORDINATOR_LEAD'});
+ state.failure={path:'/api/events/unassigned',status:401,body:{error:'Please log in to continue.'}};
+ await page.goto('/events');
+ await expect(page).toHaveURL(/\/login\?next=%2Fevents&reason=required/);
+ const profileRequest=state.requestLog.findIndex(request=>request.pathname==='/api/auth/me');
+ const queueRequest=state.requestLog.findIndex(request=>request.pathname==='/api/events/unassigned');
+ expect(profileRequest).toBeGreaterThanOrEqual(0);
+ expect(queueRequest).toBeGreaterThan(profileRequest);
+});
+
+test('[SPM-174] overnight coordinator events appear on each day they overlap, excluding midnight end', async ({page}) => {
+ const state=await installConnectSphereMocks(page,{role:'COORDINATOR_LEAD'});
+ state.coordinators=[{coordinatorId:21,name:'Test Coordinator',events:[
+  {eventId:801,title:'Overnight coordinator event',status:'CONFIRMED',startDatetime:'2026-10-20T15:00:00.000Z',endDatetime:'2026-10-20T17:00:00.000Z'},
+  {eventId:802,title:'Event ending at midnight',status:'CONFIRMED',startDatetime:'2026-10-20T14:00:00.000Z',endDatetime:'2026-10-20T16:00:00.000Z'},
+ ]}];
+ await page.clock.install({time:new Date('2026-10-20T02:00:00.000Z')});
+ await page.goto('/calendar');
+ await page.getByRole('button',{name:'Day',exact:true}).click();
+ const dayView=page.locator('.cal-day-view');
+ await expect(dayView.getByText('Event ending at midnight')).toBeVisible();
+ await expect(dayView.getByText('Overnight coordinator event')).toBeVisible();
+ await page.getByRole('button',{name:'Next',exact:true}).click();
+ await expect(dayView.getByText('Overnight coordinator event')).toBeVisible();
+ await expect(dayView.getByText('Event ending at midnight')).toHaveCount(0);
+});
+
+test('[SPM-174] coordinator All and None filters set explicit selections', async ({page}) => {
+ const state=await installConnectSphereMocks(page,{role:'COORDINATOR_LEAD'});
+ state.coordinators=[
+  {coordinatorId:21,name:'Coordinator A',events:[]},
+  {coordinatorId:22,name:'Coordinator B',events:[]},
+ ];
+ await page.goto('/calendar');
+ const filter=page.locator('.cal-legend');
+ await filter.getByRole('button',{name:/All coordinators/}).click();
+ const panel=page.getByRole('listbox');
+ await panel.getByRole('checkbox',{name:'Coordinator A'}).uncheck();
+ await panel.getByRole('button',{name:'All',exact:true}).click();
+ await expect(filter.getByRole('button',{name:/All coordinators/})).toBeVisible();
+ await filter.getByRole('button',{name:/All coordinators/}).click();
+ await filter.getByRole('button',{name:'None',exact:true}).click();
+ await expect(filter.getByRole('button',{name:/No coordinators/})).toBeVisible();
+ await expect(filter.locator('.cal-legend-checkbox:checked')).toHaveCount(0);
+ await expect(page.getByText('No coordinators selected. Click a name in the legend above to show their events.')).toBeVisible();
+});
 test('[SPM-32 TC-008–010] blank login fields show inline errors', async ({page}) => {
  await installLoginMock(page);await page.goto('/login');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByText('Email is required.')).toBeVisible();await expect(page.getByText('Password is required.')).toBeVisible();
 });

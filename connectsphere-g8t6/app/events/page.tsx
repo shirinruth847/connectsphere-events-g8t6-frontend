@@ -13,7 +13,6 @@ import { CalendarView, type CalendarEvent } from "@/components/calendar/calendar
 import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { AttendeeEventDiscovery } from "@/components/attendee/discovery/attendee-event-discovery";
-import { getAccessToken } from "@/lib/supabase";
 
 type ViewMode = "list" | "calendar";
 type EventRequest = Omit<ApiEvent, "organisation"> & { date: string; start: string; end: string; organiser: string; organisation: { organisationId: number; name: string } | null; venue: string; submitted: string };
@@ -57,7 +56,6 @@ function toCalendarEvent(event: EventRequest, coordinatorId?: number, coordinato
 function EventQueueContent() {
   const router = useRouter();
   const user = useSessionUser();
-  const [accessToken, setAccessToken] = useState("");
   const [requests, setRequests] = useState<EventRequest[]>([]);
   const [coordinators, setCoordinators] = useState<LiveCoordinator[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -67,7 +65,7 @@ function EventQueueContent() {
   const [loading, setLoading] = useState(false);
   const [authState, setAuthState] = useState<AuthState>("loading");
 
-  async function loadData(token: string) {
+  async function loadData() {
     setLoading(true);
     setError("");
     setCalendarError("");
@@ -75,12 +73,12 @@ function EventQueueContent() {
     try {
       // The unassigned queue is the primary Lead workflow. Calendar data is
       // useful context, but a calendar outage must not hide submitted requests.
-      const queue = await getUnassignedEvents(token);
+      const queue = await getUnassignedEvents();
       setRequests(queue.events.map(toRequest));
       setAuthState("ready");
 
       try {
-        const availability = await getCoordinatorAvailability(token);
+        const availability = await getCoordinatorAvailability();
         setCoordinators(availability.coordinators.map((coordinator) => ({ ...coordinator, events: coordinator.events.map(toRequest) })));
       } catch (availabilityError) {
         const typedError = availabilityError as Error;
@@ -100,11 +98,8 @@ function EventQueueContent() {
     let mounted = true;
     const run = async () => {
       if (!mounted || !user) return;
-      const token = await getAccessToken();
-      if (!token) return;
-      setAccessToken(token);
       setAuthState("ready");
-      await loadData(token);
+      await loadData();
     };
     void run();
     return () => { mounted = false; };
@@ -117,7 +112,7 @@ function EventQueueContent() {
     return <div className="access-denied"><div className="access-card"><span className="eyebrow">EVENT COORDINATOR LEAD WORKSPACE</span><h1>Lead access required</h1><p>This queue is restricted to Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</p></div></div>;
   }
   if (authState === "error") {
-    return <div className="access-denied"><div className="access-card"><h1>Unable to load event requests</h1><p>{error}</p><button className="button button-primary" onClick={() => loadData(accessToken)}>Retry</button></div></div>;
+    return <div className="access-denied"><div className="access-card"><h1>Unable to load event requests</h1><p>{error}</p><button className="button button-primary" onClick={() => loadData()}>Retry</button></div></div>;
   }
 
   const unassigned = requests;

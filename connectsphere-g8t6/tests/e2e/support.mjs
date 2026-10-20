@@ -41,6 +41,8 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     revoked: false,
     failure: null,
     delay: 0,
+    requestLog: [],
+    coordinators: [{ coordinatorId: 21, name: "Test Coordinator", events: [{ eventId: 72, requestId: "REQ-000072", status: "CONFIRMED", title: "Coordinator availability event", startDatetime: "2026-10-20T12:00:00.000Z", endDatetime: "2026-10-20T13:00:00.000Z", expectedAttendance: 80, organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-02T09:00:00.000Z" }] }],
   };
 
   if (authenticated) {
@@ -68,6 +70,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();
+    state.requestLog.push({ pathname, method });
     const json = (body, status = 200) => route.fulfill({
       status,
       contentType: "application/json",
@@ -80,7 +83,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/auth/logout") { state.revoked = true; return route.fulfill({ status: 204 }); }
     if (pathname === "/api/events/assigned") return json({ events: [{ eventId: 42, title: "Assigned coordinator event", status: "UNDER_REVIEW" }] });
     if (pathname === "/api/events/unassigned") return json({ events: [{ eventId: 71, requestId: "REQ-000071", status: "SUBMITTED", title: "Unassigned lead queue event", purpose: "Community outreach", startDatetime: "2026-10-20T09:00:00.000Z", endDatetime: "2026-10-20T11:00:00.000Z", expectedAttendance: 120, venuePreferences: [1], equipmentRequirements: [{ equipmentId: 4, quantity: 2 }], organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-01T09:00:00.000Z", submittedAt: "2026-10-20T08:30:00.000Z" }] });
-    if (pathname === "/api/events/coordinator-availability") return json({ coordinators: [{ coordinatorId: 21, name: "Test Coordinator", events: [{ eventId: 72, requestId: "REQ-000072", status: "CONFIRMED", title: "Coordinator availability event", startDatetime: "2026-10-20T12:00:00.000Z", endDatetime: "2026-10-20T13:00:00.000Z", expectedAttendance: 80, organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-02T09:00:00.000Z" }] }] });
+    if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 

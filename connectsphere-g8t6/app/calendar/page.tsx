@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { CalendarView, type CalendarCoordinator } from "@/components/calendar/calendar-view";
 import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
 import { useSessionUser } from "@/components/auth/auth-gate";
-import { getAccessToken } from "@/lib/supabase";
 import { getCoordinatorAvailability } from "@/lib/api/events";
 
 export default function CalendarPage() {
@@ -22,9 +21,7 @@ function CalendarContent() {
     async function load() {
       if (!user) return;
       try {
-        const token = await getAccessToken();
-        if (!token) throw new Error("Your session has expired. Sign in again.");
-        const availability = await getCoordinatorAvailability(token);
+        const availability = await getCoordinatorAvailability();
         if (!active) return;
         setCoordinators(availability.coordinators.map((coordinator) => ({
           coordinatorId: coordinator.coordinatorId,
