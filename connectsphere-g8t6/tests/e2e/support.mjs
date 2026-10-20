@@ -78,6 +78,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (state.failure && state.failure.path === pathname) return json(state.failure.body, state.failure.status);
     if (pathname === "/api/auth/me") return state.revoked ? json({ error: "Please log in to continue." }, 401) : json({ user: { user_id: 11, name: "Test User", email: "user@example.com", role: state.role } });
     if (pathname === "/api/auth/logout") { state.revoked = true; return route.fulfill({ status: 204 }); }
+    if (pathname === "/api/venues/bookings") return json(state.venueBookings ?? { bookings: [], hasMore: false, pendingCount: 0 });
     if (pathname === "/api/events/assigned") return json({ events: [{ eventId: 42, title: "Assigned coordinator event", status: "UNDER_REVIEW" }] });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });

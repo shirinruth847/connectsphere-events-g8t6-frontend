@@ -23,7 +23,10 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
     { id: "venues", title: "Venue Catalogue", icon: "dashboard", href: ROUTES.venues },
   ],
-  VENUE_STAFF: [{ id: "venues", title: "Venue Catalogue", icon: "dashboard", href: ROUTES.venues }],
+  VENUE_STAFF: [
+    { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
+    { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
+  ],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   ATTENDEE: [
     { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
@@ -40,12 +43,9 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
 }
 
 export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
-<<<<<<< HEAD
-  if (role !== "ORGANISER") return pathname === ROUTES.venues ? "venues" : "home";
-=======
   if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
-  if (role !== "ORGANISER") return "home";
->>>>>>> 7676b0fe4b1c5022baf5a1818505cb7c1e5b6cec
+  const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
+  if (role !== "ORGANISER") return inVenues ? "venues" : "home";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";
 }

@@ -25,9 +25,6 @@ export class ApiError extends Error {
   // (e.g. a 409 EVENT_VERSION_CONFLICT includes the current event).
   details: Record<string, unknown>;
 
-<<<<<<< HEAD
-  constructor(message: string, status: number, code = "REQUEST_FAILED", fields: Record<string, string> = {}) {
-=======
   constructor(
     message: string,
     status: number,
@@ -35,7 +32,6 @@ export class ApiError extends Error {
     fields: Record<string, string> = {},
     details: Record<string, unknown> = {},
   ) {
->>>>>>> 7676b0fe4b1c5022baf5a1818505cb7c1e5b6cec
     super(message);
     this.name = "ApiError";
     this.status = status;

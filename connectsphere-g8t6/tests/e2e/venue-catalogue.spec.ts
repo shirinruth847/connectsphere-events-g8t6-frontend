@@ -121,7 +121,9 @@ test.describe("[SPM-72] Venue Catalogue", () => {
     await expect(page.getByText("Read-only catalogue")).toHaveCount(1);
   });
 
-  for (const role of ["COORDINATOR_LEAD", "VENUE_STAFF"]) {
+  // Venue Staff get the editable venue list at /venues instead (SPM-73,
+  // tests/e2e/venue-management.spec.mjs).
+  for (const role of ["COORDINATOR_LEAD"]) {
     test(`[SPM-72-AC1] should_show_the_catalogue_to_${role}`, async ({ page }) => {
       await installVenueMock(page, role, { body: { venues: [venueA], detailsAvailable: true } });
       await page.goto("/venues");
