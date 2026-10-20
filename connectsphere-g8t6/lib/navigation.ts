@@ -25,7 +25,10 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   ],
   VENUE_STAFF: [{ id: "venues", title: "Venue Catalogue", icon: "dashboard", href: ROUTES.venues }],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
-  ATTENDEE: [{ id: "home", title: "My Registrations", icon: "registrations", href: ROUTES.registrations }],
+  ATTENDEE: [
+    { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
+    { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
+  ],
 };
 
 export function navigationForRole(role: UserRole): NavigationGroup[] {
@@ -37,7 +40,12 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
 }
 
 export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
+<<<<<<< HEAD
   if (role !== "ORGANISER") return pathname === ROUTES.venues ? "venues" : "home";
+=======
+  if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
+  if (role !== "ORGANISER") return "home";
+>>>>>>> 7676b0fe4b1c5022baf5a1818505cb7c1e5b6cec
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";
 }

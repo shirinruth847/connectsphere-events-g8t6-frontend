@@ -65,6 +65,9 @@
   --radius-pill: 9999px;
   --radius-tag: 0.375rem;
   --shadow-elevation-1: 0 1px 3px rgb(13 28 46 / 8%), 0 1px 2px rgb(13 28 46 / 4%);
+  /* Raised surfaces used by the SPM-33 event workspace: panels and dialogs. */
+  --shadow-elevation-2: 0 1px 8px rgb(0 0 0 / 4%), 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-elevation-4: 0 20px 25px rgb(0 0 0 / 10%);
   --tracking-label: 0.08em;
 }
 

@@ -2,6 +2,7 @@ export type UserRole = 'ORGANISER' | 'COORDINATOR' | 'COORDINATOR_LEAD' | 'VENUE
 export type SessionUser = { user_id: number; name: string; email: string; role: UserRole; home_path?: string; authId?: string; avatarUrl?: string };
 
 export const ROUTES = {
+<<<<<<< HEAD
   login: '/login',
   dashboard: '/dashboard',
   registrations: '/my-registrations',
@@ -9,6 +10,16 @@ export const ROUTES = {
   createEvent: '/events/create',
   drafts: '/dashboard?status=DRAFT#my-drafts',
   venues: '/venues',
+=======
+  login: "/login",
+  signup: "/signup",
+  dashboard: "/dashboard",
+  registrations: "/my-registrations",
+  events: "/events",
+  newEvent: "/events/new",
+  createEvent: "/events/create",
+  drafts: "/dashboard?status=DRAFT#my-drafts",
+>>>>>>> 7676b0fe4b1c5022baf5a1818505cb7c1e5b6cec
 } as const;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -40,10 +51,18 @@ export function safeNextPath(value: string | null): string | null {
 
 export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
+<<<<<<< HEAD
   if (pathname === ROUTES.dashboard) return role !== 'ATTENDEE';
   if (pathname === ROUTES.registrations) return role === 'ATTENDEE';
   if (/^\/events\/(new|create|\d+)$/.test(pathname)) return role === 'ORGANISER';
   if (pathname === ROUTES.venues) return ['COORDINATOR', 'COORDINATOR_LEAD', 'VENUE_STAFF'].includes(role);
+=======
+  if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
+  if (pathname === ROUTES.registrations || pathname === ROUTES.events) return role === "ATTENDEE";
+  if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
+  // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR";
+>>>>>>> 7676b0fe4b1c5022baf5a1818505cb7c1e5b6cec
   return false;
 }
 

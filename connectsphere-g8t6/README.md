@@ -33,6 +33,32 @@ If hydration reports an extra `data-scribe-recorder-ready` attribute on
 use a browser profile with extensions disabled. This attribute is not rendered
 by the application. Do not suppress hydration diagnostics globally to hide it.
 
+## Sign-up (SPM-123)
+
+- `/signup` (`components/auth/signup-form.tsx`) lets visitors register as an
+  Attendee or Event Organiser only (`SIGNUP_ACCOUNT_TYPES` in `lib/signup.ts`).
+  Staff roles are never self-registered; the backend enforces the same rules.
+- It sends `{ accountType, name, email, password }` to `POST /api/auth/signup`.
+  The account is usable immediately, but no session is returned, so the form
+  then signs in like `/login`: `signInWithPassword` on the shared client,
+  `currentUser()` (`GET /api/auth/me`) and `postLoginPath`.
+- If the account is created but automatic sign-in fails, the page says so and
+  links to `/login`; it never submits the sign-up again.
+
+## Authentication and access (SPM-32)
+
+- `/login` (`components/auth/login-form.tsx`) signs in with Supabase Auth via
+  the single client in `lib/supabase.ts`, then `currentUser()` in
+  `lib/session.ts` calls `GET /api/auth/me` for the trusted role. `/` redirects
+  to `/login`.
+- `postLoginPath` in `lib/auth.ts` sends the user to a safe, permitted `?next=`
+  path or to the role home. `safeNextPath` validates the normalised path, and
+  `canViewPath` denies any route not listed for the role.
+- Protected pages use `DashboardWorkspace`/`AuthGate`, which redirect to
+  `/login?next=…` without a verified session and re-check on Back/Forward.
+- Logout (`signOut` in `lib/session.ts`) calls `POST /api/auth/logout`, then
+  clears this device's Supabase session.
+
 ## Checks
 
 Team members: read [the shared UI workflow](docs/team-ui-workflow.md) before
@@ -82,3 +108,31 @@ wins over the build-time BACKEND_URL fallback. Local .env files remain ignored.
 For focused development-mode browser checks, use
 `E2E_DEV=1 npm run test:e2e -- --grep 'title-only draft|protected create returns|ORGANISER login'`.
 The development report is separate from the full production browser report.
+
+
+## Event submission (SPM-36)
+
+The existing organiser wizard submits a completed owned draft against its saved
+request ID. Confirmation identifies the request and `Submitted` status, with
+assignment left to the one Coordinator Lead. Event details remain read-only after
+submission and show the first submission time and the Coordinator name when the
+backend supplies them. Unassigned requests show `Unassigned`.
+
+Submit is guarded while pending. A lost draft-submission response or an old tab's
+`EVENT_NOT_DRAFT` response triggers a read of the current event, preserving a later
+assignment/status. Uncertain new-event creation reuses its original idempotency
+key and payload across retries, session expiry, reauthentication and reload.
+Unresolved submissions retain that identity beyond the ordinary 30-minute form
+recovery window. A returned event ID is saved before follow-up reads, allowing
+recovery to read the same event without another create or submit operation.
+Field errors stay next to their inputs and entered information is retained for
+correction or retry.
+
+Requires the SPM-36 backend migration and its additive `submittedAt` and
+`coordinatorName` response fields. Inbox/unread indicators and notification
+navigation remain under SPM-191–193. No new shared shell or authentication flow
+was introduced. The existing organiser wizard/details are the design reference.
+
+See [the frontend test plan](docs/test-plans/spm-36.md). Focused browser command:
+`npm run test:e2e -- --grep SPM-36`; the full `npm run test:e2e` includes a
+production build and type checks.

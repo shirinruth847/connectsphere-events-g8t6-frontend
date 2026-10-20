@@ -5,10 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertBanner, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { apiRequest } from "@/lib/api";
-import { displayEventStatus, EVENT_STATUS_ORDER, EventListItem, EventStatus, STATUS_PRESENTATION, statusPresentation, eventStatusLabel, formatDateRange } from "@/lib/events";
+import { displayEventStatus, EVENT_STATUS_ORDER, EventListItem, ORGANISER_LABEL_ORDER, ORGANISER_STATUS_LABELS, statusPresentation, eventStatusLabel, formatDateRange } from "@/lib/events";
 
 type ListResponse = { events?: EventListItem[]; nextCursor?: string | null };
-type StatusSelection = EventStatus | "ALL";
+// Organisers filter by their eight labels (Master section 3.5), not by stored states.
+type StatusSelection = string;
+const DRAFT_LABEL = ORGANISER_STATUS_LABELS.DRAFT;
 
 const actionFor = (status: EventListItem["status"]) => {
   switch (status) {
@@ -30,10 +32,10 @@ export function EventRequestDashboard() {
   const requestedStatus = params.get("status");
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [query, setQuery] = useState("");
-  const [statusSelection, setStatusSelection] = useState<StatusSelection>(params.get("status") === "DRAFT" ? "DRAFT" : "ALL");
+  const [statusSelection, setStatusSelection] = useState<StatusSelection>(params.get("status") === "DRAFT" ? DRAFT_LABEL : "ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => { const timer = setTimeout(() => setStatusSelection(requestedStatus === "DRAFT" ? "DRAFT" : "ALL"), 0); return () => clearTimeout(timer); }, [requestedStatus]);
+  useEffect(() => { const timer = setTimeout(() => setStatusSelection(requestedStatus === "DRAFT" ? DRAFT_LABEL : "ALL"), 0); return () => clearTimeout(timer); }, [requestedStatus]);
   const [notice, setNotice] = useState("");
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -72,7 +74,7 @@ export function EventRequestDashboard() {
     const filtered = events.filter((event) => {
       const matchesQuery = !needle || `${event.title} ${event.requestId}`.toLowerCase().includes(needle);
       const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);
-      const matchesStatus = statusSelection === "ALL" || displayStatus === statusSelection;
+      const matchesStatus = statusSelection === "ALL" || eventStatusLabel({ ...event, status: displayStatus }) === statusSelection;
       return matchesQuery && matchesStatus;
     });
     return filtered.sort((left, right) => {
@@ -104,10 +106,10 @@ export function EventRequestDashboard() {
           <div className="flex flex-wrap items-center gap-2.5">
             <label className="flex h-[46px] items-center gap-2 rounded-[15px] border border-[#9CA3AF] px-3 text-xs text-[#6B7280]">
               <span className="whitespace-nowrap">Status:</span>
-              <select aria-label="Filter events by status" value={statusSelection} onChange={(event) => setStatusSelection(event.target.value as StatusSelection)} className="min-w-0 bg-transparent text-[#4B5563] outline-none">
+              <select aria-label="Filter events by status" value={statusSelection} onChange={(event) => setStatusSelection(event.target.value)} className="min-w-0 bg-transparent text-[#4B5563] outline-none">
                 <option value="ALL">All statuses</option>
-                {EVENT_STATUS_ORDER.filter((status) => status !== "AWAITING_CLARIFICATION").map((status) => (
-                  <option key={status} value={status}>{STATUS_PRESENTATION[status].label}</option>
+                {ORGANISER_LABEL_ORDER.map((label) => (
+                  <option key={label} value={label}>{label}</option>
                 ))}
               </select>
             </label>
@@ -120,7 +122,7 @@ export function EventRequestDashboard() {
     {loading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-40 w-full" />)}</div>
       : visible.length === 0 ? <SectionCard><EmptyState title="No matching events" description="Try changing your status or search, or create a new event." action={<Link href="/events/new" className="rounded-control bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary">Create an event</Link>} /></SectionCard>
         : <>
-          <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === "DRAFT" ? "My Drafts" : "Event requests and drafts"}</h2>
+          <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === DRAFT_LABEL ? "My Drafts" : "Event requests and drafts"}</h2>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visible.map((event) => {
               const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);

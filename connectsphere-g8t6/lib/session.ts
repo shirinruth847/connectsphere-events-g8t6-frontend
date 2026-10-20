@@ -1,4 +1,4 @@
-import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { clearRevokedSession, getSupabaseBrowserClient } from "@/lib/supabase";
 import { getBackendBaseUrl } from "@/lib/api";
 import type { SessionUser } from "@/lib/auth";
 
@@ -25,8 +25,8 @@ export async function currentUser(): Promise<SessionUser | null> {
 export async function signOut() {
   const client = getSupabaseBrowserClient();
   const { data } = await client.auth.getSession();
+  let revoked = !data.session;
   try {
-    let revoked = !data.session;
     if (data.session) {
       try {
         const response = await fetch(`${getBackendBaseUrl()}/api/auth/logout`, {
@@ -43,7 +43,10 @@ export async function signOut() {
       if (result.error) throw result.error;
     }
   } finally {
-    await client.auth.signOut({ scope: "local" });
+    // After a confirmed revocation, only this browser's copy needs clearing.
+    // If revocation was not confirmed, the SDK keeps its own remote attempt.
+    if (revoked) await clearRevokedSession();
+    else await client.auth.signOut({ scope: "local" });
     sessionStorage.removeItem("connectsphere:notice");
     for (const key of Object.keys(sessionStorage)) {
       if (key.startsWith("connectsphere:recovery:")) sessionStorage.removeItem(key);
