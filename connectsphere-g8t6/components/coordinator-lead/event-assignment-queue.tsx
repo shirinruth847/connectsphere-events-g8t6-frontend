@@ -11,6 +11,7 @@ import {
 import { AvailabilityMatrix } from "@/components/assignments/availability-matrix";
 import { type CalendarEvent } from "@/components/calendar/calendar-view";
 import { CoordinatorAvailabilityCalendar } from "@/components/calendar/coordinator-availability-calendar";
+import { AlertBanner, EmptyState, Skeleton } from "@/components/shared/primitives";
 
 import styles from "./event-assignment-queue.module.css";
 
@@ -113,13 +114,13 @@ export function EventAssignmentQueue() {
   }, [loadData]);
 
   if (authState === "loading") {
-    return <div className="empty-state"><h2>Loading requests…</h2></div>;
+    return <div className={styles.queue}><Skeleton className="h-48" /></div>;
   }
   if (authState === "forbidden") {
-    return <div className="access-denied"><div className="access-card"><span className="eyebrow">EVENT ASSIGNMENT WORKSPACE</span><h1>Lead access required</h1><p>This queue is restricted to Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</p></div></div>;
+    return <div className={styles.queue}><AlertBanner title="Lead access required" tone="error">This queue is restricted to Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</AlertBanner></div>;
   }
   if (authState === "error") {
-    return <div className="access-denied"><div className="access-card"><h1>Unable to load event requests</h1><p>{error}</p><button className="button button-primary" disabled={loading} onClick={() => void refresh()}>Retry</button></div></div>;
+    return <div className={styles.queue}><AlertBanner title="Unable to load event requests" tone="error">{error}<button type="button" className="ml-3 underline" disabled={loading} onClick={() => void refresh()}>Retry</button></AlertBanner></div>;
   }
 
   const unassigned = requests;
@@ -183,7 +184,7 @@ export function EventAssignmentQueue() {
               setError("");
             }}
         />
-      ) : loading ? <div className="empty-state"><h2>Loading requests…</h2></div> : unassigned.length === 0 ? <div className="empty-state"><span className="empty-icon">✓</span><h2>Queue cleared</h2><p>Every submitted request has an Event Coordinator assigned.</p></div> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.eventId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `Equipment #${item.equipmentId}: ${item.quantity} ${item.quantity === 1 ? "unit" : "units"} requested`).join(" · ") : "None requested"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled={submitting || loading || needsRefresh} onClick={() => { setSelectedId(request.eventId); setAssignment(undefined); setError(""); }}>Assign coordinator</button></footer></article>)}</div>}
+      ) : loading ? <Skeleton className="h-48" /> : unassigned.length === 0 ? <EmptyState title="Queue cleared" description="Every submitted request has an Event Coordinator assigned." /> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.eventId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `Equipment #${item.equipmentId}: ${item.quantity} ${item.quantity === 1 ? "unit" : "units"} requested`).join(" · ") : "None requested"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled={submitting || loading || needsRefresh} onClick={() => { setSelectedId(request.eventId); setAssignment(undefined); setError(""); }}>Assign coordinator</button></footer></article>)}</div>}
       {selected && (
         <div className="modal-backdrop assignments-modal-backdrop" role="presentation">
           <section className="modal reassign-modal" role="dialog" aria-modal="true" aria-labelledby="assign-title">
