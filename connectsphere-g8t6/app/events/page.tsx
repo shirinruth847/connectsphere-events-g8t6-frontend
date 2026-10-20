@@ -132,7 +132,7 @@ function EventQueueContent() {
     return <div className="empty-state"><h2>Loading requests…</h2></div>;
   }
   if (authState === "forbidden") {
-    return <div className="access-denied"><div className="access-card"><span className="eyebrow">EVENT COORDINATOR LEAD WORKSPACE</span><h1>Lead access required</h1><p>This queue is restricted to Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</p></div></div>;
+    return <div className="access-denied"><div className="access-card"><span className="eyebrow">EVENT ASSIGNMENT WORKSPACE</span><h1>Coordinator or Lead access required</h1><p>This queue is available to Event Coordinators and Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</p></div></div>;
   }
   if (authState === "error") {
     return <div className="access-denied"><div className="access-card"><h1>Unable to load event requests</h1><p>{error}</p><button className="button button-primary" onClick={() => loadData(accessToken)}>Retry</button></div></div>;
