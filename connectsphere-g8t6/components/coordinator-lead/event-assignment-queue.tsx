@@ -11,7 +11,7 @@ import {
 import { AvailabilityMatrix } from "@/components/assignments/availability-matrix";
 import { type CalendarEvent } from "@/components/calendar/calendar-view";
 import { CoordinatorAvailabilityCalendar } from "@/components/calendar/coordinator-availability-calendar";
-import { AlertBanner, EmptyState, Skeleton } from "@/components/shared/primitives";
+import { EmptyState, Skeleton } from "@/components/shared/primitives";
 
 import styles from "./event-assignment-queue.module.css";
 
@@ -117,10 +117,10 @@ export function EventAssignmentQueue() {
     return <div className={styles.queue}><Skeleton className="h-48" /></div>;
   }
   if (authState === "forbidden") {
-    return <div className={styles.queue}><AlertBanner title="Lead access required" tone="error">This queue is restricted to Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</AlertBanner></div>;
+    return <div className={styles.queue}><div className="error-alert" role="alert"><h1>Lead access required</h1><span>This queue is restricted to Event Coordinator Leads. Your current account does not have permission to view or assign submitted requests.</span></div></div>;
   }
   if (authState === "error") {
-    return <div className={styles.queue}><AlertBanner title="Unable to load event requests" tone="error">{error}<button type="button" className="ml-3 underline" disabled={loading} onClick={() => void refresh()}>Retry</button></AlertBanner></div>;
+    return <div className={styles.queue}><div className="error-alert" role="alert"><h1>Unable to load event requests</h1><span>{error}</span><button type="button" className="button button-secondary" disabled={loading} onClick={() => void refresh()}>Retry</button></div></div>;
   }
 
   const unassigned = requests;
