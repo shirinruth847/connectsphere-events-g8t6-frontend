@@ -66,9 +66,10 @@ test('[SPM-34 AC1] Load more keeps the first copy of an event returned twice', (
  assert.equal(state.nextCursor, null);
  assert.equal(state.loadingMore, false);
 });
-test('[SPM-34] /events is an attendee-only login return path', () => {
+test('[SPM-34/SPM-174] /events is an attendee or coordinator lead workspace', () => {
  assert.equal(canViewPath('ATTENDEE', '/events'), true);
  assert.equal(postLoginPath({role:'ATTENDEE'}, '/events'), '/events');
- for (const role of ['ORGANISER','COORDINATOR','COORDINATOR_LEAD','VENUE_STAFF','TECH_SUPPORT']) assert.equal(canViewPath(role, '/events'), false, role);
+ assert.equal(canViewPath('COORDINATOR_LEAD', '/events'), true);
+ for (const role of ['ORGANISER','COORDINATOR','VENUE_STAFF','TECH_SUPPORT']) assert.equal(canViewPath(role, '/events'), false, role);
  assert.equal(postLoginPath({role:'ORGANISER'}, '/events'), '/dashboard');
 });

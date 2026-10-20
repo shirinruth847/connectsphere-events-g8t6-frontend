@@ -90,3 +90,13 @@ test("[SPM-33] coordinator workspace works at mobile width", async ({ page }) =>
   await page.getByRole("button", { name: "Open menu" }).click();
   await expect(page.getByRole("link", { name: "Assigned Events", exact: true })).toBeVisible();
 });
+
+
+test("[SPM-177 AC2] a reloaded organiser event displays its Coordinator as point of contact", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "ORGANISER" });
+  await routeEvent(page, eventView({ isOwner: true, viewerRelationship: "OWNER", coordinatorName: "Alex Coordinator", permissions: { canEdit: false, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false } }));
+  await page.goto("/events/42");
+  await expect(page.getByText("Alex Coordinator", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Alex Coordinator", { exact: true })).toBeVisible();
+});
