@@ -6,7 +6,6 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
-
 import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
@@ -42,6 +41,7 @@ export type CalendarCoordinator = {
 
 const SLOT_HEIGHT = 26;
 const HOURS_IN_DAY = 24;
+const CALENDAR_TIME_ZONE = "Asia/Singapore";
 
 const COORDINATOR_COLORS = [
   "#4F46E5",
@@ -84,7 +84,7 @@ function getTextColor(backgroundColor: string): string {
 
   const luminance = 0.2126 * sRGB(r) + 0.7152 * sRGB(g) + 0.0722 * sRGB(b);
   const whiteContrast = 1.05 / (luminance + 0.05);
-  const darkLuminance = 0.014;
+  const darkLuminance = 0.2126 * sRGB(32) + 0.7152 * sRGB(33) + 0.0722 * sRGB(36);
   const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
   return darkContrast >= whiteContrast ? "#202124" : "#ffffff";
 }
@@ -128,8 +128,7 @@ function addYears(date: Date, years: number): Date {
   const month = d.getMonth();
   d.setDate(1);
   d.setFullYear(d.getFullYear() + years);
-  const lastDay = new Date(d.getFullYear(), month + 1, 0).getDate();
-  d.setDate(Math.min(date.getDate(), lastDay));
+  d.setDate(Math.min(date.getDate(), new Date(d.getFullYear(), month + 1, 0).getDate()));
   return d;
 }
 
@@ -156,7 +155,14 @@ const monthFormat = new Intl.DateTimeFormat("en-SG", {
 });
 
 const yearFormat = new Intl.DateTimeFormat("en-SG", {
-  timeZone: "Asia/Singapore",
+  timeZone: CALENDAR_TIME_ZONE,
+  year: "numeric",
+});
+
+const fullDateFormat = new Intl.DateTimeFormat("en-SG", {
+  timeZone: CALENDAR_TIME_ZONE,
+  day: "numeric",
+  month: "long",
   year: "numeric",
 });
 
@@ -199,15 +205,15 @@ function layoutDayEvents(
   day: Date,
   colorMap: Map<number, string>,
 ): LayoutEvent[] {
-  const dayStart = calendarDayBounds(day).start;
+  const bounds = calendarDayBounds(day);
 
   const items: ParsedEvent[] = events
-    .filter((e) => overlapsCalendarDay(e.startDatetime, e.endDatetime, day))
+    .filter((event) => overlapsCalendarDay(event.startDatetime, event.endDatetime, day))
     .map((e) => {
       const startMs = new Date(e.startDatetime).getTime();
       const endMs = new Date(e.endDatetime).getTime();
-      const startMin = Math.max((startMs - dayStart) / 60000, 0);
-      const endMin = Math.min((endMs - dayStart) / 60000, 24 * 60);
+      const startMin = (Math.max(startMs, bounds.start) - bounds.start) / 60_000;
+      const endMin = (Math.min(endMs, bounds.end) - bounds.start) / 60_000;
       return { ...e, startMin, endMin };
     })
     .sort((a, b) => a.startMin - b.startMin);
@@ -288,11 +294,13 @@ function CoordinatorLegend({
   coordinators,
   visibleIds,
   onToggle,
+  onSetVisibleIds,
   colorMap,
 }: {
   coordinators: CalendarCoordinator[];
   visibleIds: Set<number>;
   onToggle: (id: number) => void;
+  onSetVisibleIds: (ids: Set<number>) => void;
   colorMap: Map<number, string>;
 }) {
   const [open, setOpen] = useState(false);
@@ -319,11 +327,11 @@ function CoordinatorLegend({
     c.name.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
-
   if (coordinators.length === 0) {
     return null;
   }
+
+  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
 
   return (
     <div className="cal-legend" role="group" aria-label="Filter by coordinator">
@@ -365,7 +373,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { coordinators.filter((c) => !visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              onClick={() => { onSetVisibleIds(new Set(coordinators.map((c) => c.coordinatorId))); setOpen(false); }}
               disabled={allVisible}
             >
               All
@@ -373,7 +381,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { coordinators.filter((c) => visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              onClick={() => { onSetVisibleIds(new Set()); setOpen(false); }}
               disabled={noneVisible}
             >
               None
@@ -415,6 +423,7 @@ function CoordinatorLegend({
   );
 }
 
+
 function EventBlock({
   event,
   color,
@@ -438,10 +447,9 @@ function EventBlock({
     width: `${event.width}%`,
     backgroundColor: `color-mix(in srgb, ${color} 16%, white)`,
     color: "#202124",
-    borderColor: `color-mix(in srgb, ${color} 28%, white)`,
     borderLeftColor: color,
+    borderColor: `color-mix(in srgb, ${color} 28%, white)`,
     opacity: 1,
-    textDecoration: isTerminal ? "line-through" : "none",
   };
 
   return (
@@ -457,21 +465,21 @@ function EventBlock({
         onHover?.(event, rect.left + 8, rect.top + 8);
       }}
       onMouseLeave={() => onHover?.(null)}
-      aria-label={event.title}
+      aria-label={`${formatTime(new Date(event.startDatetime))}–${formatTime(new Date(event.endDatetime))}: ${event.title}; ${statusLabel}`}
     >
       <span className="cal-event-color-strip" style={{ backgroundColor: color }} />
-      <strong className="cal-event-title" title={event.title}>
-        {event.title}
-      </strong>
       {heightPct > 10 && (
         <>
-      <span className="cal-tag" title={statusLabel}>
-        {statusLabel}
-      </span>
           <small className="cal-event-time">
             {formatTime(new Date(event.startDatetime))} –{" "}
             {formatTime(new Date(event.endDatetime))}
           </small>
+          <strong className="cal-event-title" title={event.title}>
+            {event.title}
+          </strong>
+          <span className="cal-event-meta">
+            {statusLabel}{event.organisation ? ` · ${event.organisation}` : ""}
+          </span>
         </>
       )}
       {heightPct > 4 && heightPct <= 10 && (
@@ -479,7 +487,7 @@ function EventBlock({
           className="cal-event-mini"
           title={`${event.title} · ${statusLabel} · ${formatTime(new Date(event.startDatetime))} – ${formatTime(new Date(event.endDatetime))}`}
         >
-          {event.title} · {statusLabel} · {formatTime(new Date(event.startDatetime))} – {formatTime(new Date(event.endDatetime))}
+          {formatTime(new Date(event.startDatetime))} · {event.title}
         </span>
       )}
       {heightPct <= 4 && (
@@ -954,8 +962,8 @@ function getCoordinatorDots(
 ): CoordinatorDot[] {
   const seen = new Map<number, CoordinatorDot>();
   for (const coordinator of coordinators) {
-    const hasEvent = coordinator.events.some((e) =>
-      overlapsCalendarDay(e.startDatetime, e.endDatetime, date),
+    const hasEvent = coordinator.events.some((event) =>
+      overlapsCalendarDay(event.startDatetime, event.endDatetime, date),
     );
     if (hasEvent && !seen.has(coordinator.coordinatorId)) {
       seen.set(coordinator.coordinatorId, {
@@ -1259,7 +1267,15 @@ export function CalendarView({
     defaultView,
   );
   const [internalCurrentDate, setInternalCurrentDate] = useState(() => calendarDate(new Date()));
-  const [hiddenIds, setHiddenIds] = useState<Set<number>>(() => new Set());
+  const [manualVisibleIds, setManualVisibleIds] = useState<Set<number> | null>(null);
+
+  const visibleIds = useMemo(() => {
+    if (manualVisibleIds === null) {
+      return new Set(coordinators.map((c) => c.coordinatorId));
+    }
+    return manualVisibleIds;
+  }, [manualVisibleIds, coordinators]);
+
   const [popoverEvent, setPopoverEvent] = useState<LayoutEvent | null>(null);
   const [tooltipEvent, setTooltipEvent] = useState<{
     event: LayoutEvent;
@@ -1277,11 +1293,6 @@ export function CalendarView({
     );
     return map;
   }, [coordinators]);
-
-  const visibleIds = useMemo(
-    () => new Set(coordinators.filter((coordinator) => !hiddenIds.has(coordinator.coordinatorId)).map((coordinator) => coordinator.coordinatorId)),
-    [coordinators, hiddenIds],
-  );
 
   const visibleCoordinators = coordinators.filter((c) =>
     visibleIds.has(c.coordinatorId),
@@ -1312,8 +1323,8 @@ export function CalendarView({
    };
 
   const toggleCoordinator = (id: number) => {
-    setHiddenIds((prev) => {
-      const next = new Set(prev);
+    setManualVisibleIds((prev) => {
+      const next = new Set(prev ?? coordinators.map((coordinator) => coordinator.coordinatorId));
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
@@ -1373,12 +1384,7 @@ export function CalendarView({
       }
       case "day": {
         const d = weekdayShortArr[effectiveCurrentDate.getDay()];
-        return `${d}, ${calendarLabelInstant(effectiveCurrentDate).toLocaleDateString("en-SG", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-          timeZone: "Asia/Singapore",
-        })}`;
+        return `${d}, ${fullDateFormat.format(calendarLabelInstant(effectiveCurrentDate))}`;
       }
     }
   })();
@@ -1437,10 +1443,12 @@ export function CalendarView({
         </div>
       </div>
 
+
       <CoordinatorLegend
         coordinators={coordinators}
         visibleIds={visibleIds}
         onToggle={toggleCoordinator}
+        onSetVisibleIds={setManualVisibleIds}
         colorMap={colorMap}
       />
 

@@ -22,7 +22,7 @@ function CoordinatorCalendar() {
     return () => { alive = false; };
   }, [attempt]);
   return <PageContent title="Coordinator calendar" eyebrow="Coordinator Lead" description="Review scheduled events and availability in Singapore time.">
-    {loading ? <p role="status">Loading calendar…</p> : error ? <AlertBanner tone="error" title="Unable to load calendar">{error}<Button variant="secondary" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</Button></AlertBanner> : <CoordinatorAvailabilityCalendar coordinators={coordinators.map((coordinator) => ({ ...coordinator, events: coordinator.events.map((event) => ({ ...event, coordinatorId: coordinator.coordinatorId, coordinatorName: coordinator.name, organisation: event.organisation?.name ?? null })) }))} />}
+    {loading ? <p role="status">Loading calendar…</p> : error ? <AlertBanner tone="error" title="Unable to load calendar">{error}<Button variant="secondary" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</Button></AlertBanner> : <CoordinatorAvailabilityCalendar coordinators={coordinators.map((coordinator) => ({ ...coordinator, events: coordinator.events.map((event) => ({ ...event, purpose: event.purpose ?? undefined, coordinatorId: coordinator.coordinatorId, coordinatorName: coordinator.name, organisation: event.organisation?.name ?? null })) }))} />}
   </PageContent>;
 }
 

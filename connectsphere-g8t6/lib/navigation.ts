@@ -1,6 +1,6 @@
 import { ROUTES, type UserRole } from "@/lib/auth";
 
-export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings";
+export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "assignments" | "calendar";
 type NavigationItem = { id: string; title: string; icon: NavigationIcon; href?: string };
 type NavigationGroup = { title: string; items: NavigationItem[] };
 
@@ -15,12 +15,12 @@ const organiserItems: NavigationItem[] = [
 
 const mainItems: Record<UserRole, NavigationItem[]> = {
   ORGANISER: organiserItems,
-  COORDINATOR: [
-    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard },
-  ],
+  COORDINATOR: [{ id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }],
   COORDINATOR_LEAD: [
-    { id: "queue", title: "Unassigned Queue", icon: "event", href: "/events" },
-    { id: "calendar", title: "Calendar", icon: "event", href: "/calendar" },
+    { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
+    { id: "unassigned", title: "Unassigned Queue", icon: "event", href: "/events" },
+    { id: "assignments", title: "Assignments", icon: "assignments", href: ROUTES.assignments },
+    { id: "calendar", title: "Calendar", icon: "calendar", href: ROUTES.calendar },
   ],
   VENUE_STAFF: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
@@ -40,8 +40,10 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
 
 export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
   if (role === "COORDINATOR_LEAD") {
+    if (pathname === "/events") return "unassigned";
+    if (pathname === "/assignments") return "assignments";
     if (pathname === "/calendar") return "calendar";
-    return "queue";
+    return "home";
   }
   if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
   if (role !== "ORGANISER") return "home";
