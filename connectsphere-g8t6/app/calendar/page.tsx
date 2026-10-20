@@ -1,59 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarView, type CalendarCoordinator } from "@/components/calendar/calendar-view";
+import { CoordinatorAvailabilityCalendar } from "@/components/calendar/coordinator-availability-calendar";
 import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
-import { useSessionUser } from "@/components/auth/auth-gate";
-import { getCoordinatorAvailability } from "@/lib/api/events";
+import { PageContent } from "@/components/layout/page-content";
+import { AlertBanner, Button } from "@/components/shared/primitives";
+import { getCoordinatorAvailability, type CoordinatorAvailability } from "@/lib/api/events";
 
-export default function CalendarPage() {
-  return <DashboardWorkspace role="COORDINATOR_LEAD"><CalendarContent /></DashboardWorkspace>;
-}
-
-function CalendarContent() {
-  const user = useSessionUser();
-  const [coordinators, setCoordinators] = useState<CalendarCoordinator[]>([]);
+function CoordinatorCalendar() {
+  const [coordinators, setCoordinators] = useState<CoordinatorAvailability[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    let active = true;
-    async function load() {
-      if (!user) return;
-      try {
-        const availability = await getCoordinatorAvailability();
-        if (!active) return;
-        setCoordinators(availability.coordinators.map((coordinator) => ({
-          coordinatorId: coordinator.coordinatorId,
-          name: coordinator.name,
-          events: coordinator.events.map((event) => ({
-            eventId: event.eventId,
-            title: event.title,
-            startDatetime: event.startDatetime,
-            endDatetime: event.endDatetime,
-            coordinatorId: coordinator.coordinatorId,
-            coordinatorName: coordinator.name,
-            isRequested: false,
-            status: event.status,
-            requestId: event.requestId,
-            expectedAttendance: event.expectedAttendance,
-            organisation: event.organisation?.name ?? null,
-            createdAt: event.createdAt,
-          })),
-        })));
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : "Could not load coordinator availability.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    void load();
-    return () => { active = false; };
-  }, [user]);
+    let alive = true;
+    void getCoordinatorAvailability().then((result) => {
+      if (alive) { setCoordinators(result.coordinators); setError(""); }
+    }).catch((cause) => {
+      if (alive) setError(cause instanceof Error ? cause.message : "Could not load availability.");
+    }).finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [attempt]);
+  return <PageContent title="Coordinator calendar" eyebrow="Coordinator Lead" description="Review scheduled events and availability in Singapore time.">
+    {loading ? <p role="status">Loading calendar…</p> : error ? <AlertBanner tone="error" title="Unable to load calendar">{error}<Button variant="secondary" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</Button></AlertBanner> : <CoordinatorAvailabilityCalendar coordinators={coordinators.map((coordinator) => ({ ...coordinator, events: coordinator.events.map((event) => ({ ...event, purpose: event.purpose ?? undefined, coordinatorId: coordinator.coordinatorId, coordinatorName: coordinator.name, organisation: event.organisation?.name ?? null })) }))} />}
+  </PageContent>;
+}
 
-  return <section className="lead-page">
-    <header className="lead-page-header"><div><span className="lead-eyebrow">COORDINATOR LEAD</span><h1>Coordinator calendar</h1><p>Review each coordinator’s scheduled events and availability.</p></div></header>
-    {error ? <div className="lead-alert" role="alert">{error}</div> : null}
-    {loading ? <div className="lead-empty">Loading coordinator calendar…</div> : <div className="calendar-panel"><CalendarView coordinators={coordinators} defaultView="month" /></div>}
-  </section>;
+export default function CalendarPage() {
+  return <DashboardWorkspace role="COORDINATOR_LEAD"><CoordinatorCalendar /></DashboardWorkspace>;
 }

@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
-import { shiftCalendarMonth } from "@/lib/coordinator-availability";
+import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
 
@@ -42,7 +42,6 @@ export type CalendarCoordinator = {
 const SLOT_HEIGHT = 26;
 const HOURS_IN_DAY = 24;
 const CALENDAR_TIME_ZONE = "Asia/Singapore";
-const SINGAPORE_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 const COORDINATOR_COLORS = [
   "#4F46E5",
@@ -96,32 +95,6 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
-function calendarDate(date: Date): Date {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: CALENDAR_TIME_ZONE,
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-  }).formatToParts(date);
-  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value);
-  return new Date(value("year"), value("month") - 1, value("day"));
-}
-
-function calendarDayBounds(day: Date): { start: number; end: number } {
-  // Calendar dates are civil dates in Singapore. Converting their midnight to
-  // an instant keeps event overlap and vertical placement independent of the
-  // browser machine's local timezone.
-  const start = Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()) - SINGAPORE_OFFSET_MS;
-  return { start, end: start + 24 * 60 * 60 * 1000 };
-}
-
-function overlapsCalendarDay(startDatetime: string, endDatetime: string, day: Date): boolean {
-  const start = Date.parse(startDatetime);
-  const end = Date.parse(endDatetime);
-  const bounds = calendarDayBounds(day);
-  return Number.isFinite(start) && Number.isFinite(end) && start < end && start < bounds.end && bounds.start < end;
-}
-
 function startOfWeek(date: Date): Date {
   const d = startOfDay(date);
   d.setDate(d.getDate() - d.getDay());
@@ -152,7 +125,10 @@ function addMonths(date: Date, months: number): Date {
 
 function addYears(date: Date, years: number): Date {
   const d = new Date(date);
+  const month = d.getMonth();
+  d.setDate(1);
   d.setFullYear(d.getFullYear() + years);
+  d.setDate(Math.min(date.getDate(), new Date(d.getFullYear(), month + 1, 0).getDate()));
   return d;
 }
 
@@ -208,14 +184,6 @@ function dateToMinutes(date: Date): number {
   const parts = timeFormat.formatToParts(date);
   const value = (type: "hour" | "minute") => Number(parts.find((part) => part.type === type)?.value);
   return value("hour") * 60 + value("minute");
-}
-
-function calendarLabelInstant(date: Date): Date {
-  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12) - SINGAPORE_OFFSET_MS);
-}
-
-function calendarHourInstant(hour: number): Date {
-  return new Date(Date.UTC(2020, 0, 1, hour) - SINGAPORE_OFFSET_MS);
 }
 
 type ParsedEvent = CalendarEvent & {

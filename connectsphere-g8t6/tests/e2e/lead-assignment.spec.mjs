@@ -13,11 +13,11 @@ test('[SPM-174] Lead confirms an initial assignment and the request leaves the q
  state.coordinators=coordinators();state.queueEvents=[{...event,status:'SUBMITTED',coordinatorId:undefined}];state.delay=300;
  await page.goto('/events');
  const card=page.getByRole('article').filter({hasText:event.title});
- await card.getByRole('combobox').selectOption('22');
  await card.getByRole('button',{name:'Assign coordinator',exact:true}).click();
+ await page.getByRole('radio',{name:'Select coordinator Coordinator B'}).check();
  await page.getByRole('button',{name:'Confirm assignment'}).click();
  await expect(card).toHaveCount(0);
- await expect(page.getByRole('status')).toContainText('Coordinator assigned for REQ-000071');
+ await expect(page.getByRole('status')).toContainText('REQ-000071 assigned to Coordinator B');
  expect(state.coordinatorChanges).toEqual([{coordinatorId:22}]);
  await page.goto('/assignments');
  await expect(page.getByRole('article',{name:event.title})).toContainText('Coordinator B');

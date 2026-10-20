@@ -68,7 +68,7 @@ test('[SPM-174] Lead login opens the unassigned queue and can navigate to calend
  await page.getByRole('button',{name:'Sign in',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
  await expect(page.getByRole('heading',{name:'Unassigned lead queue event',exact:true})).toBeVisible();
- const expectedSubmittedAt = await page.evaluate(() => new Date('2026-10-20T08:30:00.000Z').toLocaleString());
+ const expectedSubmittedAt = await page.evaluate(() => new Date('2026-10-20T08:30:00.000Z').toLocaleString('en-SG', {timeZone:'Asia/Singapore'}));
  await expect(page.locator('.submitted')).toHaveText(`Submitted ${expectedSubmittedAt}`);
  await expect(page.getByText('Purpose: Community outreach',{exact:true})).toBeVisible();
  await expect(page.locator('.details-panel > div').nth(2).locator('strong')).toHaveText('Preference 1: Venue #1');
@@ -92,7 +92,8 @@ test('[SPM-174] the unassigned queue remains available when coordinator calendar
  await expect(page.getByRole('heading',{name:'Assignment queue',exact:true})).toBeVisible();
  await expect(page.getByRole('heading',{name:'Unassigned lead queue event',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Calendar',exact:true}).click();
- await expect(page.locator('.calendar-panel').getByRole('alert')).toContainText('Availability unavailable');
+ await expect(page.getByRole('alert').filter({hasText:'Refresh availability before assigning'})).toContainText('Calendar service unavailable.');
+ await expect(page.getByRole('button',{name:'Refresh availability',exact:true})).toBeVisible();
  await expect(page.getByText('No coordinators with events to display.',{exact:true})).toBeVisible();
 });
 
