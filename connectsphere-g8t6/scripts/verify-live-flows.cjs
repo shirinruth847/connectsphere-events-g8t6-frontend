@@ -16,7 +16,21 @@ fs.mkdirSync(path.dirname(output),{recursive:true});
 function record(name, details={}) { const result={name,...details}; checks.push(result); console.log(JSON.stringify(result)); }
 function assert(condition,message){if(!condition)throw new Error(message);}
 function check(result){if(result.error)throw new Error(result.error.message);return result.data;}
+// SPM-173 lifecycle rows the backend role may not delete (safety rounds,
+// confirmation snapshots) go through the privileged test connection; the run's
+// booking, room and venue go before the events they reference.
+const lifecycle={eventIds:[],venueIds:[],roomIds:[],bookingIds:[]};
+async function cleanupLifecycle() {
+ if(lifecycle.eventIds.length){
+  const {Client}=require(path.join(backendRoot,'node_modules/pg'));const client=new Client({connectionString:process.env.TEST_DATABASE_URL});await client.connect();
+  try{await client.query('DELETE FROM public.safety_reviews WHERE event_id = ANY($1::integer[])',[lifecycle.eventIds]);await client.query('DELETE FROM public.event_confirmation_snapshots WHERE event_id = ANY($1::integer[])',[lifecycle.eventIds]);}finally{await client.end();}
+ }
+ for(const [table,key,values] of [['venue_booking','booking_id',lifecycle.bookingIds],['room','room_id',lifecycle.roomIds],['venue','venue_id',lifecycle.venueIds]]) {
+  if(!values.length)continue;const result=await supabase.from(table).delete().in(key,values);if(result.error)throw new Error('Cleanup '+table+': '+result.error.message);
+ }
+}
 async function cleanup() {
+ await cleanupLifecycle();
  if(!ids.size)return;
  const data=check(await supabase.from('event').select('event_id,title,organiser_id').in('event_id',[...ids]));
  assert(data.every(row=>row.title.startsWith(runId)&&users.some(user=>user.user_id===row.organiser_id)), 'Refusing to clean non-fixture events');
@@ -42,6 +56,53 @@ async function complete(page,title) {
  await page.getByRole('heading',{name:'Registration & Ticketing Needs',exact:true}).waitFor();
  await page.getByLabel('Enable event registration').check();await page.locator('#registrationCapacity').fill('30');
 }
+// SPM-173 AC8-AC11 through the real coordinator UI and backend. Bookings and the
+// safety approval are seeded directly because their own stories (SPM-186,
+// SPM-249) have no UI yet; every lifecycle action goes through the panel.
+async function coordinatorLifecycle(page,coordinator) {
+ assert(process.env.TEST_DATABASE_URL,'TEST_DATABASE_URL is needed to clean up the lifecycle flow');
+ const organiser=users.find(user=>user.role==='ORGANISER');const venueStaff=users.find(user=>user.role==='VENUE_STAFF');assert(organiser&&venueStaff,'Missing seed organiser or Venue Staff');
+ const venue=check(await supabase.from('venue').insert({name:runId+' Hall',address:runId+' 1 Live Road',max_capacity:200}).select('venue_id').single());lifecycle.venueIds.push(venue.venue_id);
+ const room=check(await supabase.from('room').insert({venue_id:venue.venue_id,layout_type:'THEATRE',capacity:200}).select('room_id').single());lifecycle.roomIds.push(room.room_id);
+ // A far-future slot of its own, so the seed coordinator's schedule never overlaps (SPM-174 guard).
+ const start=new Date(Date.UTC(2029,0,1)+crypto.randomInt(0,300)*86400000+crypto.randomInt(0,20)*3600000);const end=new Date(start.getTime()+7200000);
+ const event=check(await supabase.from('event').insert({title:runId+' lifecycle',purpose:'SPM-173 live lifecycle check',description:'Synthetic live verification; removed after this run.',organiser_id:organiser.user_id,coordinator_id:coordinator.user_id,status:'PLANNING',expected_attendance:50,start_datetime:start.toISOString(),end_datetime:end.toISOString(),preferred_layout_type:'THEATRE'}).select('event_id').single());
+ ids.add(event.event_id);lifecycle.eventIds.push(event.event_id);
+ const booking=check(await supabase.from('venue_booking').insert({event_id:event.event_id,room_id:room.room_id,requested_by:coordinator.user_id,start_datetime:start.toISOString(),end_datetime:end.toISOString(),status:'PENDING'}).select('booking_id').single());lifecycle.bookingIds.push(booking.booking_id);
+ const state=async()=>check(await supabase.from('event').select('status').eq('event_id',event.event_id).single()).status;
+ const panel=page.locator('section[aria-labelledby="lifecycle-heading"]');
+
+ await page.goto(base+'/events/'+event.event_id);await panel.getByText('Not ready yet').waitFor();await panel.getByText('Every venue booking must be approved',{exact:false}).waitFor();
+ assert(await panel.getByRole('button',{name:'Submit for safety review'}).isDisabled(),'Submit offered while not ready');
+ record('SPM-173 readiness names the pending booking',{eventId:event.event_id});
+
+ // Stands in for Venue Staff approving the booking (SPM-186).
+ check(await supabase.from('venue_booking').update({status:'APPROVED',reviewed_by:venueStaff.user_id}).eq('booking_id',booking.booking_id).select('booking_id'));
+ await page.reload();await panel.getByText('Ready',{exact:true}).waitFor();
+ await panel.getByRole('button',{name:'Submit for safety review'}).click();await panel.getByRole('button',{name:'Confirm event'}).waitFor();
+ assert(await state()==='SAFETY_REVIEW','Submit did not enter SAFETY_REVIEW');
+ const round=check(await supabase.from('safety_reviews').select('review_id,status').eq('event_id',event.event_id).single());assert(round.status==='OPEN','No open safety round');
+ record('SPM-173 submit for safety review',{eventId:event.event_id,reviewId:round.review_id});
+
+ await panel.getByRole('button',{name:'Confirm event'}).click();await panel.getByText('needs a safety approval',{exact:false}).waitFor();
+ assert(await state()==='SAFETY_REVIEW','Confirmed without a safety approval');
+ record('SPM-173 confirm refused before safety approval',{eventId:event.event_id});
+
+ // Stands in for a Safety Officer's approval (SPM-249); there is no seed Safety Officer before SPM-245.
+ check(await supabase.from('safety_reviews').update({status:'APPROVED',decided_by:coordinator.user_id,decided_at:new Date().toISOString()}).eq('review_id',round.review_id).select('review_id'));
+ await page.reload();await panel.getByRole('button',{name:'Confirm event'}).click();await panel.getByRole('button',{name:'Start preparation'}).waitFor();
+ assert(await state()==='CONFIRMED','Confirm did not enter CONFIRMED');
+ const snapshot=check(await supabase.from('event_confirmation_snapshots').select('snapshot').eq('event_id',event.event_id).single());assert(snapshot.snapshot.primary_venue?.venue_id===venue.venue_id,'Snapshot lacks the primary venue');
+ const notices=check(await supabase.from('notification').select('title,notification_recipient(recipient_id)').eq('event_id',event.event_id));
+ assert(notices.some(n=>n.title==='Event confirmed'&&n.notification_recipient.some(r=>r.recipient_id===organiser.user_id)),'Owner not notified of the confirmation');
+ record('SPM-173 confirm with snapshot and owner notification',{eventId:event.event_id});
+
+ const started=page.waitForResponse(r=>r.url()===`${api}/api/events/${event.event_id}/start-preparation`&&r.request().method()==='POST');
+ await panel.getByRole('button',{name:'Start preparation'}).click();const startResponse=await started;
+ assert(startResponse.status()===200,'Start preparation refused: '+JSON.stringify(await startResponse.json().catch(()=>null)));
+ assert(await state()==='PREPARATION','Start preparation did not enter PREPARATION');
+ record('SPM-173 start preparation',{eventId:event.event_id});
+}
 async function main() {
  users=check(await supabase.from('user').select('user_id,name,role,email,auth_user_id,is_active').like('email','dev-%@connectsphere.test')).filter(user=>user.name.startsWith('Seed ')&&user.is_active&&user.auth_user_id);
  assert(process.env.SEED_ACCOUNT_PASSWORD,'SEED_ACCOUNT_PASSWORD is missing');
@@ -59,6 +120,7 @@ async function main() {
   });
   try {
    await login(page,user);await page.getByRole('heading',{name:heading,exact:true}).waitFor();record('real role login',{role,destination:new URL(page.url()).pathname});
+   if(role==='COORDINATOR')await coordinatorLifecycle(page,user);
    if(role==='ORGANISER') {
     await page.getByRole('link',{name:'New Event',exact:false}).click();await complete(page,runId+' submitted request');
     assert(ids.size===0,'Next submitted before explicit Submit');
