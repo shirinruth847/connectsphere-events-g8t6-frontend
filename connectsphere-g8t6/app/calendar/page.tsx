@@ -1,129 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CalendarView, CalendarCoordinator } from "@/components/calendar/calendar-view";
-import { CoordinatorShell } from "@/components/layout/coordinator-shell";
-import { AlertBanner } from "@/components/shared/primitives";
-import { getCurrentUser, getCoordinatorAvailability } from "@/lib/api/events";
-import { useAuth } from "@/components/auth/auth-provider";
+import { CoordinatorAvailabilityCalendar } from "@/components/calendar/coordinator-availability-calendar";
+import { DashboardWorkspace } from "@/components/layout/dashboard-workspace";
+import { PageContent } from "@/components/layout/page-content";
+import { AlertBanner, Button } from "@/components/shared/primitives";
+import { getCoordinatorAvailability, type CoordinatorAvailability } from "@/lib/api/events";
 
-type AuthState = "loading" | "ready" | "forbidden" | "error";
+function CoordinatorCalendar() {
+  const [coordinators, setCoordinators] = useState<CoordinatorAvailability[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void getCoordinatorAvailability().then((result) => {
+      if (alive) { setCoordinators(result.coordinators); setError(""); }
+    }).catch((cause) => {
+      if (alive) setError(cause instanceof Error ? cause.message : "Could not load availability.");
+    }).finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [attempt]);
+  return <PageContent title="Coordinator calendar" eyebrow="Coordinator Lead" description="Review scheduled events and availability in Singapore time.">
+    {loading ? <p role="status">Loading calendar…</p> : error ? <AlertBanner tone="error" title="Unable to load calendar">{error}<Button variant="secondary" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Retry</Button></AlertBanner> : <CoordinatorAvailabilityCalendar coordinators={coordinators.map((coordinator) => ({ ...coordinator, events: coordinator.events.map((event) => ({ ...event, purpose: event.purpose ?? undefined, coordinatorId: coordinator.coordinatorId, coordinatorName: coordinator.name, organisation: event.organisation?.name ?? null })) }))} />}
+  </PageContent>;
+}
 
 export default function CalendarPage() {
-  const router = useRouter();
-  const { session, loading: authLoading } = useAuth();
-  const [authState, setAuthState] = useState<AuthState>("loading");
-  const [coordinators, setCoordinators] = useState<CalendarCoordinator[]>([]);
-  const [userName, setUserName] = useState("Loading…");
-  const [userEmail, setUserEmail] = useState("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if (!mounted) return;
-      // Redirect decisions come from the single source of truth (AuthProvider)
-      // and only run once auth state has finished loading.
-      if (authLoading) return;
-      const token = session?.access_token ?? null;
-      if (!token) {
-        router.replace("/");
-        return;
-      }
-      try {
-        const result = await getCurrentUser(token);
-        if (result.user.role !== "COORDINATOR_LEAD") {
-          setAuthState("forbidden");
-          return;
-        }
-        setAuthState("ready");
-        setUserName(result.user.name);
-        setUserEmail(result.user.email);
-        const availability = await getCoordinatorAvailability(token);
-        if (!mounted) return;
-        setCoordinators(
-          availability.coordinators.map((c) => ({
-            coordinatorId: c.coordinatorId,
-            name: c.name,
-            events: c.events.map((e) => ({
-              eventId: e.eventId,
-              title: e.title,
-              startDatetime: e.startDatetime,
-              endDatetime: e.endDatetime,
-              coordinatorId: c.coordinatorId,
-              coordinatorName: c.name,
-              isRequested: false,
-              status: e.status,
-              requestId: e.requestId,
-              expectedAttendance: e.expectedAttendance,
-              organisation: e.organisation?.name ?? null,
-              createdAt: e.createdAt,
-            })),
-          }))
-        );
-      } catch (loadError) {
-        if (!mounted) return;
-        setError((loadError as Error).message);
-        setAuthState("error");
-      }
-    };
-    void run();
-    return () => { mounted = false; };
-  }, [session, authLoading, router]);
-
-  if (authState === "loading") {
-    return (
-      <CoordinatorShell userName={userName} userEmail={userEmail}>
-        <div className="empty-state">
-          <h2>Loading coordinator calendar…</h2>
-        </div>
-      </CoordinatorShell>
-    );
-  }
-
-  if (authState === "forbidden") {
-    return (
-      <CoordinatorShell userName={userName} userEmail={userEmail}>
-        <div className="access-denied">
-          <div className="access-card">
-            <span className="eyebrow">ACCESS DENIED</span>
-            <h1>Lead access required</h1>
-            <p>This calendar is restricted to Event Coordinator Leads.</p>
-          </div>
-        </div>
-      </CoordinatorShell>
-    );
-  }
-
-  if (authState === "error") {
-    return (
-      <CoordinatorShell userName={userName} userEmail={userEmail}>
-        <section className="calendar-route-page">
-          <header className="calendar-route-header">
-            <span className="eyebrow">COORDINATOR LEAD</span>
-            <h1>Coordinator calendar</h1>
-            <p>Review each coordinator’s scheduled events and availability.</p>
-          </header>
-          <AlertBanner tone="error" title="Unable to load calendar">{error}</AlertBanner>
-        </section>
-      </CoordinatorShell>
-    );
-  }
-
-  return (
-    <CoordinatorShell userName={userName} userEmail={userEmail}>
-      <section className="calendar-route-page">
-        <header className="calendar-route-header">
-          <span className="eyebrow">COORDINATOR LEAD</span>
-          <h1>Coordinator calendar</h1>
-          <p>Review each coordinator’s scheduled events and availability.</p>
-        </header>
-        <div className="calendar-panel">
-          <div className="calendar-panel-header"><strong>Coordinator availability</strong><span>Live data from the backend</span></div>
-          <CalendarView coordinators={coordinators} defaultView="month" />
-        </div>
-      </section>
-    </CoordinatorShell>
-  );
+  return <DashboardWorkspace role="COORDINATOR_LEAD"><CoordinatorCalendar /></DashboardWorkspace>;
 }

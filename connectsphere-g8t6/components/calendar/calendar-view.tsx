@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
+import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
 
@@ -40,6 +41,7 @@ export type CalendarCoordinator = {
 
 const SLOT_HEIGHT = 26;
 const HOURS_IN_DAY = 24;
+const CALENDAR_TIME_ZONE = "Asia/Singapore";
 
 const COORDINATOR_COLORS = [
   "#4F46E5",
@@ -82,7 +84,7 @@ function getTextColor(backgroundColor: string): string {
 
   const luminance = 0.2126 * sRGB(r) + 0.7152 * sRGB(g) + 0.0722 * sRGB(b);
   const whiteContrast = 1.05 / (luminance + 0.05);
-  const darkLuminance = 0.014;
+  const darkLuminance = 0.2126 * sRGB(32) + 0.7152 * sRGB(33) + 0.0722 * sRGB(36);
   const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
   return darkContrast >= whiteContrast ? "#202124" : "#ffffff";
 }
@@ -118,14 +120,15 @@ function addWeeks(date: Date, weeks: number): Date {
 }
 
 function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
+  return shiftCalendarMonth(date, months);
 }
 
 function addYears(date: Date, years: number): Date {
   const d = new Date(date);
+  const month = d.getMonth();
+  d.setDate(1);
   d.setFullYear(d.getFullYear() + years);
+  d.setDate(Math.min(date.getDate(), new Date(d.getFullYear(), month + 1, 0).getDate()));
   return d;
 }
 
@@ -152,7 +155,14 @@ const monthFormat = new Intl.DateTimeFormat("en-SG", {
 });
 
 const yearFormat = new Intl.DateTimeFormat("en-SG", {
-  timeZone: "Asia/Singapore",
+  timeZone: CALENDAR_TIME_ZONE,
+  year: "numeric",
+});
+
+const fullDateFormat = new Intl.DateTimeFormat("en-SG", {
+  timeZone: CALENDAR_TIME_ZONE,
+  day: "numeric",
+  month: "long",
   year: "numeric",
 });
 
@@ -163,15 +173,17 @@ function formatTime(date: Date): string {
 }
 
 function formatMonthLabel(date: Date): string {
-  return monthFormat.format(date);
+  return monthFormat.format(calendarLabelInstant(date));
 }
 
 function formatYearLabel(date: Date): string {
-  return yearFormat.format(date);
+  return yearFormat.format(calendarLabelInstant(date));
 }
 
 function dateToMinutes(date: Date): number {
-  return date.getHours() * 60 + date.getMinutes();
+  const parts = timeFormat.formatToParts(date);
+  const value = (type: "hour" | "minute") => Number(parts.find((part) => part.type === type)?.value);
+  return value("hour") * 60 + value("minute");
 }
 
 type ParsedEvent = CalendarEvent & {
@@ -193,22 +205,15 @@ function layoutDayEvents(
   day: Date,
   colorMap: Map<number, string>,
 ): LayoutEvent[] {
-  const dayStart = startOfDay(day);
+  const bounds = calendarDayBounds(day);
 
   const items: ParsedEvent[] = events
-    .filter((e) => {
-      const start = new Date(e.startDatetime);
-      return (
-        start.getFullYear() === dayStart.getFullYear() &&
-        start.getMonth() === dayStart.getMonth() &&
-        start.getDate() === dayStart.getDate()
-      );
-    })
+    .filter((event) => overlapsCalendarDay(event.startDatetime, event.endDatetime, day))
     .map((e) => {
       const startMs = new Date(e.startDatetime).getTime();
       const endMs = new Date(e.endDatetime).getTime();
-      const startMin = Math.max((startMs - dayStart.getTime()) / 60000, 0);
-      const endMin = Math.min((endMs - dayStart.getTime()) / 60000, 24 * 60);
+      const startMin = (Math.max(startMs, bounds.start) - bounds.start) / 60_000;
+      const endMin = (Math.min(endMs, bounds.end) - bounds.start) / 60_000;
       return { ...e, startMin, endMin };
     })
     .sort((a, b) => a.startMin - b.startMin);
@@ -289,11 +294,13 @@ function CoordinatorLegend({
   coordinators,
   visibleIds,
   onToggle,
+  onSetVisibleIds,
   colorMap,
 }: {
   coordinators: CalendarCoordinator[];
   visibleIds: Set<number>;
   onToggle: (id: number) => void;
+  onSetVisibleIds: (ids: Set<number>) => void;
   colorMap: Map<number, string>;
 }) {
   const [open, setOpen] = useState(false);
@@ -320,11 +327,11 @@ function CoordinatorLegend({
     c.name.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
-
   if (coordinators.length === 0) {
     return null;
   }
+
+  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
 
   return (
     <div className="cal-legend" role="group" aria-label="Filter by coordinator">
@@ -366,10 +373,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => {
-                coordinators.filter((c) => !visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId));
-                setOpen(false);
-              }}
+              onClick={() => { onSetVisibleIds(new Set(coordinators.map((c) => c.coordinatorId))); setOpen(false); }}
               disabled={allVisible}
             >
               All
@@ -377,10 +381,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => {
-                coordinators.filter((c) => visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId));
-                setOpen(false);
-              }}
+              onClick={() => { onSetVisibleIds(new Set()); setOpen(false); }}
               disabled={noneVisible}
             >
               None
@@ -421,6 +422,7 @@ function CoordinatorLegend({
     </div>
   );
 }
+
 
 function EventBlock({
   event,
@@ -561,18 +563,17 @@ function WeekView({
 }) {
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const today = new Date();
+  const today = calendarDate(new Date());
 
   const hours = Array.from({ length: HOURS_IN_DAY }, (_, h) => {
-    const slotDate = new Date();
-    slotDate.setHours(h, 0, 0, 0);
+    const slotDate = calendarHourInstant(h);
     return { hour: h, label: formatTime(slotDate) };
   });
 
   const visibleCoordinators = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
   const allEvents = visibleCoordinators.flatMap((c) => c.events);
   const now = new Date();
-  const showNowLine = days.some((d) => isSameDay(d, now));
+  const showNowLine = days.some((d) => isSameDay(d, calendarDate(now)));
 
   return (
     <div className="cal-week-view">
@@ -622,7 +623,7 @@ function WeekView({
           {days.map((day) => {
             const layouted = layoutDayEvents(allEvents, day, colorMap);
             const selectedLayouted =
-              selectedEvent && isSameDay(day, new Date(selectedEvent.startDatetime))
+              selectedEvent && overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, day)
                 ? layoutDayEvents([selectedEvent], day, colorMap)
                 : [];
 
@@ -676,12 +677,11 @@ function DayView({
   onEventHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
   selectedEvent?: CalendarEvent;
 }) {
-  const today = new Date();
+  const today = calendarDate(new Date());
   const isToday = isSameDay(currentDate, today);
 
   const hours = Array.from({ length: HOURS_IN_DAY }, (_, h) => {
-    const slotDate = new Date();
-    slotDate.setHours(h, 0, 0, 0);
+    const slotDate = calendarHourInstant(h);
     return { hour: h, label: formatTime(slotDate) };
   });
 
@@ -734,7 +734,7 @@ function DayView({
               />
             ))}
             {selectedEvent &&
-              isSameDay(currentDate, new Date(selectedEvent.startDatetime)) && (
+              overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, currentDate) && (
                 <div
                   className="cal-event-phantom"
                   style={{
@@ -776,7 +776,7 @@ function MonthView({
     monthStart.getMonth(),
     0,
   ).getDate();
-  const today = new Date();
+  const today = calendarDate(new Date());
 
   const weeks: Date[][] = [];
   let day = 1 - firstDayOfMonth;
@@ -962,8 +962,8 @@ function getCoordinatorDots(
 ): CoordinatorDot[] {
   const seen = new Map<number, CoordinatorDot>();
   for (const coordinator of coordinators) {
-    const hasEvent = coordinator.events.some((e) =>
-      isSameDay(new Date(e.startDatetime), date),
+    const hasEvent = coordinator.events.some((event) =>
+      overlapsCalendarDay(event.startDatetime, event.endDatetime, date),
     );
     if (hasEvent && !seen.has(coordinator.coordinatorId)) {
       seen.set(coordinator.coordinatorId, {
@@ -1266,10 +1266,16 @@ export function CalendarView({
   const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
     defaultView,
   );
-  const [internalCurrentDate, setInternalCurrentDate] = useState(new Date());
-  // Keep the coordinator selection in the same hidden-id model as SPM-177.
-  // Deriving visible ids from current props also handles data arriving async.
-  const [hiddenIds, setHiddenIds] = useState<Set<number>>(() => new Set());
+  const [internalCurrentDate, setInternalCurrentDate] = useState(() => calendarDate(new Date()));
+  const [manualVisibleIds, setManualVisibleIds] = useState<Set<number> | null>(null);
+
+  const visibleIds = useMemo(() => {
+    if (manualVisibleIds === null) {
+      return new Set(coordinators.map((c) => c.coordinatorId));
+    }
+    return manualVisibleIds;
+  }, [manualVisibleIds, coordinators]);
+
   const [popoverEvent, setPopoverEvent] = useState<LayoutEvent | null>(null);
   const [tooltipEvent, setTooltipEvent] = useState<{
     event: LayoutEvent;
@@ -1287,15 +1293,6 @@ export function CalendarView({
     );
     return map;
   }, [coordinators]);
-
-  const visibleIds = useMemo(
-    () => new Set(
-      coordinators
-        .filter((coordinator) => !hiddenIds.has(coordinator.coordinatorId))
-        .map((coordinator) => coordinator.coordinatorId),
-    ),
-    [coordinators, hiddenIds],
-  );
 
   const visibleCoordinators = coordinators.filter((c) =>
     visibleIds.has(c.coordinatorId),
@@ -1326,8 +1323,8 @@ export function CalendarView({
    };
 
   const toggleCoordinator = (id: number) => {
-    setHiddenIds((prev) => {
-      const next = new Set(prev);
+    setManualVisibleIds((prev) => {
+      const next = new Set(prev ?? coordinators.map((coordinator) => coordinator.coordinatorId));
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
@@ -1369,7 +1366,7 @@ export function CalendarView({
   };
 
   const handleToday = () => {
-    handleCurrentDateChange(new Date());
+    handleCurrentDateChange(calendarDate(new Date()));
   };
 
   const title = (() => {
@@ -1387,12 +1384,7 @@ export function CalendarView({
       }
       case "day": {
         const d = weekdayShortArr[effectiveCurrentDate.getDay()];
-        return `${d}, ${effectiveCurrentDate.toLocaleDateString("en-SG", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-          timeZone: "Asia/Singapore",
-        })}`;
+        return `${d}, ${fullDateFormat.format(calendarLabelInstant(effectiveCurrentDate))}`;
       }
     }
   })();
@@ -1451,10 +1443,12 @@ export function CalendarView({
         </div>
       </div>
 
+
       <CoordinatorLegend
         coordinators={coordinators}
         visibleIds={visibleIds}
         onToggle={toggleCoordinator}
+        onSetVisibleIds={setManualVisibleIds}
         colorMap={colorMap}
       />
 
