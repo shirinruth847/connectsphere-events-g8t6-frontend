@@ -6,6 +6,9 @@ export const ROUTES = {
   signup: "/signup",
   dashboard: "/dashboard",
   registrations: "/my-registrations",
+  events: "/events",
+  assignments: "/assignments",
+  calendar: "/calendar",
   newEvent: "/events/new",
   createEvent: "/events/create",
   drafts: "/dashboard?status=DRAFT#my-drafts",
@@ -35,6 +38,8 @@ export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
+  if (pathname === "/events") return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
+  if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
   if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR";
@@ -43,7 +48,10 @@ export function canViewPath(role: UserRole, path: string) {
 
 export function postLoginPath(user: SessionUser, next: string | null) {
   const path = safeNextPath(next);
-  return path && canViewPath(user.role, path) ? path : homeForRole(user.role);
+  if (path && canViewPath(user.role, path)) return path;
+  // Keep the SPM-174 lead workflow's queue as its landing page. Coordinators
+  // and other staff use main's role-aware dashboard; attendees go to registrations.
+  return user.role === "COORDINATOR_LEAD" ? "/events" : homeForRole(user.role);
 }
 
 export function loginUrl(path: string) {
