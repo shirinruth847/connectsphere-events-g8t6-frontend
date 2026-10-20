@@ -7,6 +7,7 @@ import {
   type ReactElement,
 } from "react";
 import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
+import styles from "./calendar-view.module.css";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
 
@@ -1391,15 +1392,18 @@ export function CalendarView({
 
   if (coordinators.length === 0) {
     return (
-      <div className="calendar-view">
-        <div className="calendar-empty">
-          <p>No coordinators with events to display.</p>
+      <div className={styles.scope}>
+        <div className="calendar-view">
+          <div className="calendar-empty">
+            <p>No coordinators with events to display.</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
+    <div className={styles.scope}>
     <div className="calendar-view" onClick={() => setPopoverEvent(null)}>
       <div className="calendar-toolbar">
         <div className="calendar-nav">
@@ -1540,6 +1544,7 @@ export function CalendarView({
           onSelectCoordinator={onSelectCoordinator}
         />
       )}
+    </div>
     </div>
   );
 }
