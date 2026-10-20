@@ -10,7 +10,7 @@ const hankenGrotesk = Hanken_Grotesk({
 
 export const metadata: Metadata = {
   title: "ConnectSphere | Event Requests",
-  description: "Coordinator lead event request assignment queue",
+  description: "Event requests and role-based workspaces",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

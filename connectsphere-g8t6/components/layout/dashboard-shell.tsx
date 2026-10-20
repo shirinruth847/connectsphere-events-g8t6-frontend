@@ -91,7 +91,7 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
     </div>
   </div>;
 
-  return <div data-dashboard-shell={profile.role} className={`min-h-screen bg-[#f7f8fc] lg:flex${profile.role === "COORDINATOR_LEAD" ? " coordinator-shell" : ""}`}>
+  return <div data-dashboard-shell={profile.role} className={`min-h-screen bg-[#f7f8fc] lg:flex ${profile.role === "COORDINATOR_LEAD" ? "coordinator-shell" : ""}`}>
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-[#4f46e5] px-4 text-white shadow-sm lg:hidden">
       <Link className="font-extrabold tracking-tight" href={home}>ConnectSphere</Link>
       <button aria-expanded={open} aria-controls="dashboard-sidebar" aria-label={open ? "Close menu" : "Open menu"} className="rounded-lg p-2 hover:bg-white/10" onClick={() => setOpen(!open)}><NavIcon name={open ? "close" : "menu"} /></button>
