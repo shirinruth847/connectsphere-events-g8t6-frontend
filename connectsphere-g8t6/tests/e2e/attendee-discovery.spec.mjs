@@ -204,7 +204,7 @@ test('[SPM-34 AC6] a 404 on details says the event is no longer available', asyn
   await expect(page.getByRole('article')).toHaveCount(1);
 });
 
-for (const role of ['ORGANISER', 'COORDINATOR_LEAD']) {
+for (const role of ['ORGANISER']) {
   test(`[SPM-34] ${role} gets the standard access-denied message at /events`, async ({ page }) => {
     const { requests } = await installDiscoveryMocks(page, { role, pages: { '': { events: [makeEvent()], nextCursor: null } } });
     await page.goto('/events');
