@@ -219,7 +219,7 @@ export function EventRequestWizard() {
       const status = eventStatusLabel(result);
       sessionStorage.setItem("connectsphere:notice", recovered
         ? `${result.requestId} is already ${status}. Open the event details to see its current progress.`
-        : `Your event request has been submitted successfully. ${result.requestId} · ${status}. A Coordinator or Coordinator Lead can assign a coordinator.`);
+        : `Your event request has been submitted successfully. ${result.requestId} · ${status}. The Coordinator Lead will assign a coordinator.`);
       router.push("/dashboard");
     };
     const retryingCreate = Boolean(submitAttempt.current);
@@ -358,7 +358,7 @@ export function EventRequestWizard() {
 
       <footer className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-[#e2e5f1] bg-white/95 px-4 py-3 backdrop-blur sm:-mx-7 sm:px-7 lg:-mx-8 lg:px-8">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0"><p className="text-[13px] font-semibold text-on-surface">{values.title.trim() ? "Your title is entered. You can save a draft without finishing the form." : "Enter an Event Title to save a draft."}</p><p className="mt-0.5 text-xs text-on-surface-variant">After submission, a Coordinator or Coordinator Lead can assign a coordinator to review your request.</p></div>
+          <div className="min-w-0"><p className="text-[13px] font-semibold text-on-surface">{values.title.trim() ? "Your title is entered. You can save a draft without finishing the form." : "Enter an Event Title to save a draft."}</p><p className="mt-0.5 text-xs text-on-surface-variant">After submission, the Coordinator Lead assigns a coordinator to review your request.</p></div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button type="button" onClick={() => void saveDraft(false)} disabled={saving || submitting || uncertainSubmission || !values.title.trim()} className="inline-flex h-11 items-center gap-2 rounded-[2px] bg-[#e6eeff] px-5 text-sm font-medium text-on-surface disabled:cursor-not-allowed disabled:opacity-50"><span aria-hidden="true">♧</span>{saving ? "Saving…" : "Save as Draft"}</button>
             <Button type="button" variant="secondary" disabled={step === 0 || saving || uncertainSubmission} onClick={() => setStep((current) => current - 1)} className="h-11 rounded-[2px] px-5">Back</Button>

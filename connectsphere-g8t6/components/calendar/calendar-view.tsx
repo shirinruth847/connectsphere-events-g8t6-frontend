@@ -7,6 +7,8 @@ import {
   type ReactElement,
 } from "react";
 
+import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
+
 export type CalendarViewMode = "year" | "month" | "week" | "day";
 
 export type CalendarEvent = {
@@ -118,14 +120,16 @@ function addWeeks(date: Date, weeks: number): Date {
 }
 
 function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
+  return shiftCalendarMonth(date, months);
 }
 
 function addYears(date: Date, years: number): Date {
   const d = new Date(date);
+  const month = d.getMonth();
+  d.setDate(1);
   d.setFullYear(d.getFullYear() + years);
+  const lastDay = new Date(d.getFullYear(), month + 1, 0).getDate();
+  d.setDate(Math.min(date.getDate(), lastDay));
   return d;
 }
 
@@ -163,15 +167,17 @@ function formatTime(date: Date): string {
 }
 
 function formatMonthLabel(date: Date): string {
-  return monthFormat.format(date);
+  return monthFormat.format(calendarLabelInstant(date));
 }
 
 function formatYearLabel(date: Date): string {
-  return yearFormat.format(date);
+  return yearFormat.format(calendarLabelInstant(date));
 }
 
 function dateToMinutes(date: Date): number {
-  return date.getHours() * 60 + date.getMinutes();
+  const parts = timeFormat.formatToParts(date);
+  const value = (type: "hour" | "minute") => Number(parts.find((part) => part.type === type)?.value);
+  return value("hour") * 60 + value("minute");
 }
 
 type ParsedEvent = CalendarEvent & {
@@ -193,22 +199,15 @@ function layoutDayEvents(
   day: Date,
   colorMap: Map<number, string>,
 ): LayoutEvent[] {
-  const dayStart = startOfDay(day);
+  const dayStart = calendarDayBounds(day).start;
 
   const items: ParsedEvent[] = events
-    .filter((e) => {
-      const start = new Date(e.startDatetime);
-      return (
-        start.getFullYear() === dayStart.getFullYear() &&
-        start.getMonth() === dayStart.getMonth() &&
-        start.getDate() === dayStart.getDate()
-      );
-    })
+    .filter((e) => overlapsCalendarDay(e.startDatetime, e.endDatetime, day))
     .map((e) => {
       const startMs = new Date(e.startDatetime).getTime();
       const endMs = new Date(e.endDatetime).getTime();
-      const startMin = Math.max((startMs - dayStart.getTime()) / 60000, 0);
-      const endMin = Math.min((endMs - dayStart.getTime()) / 60000, 24 * 60);
+      const startMin = Math.max((startMs - dayStart) / 60000, 0);
+      const endMin = Math.min((endMs - dayStart) / 60000, 24 * 60);
       return { ...e, startMin, endMin };
     })
     .sort((a, b) => a.startMin - b.startMin);
@@ -366,7 +365,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              onClick={() => { coordinators.filter((c) => !visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
               disabled={allVisible}
             >
               All
@@ -374,7 +373,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { coordinators.forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
+              onClick={() => { coordinators.filter((c) => visibleIds.has(c.coordinatorId)).forEach((c) => onToggle(c.coordinatorId)); setOpen(false); }}
               disabled={noneVisible}
             >
               None
@@ -556,18 +555,17 @@ function WeekView({
 }) {
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const today = new Date();
+  const today = calendarDate(new Date());
 
   const hours = Array.from({ length: HOURS_IN_DAY }, (_, h) => {
-    const slotDate = new Date();
-    slotDate.setHours(h, 0, 0, 0);
+    const slotDate = calendarHourInstant(h);
     return { hour: h, label: formatTime(slotDate) };
   });
 
   const visibleCoordinators = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
   const allEvents = visibleCoordinators.flatMap((c) => c.events);
   const now = new Date();
-  const showNowLine = days.some((d) => isSameDay(d, now));
+  const showNowLine = days.some((d) => isSameDay(d, calendarDate(now)));
 
   return (
     <div className="cal-week-view">
@@ -617,7 +615,7 @@ function WeekView({
           {days.map((day) => {
             const layouted = layoutDayEvents(allEvents, day, colorMap);
             const selectedLayouted =
-              selectedEvent && isSameDay(day, new Date(selectedEvent.startDatetime))
+              selectedEvent && overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, day)
                 ? layoutDayEvents([selectedEvent], day, colorMap)
                 : [];
 
@@ -671,12 +669,11 @@ function DayView({
   onEventHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
   selectedEvent?: CalendarEvent;
 }) {
-  const today = new Date();
+  const today = calendarDate(new Date());
   const isToday = isSameDay(currentDate, today);
 
   const hours = Array.from({ length: HOURS_IN_DAY }, (_, h) => {
-    const slotDate = new Date();
-    slotDate.setHours(h, 0, 0, 0);
+    const slotDate = calendarHourInstant(h);
     return { hour: h, label: formatTime(slotDate) };
   });
 
@@ -729,7 +726,7 @@ function DayView({
               />
             ))}
             {selectedEvent &&
-              isSameDay(currentDate, new Date(selectedEvent.startDatetime)) && (
+              overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, currentDate) && (
                 <div
                   className="cal-event-phantom"
                   style={{
@@ -771,7 +768,7 @@ function MonthView({
     monthStart.getMonth(),
     0,
   ).getDate();
-  const today = new Date();
+  const today = calendarDate(new Date());
 
   const weeks: Date[][] = [];
   let day = 1 - firstDayOfMonth;
@@ -958,7 +955,7 @@ function getCoordinatorDots(
   const seen = new Map<number, CoordinatorDot>();
   for (const coordinator of coordinators) {
     const hasEvent = coordinator.events.some((e) =>
-      isSameDay(new Date(e.startDatetime), date),
+      overlapsCalendarDay(e.startDatetime, e.endDatetime, date),
     );
     if (hasEvent && !seen.has(coordinator.coordinatorId)) {
       seen.set(coordinator.coordinatorId, {
@@ -1261,7 +1258,7 @@ export function CalendarView({
   const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
     defaultView,
   );
-  const [internalCurrentDate, setInternalCurrentDate] = useState(new Date());
+  const [internalCurrentDate, setInternalCurrentDate] = useState(() => calendarDate(new Date()));
   const [hiddenIds, setHiddenIds] = useState<Set<number>>(() => new Set());
   const [popoverEvent, setPopoverEvent] = useState<LayoutEvent | null>(null);
   const [tooltipEvent, setTooltipEvent] = useState<{
@@ -1358,7 +1355,7 @@ export function CalendarView({
   };
 
   const handleToday = () => {
-    handleCurrentDateChange(new Date());
+    handleCurrentDateChange(calendarDate(new Date()));
   };
 
   const title = (() => {
@@ -1376,7 +1373,7 @@ export function CalendarView({
       }
       case "day": {
         const d = weekdayShortArr[effectiveCurrentDate.getDay()];
-        return `${d}, ${effectiveCurrentDate.toLocaleDateString("en-SG", {
+        return `${d}, ${calendarLabelInstant(effectiveCurrentDate).toLocaleDateString("en-SG", {
           day: "numeric",
           month: "long",
           year: "numeric",

@@ -60,8 +60,8 @@ for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event
   await expect(page).toHaveURL(/\/login/);
  });
 }
-test('[SPM-177] active Coordinator can assign a queued request from /events', async ({page}) => {
- const state = await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+test('[SPM-177] active Lead can assign a queued request from /events', async ({page}) => {
+ const state = await installConnectSphereMocks(page, { role: 'COORDINATOR_LEAD' });
  await page.goto('/events');
  await expect(page.getByRole('heading', { name: 'Assignment queue', exact: true })).toBeVisible();
  await expect(page.getByRole('navigation', { name: 'Main Navigation' }).getByRole('link', { name: 'Unassigned Queue' })).toHaveAttribute('aria-current', 'page');
@@ -69,14 +69,18 @@ test('[SPM-177] active Coordinator can assign a queued request from /events', as
  await page.getByRole('radio', { name: 'Select coordinator Alex Coordinator' }).check();
  await page.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
  await expect(page.getByRole('heading', { name: 'Queue cleared', exact: true })).toBeVisible();
+ await expect(page.getByRole('status')).toContainText('REQ-000084 assigned to Alex Coordinator');
  expect(state.coordinatorAssignmentRequests).toEqual([{ eventId: 84, body: { coordinatorId: 22 }, method: 'PATCH' }]);
 });
-test('[SPM-177] queue API denial names the Coordinator and Lead roles that can access it', async ({page}) => {
+test('[SPM-177 AC4] a regular Coordinator cannot read the queue or assign', async ({page}) => {
  const state = await installConnectSphereMocks(page, { role: 'COORDINATOR' });
- state.failure = { path: '/api/events/unassigned', status: 403, body: { error: 'Forbidden.' } };
+ const businessCalls = [];
+ page.on('request', request => { if (/api\/events\/(unassigned|coordinator-availability|\d+\/coordinator)/.test(request.url())) businessCalls.push(request.url()); });
  await page.goto('/events');
- await expect(page.getByRole('heading', { name: 'Coordinator or Lead access required', exact: true })).toBeVisible();
- await expect(page.getByText('This queue is available to Event Coordinators and Event Coordinator Leads.', { exact: false })).toBeVisible();
+ await expect(page.getByRole('heading', { name: 'Access denied', exact: true })).toBeVisible();
+ await expect(page.getByRole('link', {name:'Unassigned Queue',exact:true})).toHaveCount(0);
+ expect(businessCalls).toEqual([]);
+ expect(state.coordinatorAssignmentRequests).toEqual([]);
 });
 test('[SPM-32 TC-008–010] blank login fields show inline errors', async ({page}) => {
  await installLoginMock(page);await page.goto('/login');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByText('Email is required.')).toBeVisible();await expect(page.getByText('Password is required.')).toBeVisible();

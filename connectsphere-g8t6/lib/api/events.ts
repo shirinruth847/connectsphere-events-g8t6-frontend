@@ -1,3 +1,5 @@
+import { apiRequest } from "@/lib/api";
+
 export type ApiEvent = {
   eventId: number;
   requestId: string;
@@ -21,72 +23,37 @@ export type LeadAssignment = ApiEvent & {
   coordinatorName: string;
 };
 
-type ApiError = Error & { status?: number; code?: string; fields?: Record<string, string> };
-
-function getBackendUrl() {
-  return process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.BACKEND_URL ?? "http://localhost:8000";
+export function getUnassignedEvents() {
+  return apiRequest<{ events: ApiEvent[] }>("/events/unassigned");
 }
 
-async function request<T>(path: string, accessToken: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getBackendUrl()}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      code?: string;
-      fields?: Record<string, string>;
-    };
-    const error = new Error(body.error || `Request failed with status ${response.status}`) as ApiError;
-    error.status = response.status;
-    error.code = body.code;
-    error.fields = body.fields;
-    throw error;
-  }
-  return response.status === 204 ? (undefined as T) : response.json();
-}
-
-export function getUnassignedEvents(accessToken: string) {
-  return request<{ events: ApiEvent[] }>("/api/events/unassigned", accessToken);
-}
-
-export function getCoordinatorAvailability(accessToken: string) {
-  return request<{ coordinators: CoordinatorAvailability[] }>(
-    "/api/events/coordinator-availability",
-    accessToken,
+export function getCoordinatorAvailability() {
+  return apiRequest<{ coordinators: CoordinatorAvailability[] }>(
+    "/events/coordinator-availability",
   );
 }
 
-export function getLeadAssignments(accessToken: string) {
-  return request<{ assignments: LeadAssignment[] }>("/api/events/assignments", accessToken);
+export function getLeadAssignments() {
+  return apiRequest<{ assignments: LeadAssignment[] }>("/events/assignments");
 }
 
-export function assignCoordinator(eventId: number, coordinatorId: number, accessToken: string) {
-  return request<{ event: ApiEvent }>(`/api/events/${eventId}/coordinator`, accessToken, {
-    // PATCH without expectedCoordinatorId is initial assignment for both roles.
-    // POST remains the Lead-only compatibility route.
+export function assignCoordinator(eventId: number, coordinatorId: number) {
+  return apiRequest<{ event: ApiEvent }>(`/events/${eventId}/coordinator`, {
+    // Lead-only initial assignment; expectedCoordinatorId selects reassignment.
     method: "PATCH",
     body: JSON.stringify({ coordinatorId }),
   });
 }
 
-export function reassignCoordinator(eventId: number, coordinatorId: number, expectedCoordinatorId: number, accessToken: string) {
-  return request<{ event: ApiEvent }>(`/api/events/${eventId}/coordinator`, accessToken, {
+export function reassignCoordinator(eventId: number, coordinatorId: number, expectedCoordinatorId: number) {
+  return apiRequest<{ event: ApiEvent }>(`/events/${eventId}/coordinator`, {
     method: "PATCH",
     body: JSON.stringify({ coordinatorId, expectedCoordinatorId }),
   });
 }
 
-export function getCurrentUser(accessToken: string) {
-  return request<{ user: { user_id: number; email: string; name: string; role: string } }>(
-    "/api/auth/me",
-    accessToken,
+export function getCurrentUser() {
+  return apiRequest<{ user: { user_id: number; email: string; name: string; role: string } }>(
+    "/auth/me",
   );
 }

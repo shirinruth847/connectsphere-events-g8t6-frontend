@@ -20,11 +20,11 @@ test('[SPM-33 AC1] the event workspace is a return path for organisers and coord
   for (const role of ['COORDINATOR_LEAD','VENUE_STAFF','TECH_SUPPORT','ATTENDEE']) assert.equal(canViewPath(role, '/events/42'), false);
   assert.equal(canViewPath('COORDINATOR', '/events/new'), false);
 });
-test('[SPM-177/SPM-34] /events returns Coordinators and Leads to the queue, attendees to discovery', () => {
+test('[SPM-177/SPM-34] /events returns Leads to the queue, attendees to discovery', () => {
   assert.equal(canViewPath('COORDINATOR_LEAD', '/events'), true);
   assert.equal(postLoginPath({role:'COORDINATOR_LEAD'}, '/events'), '/events');
-  assert.equal(canViewPath('COORDINATOR', '/events'), true);
-  assert.equal(postLoginPath({role:'COORDINATOR'}, '/events'), '/events');
+  assert.equal(canViewPath('COORDINATOR', '/events'), false);
+  assert.equal(postLoginPath({role:'COORDINATOR'}, '/events'), '/dashboard');
   assert.equal(canViewPath('ATTENDEE', '/events'), true);
   assert.equal(postLoginPath({role:'ATTENDEE'}, '/events'), '/events');
 });
