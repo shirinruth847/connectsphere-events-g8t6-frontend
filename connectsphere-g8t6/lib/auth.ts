@@ -45,7 +45,8 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === ROUTES.notifications) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR";
+  // Attendees open their event details there (SPM-155).
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "ATTENDEE";
   return false;
 }
 
