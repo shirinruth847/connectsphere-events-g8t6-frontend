@@ -74,11 +74,9 @@ async function routeManagement(page, state) {
       return json(route, { message: "Venue status updated.", venue: state.venues[0], changed: true, upcomingBookings: 2 });
     }
     if (url.pathname === "/api/venues/7/details") {
-      return json(route, {
-        error: "Setup and turnaround times cannot change while 1 future booking or hold use this venue.",
-        code: "VENUE_HAS_FUTURE_COMMITMENTS",
-        commitments: [{ type: "BOOKING", bookingReference: "VB-000110", requestId: "REQ-000442", status: "APPROVED", start: "2026-11-04T01:00:00.000Z", end: "2026-11-04T04:00:00.000Z" }],
-      }, 409);
+      const body = request.postDataJSON();
+      state.details = { ...state.details, ...body, version: state.details.version + 1 };
+      return json(route, { message: "Venue details updated.", details: state.details, changed: true });
     }
     return route.fallback();
   });
@@ -194,18 +192,27 @@ test("[SPM-73 TC6][TC8] Venue Staff edit a venue and confirm deactivation with u
   expect(state.venues[0].status).toBe("INACTIVE");
 });
 
-test("[Master 5.4.1] setup/turnaround changes list the bookings that prevent them", async ({ page }) => {
+test("[T16] setup and turnaround times are set once, then locked", async ({ page }) => {
   const state = managementState();
+  state.details = details({ setupMinutes: 30, turnaroundMinutes: null });
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeManagement(page, state);
   await page.goto("/venues/7");
 
-  await page.getByLabel("Setup time (minutes)").fill("60");
-  await page.getByRole("button", { name: "Save details" }).click();
+  const setup = page.getByLabel("Setup time (minutes)");
+  const turnaround = page.getByLabel("Turnaround time (minutes)");
+  await expect(setup).toHaveValue("30");
+  await expect(setup).toHaveAttribute("readonly", "");
+  await expect(page.getByText("Set once; it cannot be changed.")).toHaveCount(1);
+  await expect(turnaround).toBeEditable();
 
-  const blocking = page.getByRole("list", { name: "Bookings and holds preventing the change" });
-  await expect(blocking.getByText(/Booking VB-000110 · REQ-000442/)).toBeVisible();
-  expect(state.requests.find((item) => item.path === "/api/venues/7/details").body).toEqual({ version: 2, setupMinutes: 60 });
+  await turnaround.fill("45");
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByText("Venue details updated.")).toBeVisible();
+  expect(state.requests.find((item) => item.path === "/api/venues/7/details").body).toEqual({ version: 2, turnaroundMinutes: 45 });
+
+  await expect(page.getByLabel("Turnaround time (minutes)")).toHaveAttribute("readonly", "");
+  await expect(page.getByText("Set once; it cannot be changed.")).toHaveCount(2);
 });
 
 test("[SPM-73 TC9] other roles cannot open venue management", async ({ page }) => {

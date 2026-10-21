@@ -88,23 +88,34 @@ export function VenueCoreFields({ idPrefix, values, errors, onChange, disabled }
   );
 }
 
-export function BufferFields({ idPrefix, values, errors, onChange, disabled }: {
+// Setup and turnaround are set once each and locked afterwards (Master 5.4.1).
+export function BufferFields({ idPrefix, values, errors, onChange, disabled, locked = {} }: {
   idPrefix: string;
   values: Pick<VenueFormValues, "setupMinutes" | "turnaroundMinutes">;
   errors: FieldErrors;
   onChange: (key: "setupMinutes" | "turnaroundMinutes", value: string) => void;
   disabled?: boolean;
+  locked?: Partial<Record<"setupMinutes" | "turnaroundMinutes", boolean>>;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {([["setupMinutes", "Setup time (minutes)"], ["turnaroundMinutes", "Turnaround time (minutes)"]] as const).map(([key, label]) => (
-        <Field key={key} id={`${idPrefix}-${key}`} label={label} error={errors[key]} hint="Whole minutes, 0 allowed.">
+        <Field
+          key={key}
+          id={`${idPrefix}-${key}`}
+          label={label}
+          error={errors[key]}
+          hint={locked[key] ? "Set once; it cannot be changed." : "Whole minutes, 0 allowed. Can be set only once."}
+        >
           <input
             id={`${idPrefix}-${key}`}
             inputMode="numeric"
-            className={fieldClasses}
+            className={`${fieldClasses} read-only:cursor-not-allowed read-only:bg-surface-container read-only:text-on-surface-variant`}
             value={values[key]}
             disabled={disabled}
+            readOnly={locked[key]}
+            aria-readonly={locked[key] || undefined}
+            aria-describedby={`${idPrefix}-${key}-hint`}
             aria-invalid={Boolean(errors[key])}
             onChange={(event) => onChange(key, event.target.value)}
           />

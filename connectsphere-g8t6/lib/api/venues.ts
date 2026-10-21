@@ -103,15 +103,6 @@ export type VenueInput = {
 
 export type VenueDetailsInput = Partial<Omit<VenueDetails, "version" | "updatedAt">> & { version: number };
 
-export type FutureCommitment = {
-  type: "BOOKING" | "HOLD";
-  bookingReference?: string;
-  requestId: string | null;
-  status: string;
-  start: string;
-  end: string;
-};
-
 export const listManagedVenues = (filters: ManagedVenueFilters = {}, offset = 0) =>
   apiRequest<{ venues: ManagedVenue[]; nextOffset: number | null }>(`/venues/manage${managedVenueQuery(filters, offset)}`);
 
