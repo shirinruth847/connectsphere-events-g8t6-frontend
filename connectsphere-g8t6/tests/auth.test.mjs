@@ -18,7 +18,9 @@ test('[SPM-32 TC-004/011/012] return paths respect role permissions', () => {
 });
 test('[SPM-33 / SPM-174] the event workspace and Lead queue keep their role boundaries', () => {
   for (const role of ['ORGANISER','COORDINATOR']) assert.equal(postLoginPath({role}, '/events/42'), '/events/42');
-  for (const role of ['COORDINATOR_LEAD','VENUE_STAFF','TECH_SUPPORT','ATTENDEE']) assert.equal(canViewPath(role, '/events/42'), false);
+  for (const role of ['COORDINATOR_LEAD','VENUE_STAFF','TECH_SUPPORT']) assert.equal(canViewPath(role, '/events/42'), false);
+  // SPM-155: attendees open their event details page at the same URL.
+  assert.equal(postLoginPath({role:'ATTENDEE'}, '/events/42'), '/events/42');
   assert.equal(postLoginPath({role:'COORDINATOR_LEAD'}, '/events/42'), '/events');
   assert.equal(canViewPath('COORDINATOR_LEAD', '/events'), true);
   assert.equal(canViewPath('COORDINATOR', '/events/new'), false);
