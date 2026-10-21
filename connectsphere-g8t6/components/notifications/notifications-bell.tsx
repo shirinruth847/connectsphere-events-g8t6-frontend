@@ -51,7 +51,9 @@ export function NotificationsBell() {
         <Icon name="notifications" size={16} />
         <span className={COMPACT_LABEL}>Updates</span>
         {badge ? (
-          <span aria-hidden="true" className="rounded-pill bg-primary px-1.5 text-[11px] font-bold leading-[14px] tracking-[0.04em] text-on-primary">
+          // Red by request (SPM-155 manual test), not the design system's primary
+          // pill: white on error is about 6.5:1. The count is also in the label.
+          <span aria-hidden="true" className="rounded-pill bg-error px-1.5 text-[11px] font-bold leading-[14px] tracking-[0.04em] text-on-primary">
             {badge}
           </span>
         ) : null}
