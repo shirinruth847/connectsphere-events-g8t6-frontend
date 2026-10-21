@@ -24,6 +24,8 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   ],
   VENUE_STAFF: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
+  // SPM-243 AC1: the only tab; a review opens on the event's /events/[eventId] page.
+  SAFETY_OFFICER: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   ATTENDEE: [
     { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
     { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },

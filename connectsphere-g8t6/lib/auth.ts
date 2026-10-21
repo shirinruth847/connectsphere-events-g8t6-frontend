@@ -1,4 +1,4 @@
-export type UserRole = "ORGANISER" | "COORDINATOR" | "COORDINATOR_LEAD" | "VENUE_STAFF" | "TECH_SUPPORT" | "ATTENDEE";
+export type UserRole = "ORGANISER" | "COORDINATOR" | "COORDINATOR_LEAD" | "VENUE_STAFF" | "TECH_SUPPORT" | "SAFETY_OFFICER" | "ATTENDEE";
 export type SessionUser = { user_id: number; name: string; email: string; role: UserRole; home_path?: string; authId?: string; avatarUrl?: string };
 
 export const ROUTES = {
@@ -17,7 +17,8 @@ export const ROUTES = {
 export const ROLE_LABELS: Record<UserRole, string> = {
   ORGANISER: "Event Organiser", COORDINATOR: "Event Coordinator",
   COORDINATOR_LEAD: "Event Coordinator Lead", VENUE_STAFF: "Venue Staff",
-  TECH_SUPPORT: "Technical Support", ATTENDEE: "Attendee",
+  TECH_SUPPORT: "Technical Support", SAFETY_OFFICER: "Safety Officer",
+  ATTENDEE: "Attendee",
 };
 
 export function homeForRole(role: UserRole) {
@@ -41,8 +42,9 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === "/events") return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
-  // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR";
+  // The event workspace (SPM-33; Safety Officer reviews, SPM-243); the backend
+  // still answers "not found" for unrelated events.
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "SAFETY_OFFICER";
   return false;
 }
 
