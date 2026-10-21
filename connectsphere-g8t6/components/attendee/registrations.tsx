@@ -24,13 +24,15 @@ export function Registrations() {
 }
 
 // /my-registrations?eventId=<id> opens that event's details (SPM-155 AC4, AC5),
-// from "Go to Event" on a notification or View Event Details on a card. The
-// card behind the dialog is outlined and scrolled into view; closing removes
-// the parameter and returns focus. Rendered inside the shell, whose Suspense
-// boundary covers useSearchParams.
+// from "Go to Event" on a notification (which adds from=notification) or View
+// Event Details on a card. The card behind the dialog is outlined and scrolled
+// into view; closing removes the parameters and returns focus. Rendered inside
+// the shell, whose Suspense boundary covers useSearchParams.
 function RegistrationCards({ items }: { items: Registration[] }) {
   const router = useRouter();
-  const requested = Number(useSearchParams().get("eventId"));
+  const searchParams = useSearchParams();
+  const requested = Number(searchParams.get("eventId"));
+  const fromNotification = searchParams.get("from") === "notification";
   const eventId = Number.isSafeInteger(requested) && requested > 0 ? requested : null;
   const match = eventId === null ? undefined : items.find(item => item.event.event_id === eventId);
   const highlighted = useRef<HTMLDivElement>(null);
@@ -60,7 +62,7 @@ function RegistrationCards({ items }: { items: Registration[] }) {
       const id = item.event.event_id;
       const isMatch = match === item;
       return <div key={item.registration_id} id={id ? `registration-event-${id}` : undefined} ref={isMatch ? highlighted : undefined} tabIndex={id ? -1 : undefined} aria-current={isMatch ? "true" : undefined} data-highlighted={isMatch ? "true" : undefined} className={isMatch ? "rounded-panel outline-2 outline-offset-2 outline-primary" : "rounded-panel focus:outline-2 focus:outline-offset-2 focus:outline-primary"}>
-        <SectionCard>{isMatch && <span className="mb-2 inline-flex rounded-pill bg-primary-fixed px-3 py-1 text-[11px] font-semibold uppercase tracking-label text-primary">Opened from your notification</span>}<h2 className="text-xl font-semibold">{item.event.title}</h2><p>{item.registration_status === "WAITLISTED" ? "Waitlisted · a place is not yet confirmed" : "Registered"}</p><p>{item.event.attendee_status === "PENDING_CONFIRMATION" ? "Event confirmation pending" : item.event.attendee_status.replaceAll("_", " ")}</p>{item.event.description && <p>{item.event.description}</p>}{item.event.start_datetime && <p>{new Date(item.event.start_datetime).toLocaleString()}</p>}{item.event.venue && <p>{item.event.venue.name} · {item.event.venue.address}</p>}
+        <SectionCard>{isMatch && fromNotification && <span className="mb-2 inline-flex rounded-pill bg-primary-fixed px-3 py-1 text-[11px] font-semibold uppercase tracking-label text-primary">Opened from your notification</span>}<h2 className="text-xl font-semibold">{item.event.title}</h2><p>{item.registration_status === "WAITLISTED" ? "Waitlisted · a place is not yet confirmed" : "Registered"}</p><p>{item.event.attendee_status === "PENDING_CONFIRMATION" ? "Event confirmation pending" : item.event.attendee_status.replaceAll("_", " ")}</p>{item.event.description && <p>{item.event.description}</p>}{item.event.start_datetime && <p>{new Date(item.event.start_datetime).toLocaleString()}</p>}{item.event.venue && <p>{item.event.venue.name} · {item.event.venue.address}</p>}
           {id ? <div className="mt-4"><Button type="button" variant="secondary" aria-label={`View Event Details: ${item.event.title}`} onClick={event => openDetails(id, event.currentTarget)} className="max-lg:min-h-11">View Event Details</Button></div> : null}
         </SectionCard>
       </div>;

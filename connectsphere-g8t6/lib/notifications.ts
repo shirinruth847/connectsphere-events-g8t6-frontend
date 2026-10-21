@@ -35,11 +35,12 @@ const parse = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-// Where "Go to Event" leads. Attendees go to the event in My Events (AC4, AC5);
-// other roles go to the event workspace. An unknown page gets no link.
+// Where "Go to Event" leads. Attendees go to the event in My Events (AC4, AC5),
+// marked as opened from a notification; other roles go to the event workspace.
+// An unknown page gets no link.
 export function notificationTargetHref(target: NotificationTarget | null | undefined) {
   if (!target || !Number.isSafeInteger(target.event_id) || target.event_id < 1) return null;
-  if (target.page === "MY_EVENTS") return `/my-registrations?eventId=${target.event_id}`;
+  if (target.page === "MY_EVENTS") return `/my-registrations?eventId=${target.event_id}&from=notification`;
   if (target.page === "EVENT_WORKSPACE") return `/events/${target.event_id}`;
   return null;
 }
