@@ -148,6 +148,9 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               rows={[
                 { icon: "person", label: "Coordinator", value: "You" },
                 { icon: "person", label: "Organiser", value: event.organiser?.name ?? "Not available" },
+                ...(event.organiser?.email
+                  ? [{ label: "Organiser email", value: <a className="text-primary underline underline-offset-2" href={`mailto:${event.organiser.email}`}>{event.organiser.email}</a> }]
+                  : []),
                 { icon: "organisation", label: "Organisation", value: event.organisation?.name ?? "Not provided" },
                 { icon: "history", label: "Last updated", value: formatTimestamp(event.updatedAt) },
               ]}

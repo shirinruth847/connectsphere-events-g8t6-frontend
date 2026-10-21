@@ -59,7 +59,7 @@ export interface EventView {
   permissions: EventPermissions;
   // Only returned to the assigned coordinator.
   coordinatorId?: number | null;
-  organiser?: { userId: number; name: string } | null;
+  organiser?: { userId: number; name: string; email: string | null } | null;
 }
 
 export interface EventHistoryChange {

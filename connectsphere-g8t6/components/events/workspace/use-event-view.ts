@@ -7,7 +7,8 @@ import { getEventView, type EventView } from "@/lib/api/event-workspace";
 export type EventViewState =
   | { status: "loading" }
   | { status: "ready"; event: EventView }
-  // 404 outside the viewer's scope; 403 is treated the same until SPM-38 settles which one the backend returns.
+  // The backend hides out-of-scope events as 404. If an intermediary returns
+  // 403, keep the same unavailable screen so the UI reveals no event details.
   | { status: "not-found" }
   | { status: "error"; message: string };
 
