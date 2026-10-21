@@ -53,6 +53,7 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
     if (request.method() === "OPTIONS") return route.fallback();
     const { pathname } = new URL(request.url());
     if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
+    if (pathname.endsWith("/safety-reviews")) return route.fulfill({ json: { reviews: [] } });
     if (pathname.endsWith("/readiness")) {
       if (readinessError) return route.fulfill({ status: readinessError.status, json: readinessError.json });
       return route.fulfill({ json: { ...readiness, status: current.status, version: current.version, arrangementVersion: 2 } });

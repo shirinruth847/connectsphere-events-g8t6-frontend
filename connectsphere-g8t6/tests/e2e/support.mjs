@@ -170,6 +170,9 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       return json({ message: "Your event request has been submitted successfully.", event }, 201);
     }
 
+    // SPM-251: event pages list safety review rounds; none unless a spec routes them.
+    if (/^\/api\/events\/\d+\/safety-reviews$/.test(pathname) && method === "GET") return json({ reviews: [] });
+
     return json({ error: `Unmocked API request: ${method} ${pathname}` }, 501);
   });
 
