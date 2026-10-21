@@ -111,6 +111,8 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
     if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
+    // The Updates button on attendee pages (SPM-155); its spec mocks the inbox itself.
+    if (pathname === "/api/notifications/unread-count") return json({ unreadCount: 0 });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 
     if (pathname === "/api/events/mine" && method === "GET") {
