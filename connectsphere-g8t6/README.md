@@ -191,5 +191,30 @@ of the five latest notifications; **See more** and the attendee sidebar's
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
   notification shows the offer expiry, and the dialog keeps a footer slot.
 
+### Attendee event page
+
+The dialog is a summary; its **View Event Details** link opens the full page at
+`/events/<id>?from=discovery|my-events` (frame `282:1271` at page width).
+
+- `/events/[eventId]` is role-aware (`app/events/[eventId]/event-role-content.tsx`):
+  attendees get `components/attendee/event-details/attendee-event-page.tsx`;
+  organisers, coordinators and other roles keep the SPM-33 workspace unchanged.
+  `canViewPath` lets attendees open it (login return), Event Discovery is the
+  current tab, and the tab title is the neutral "Event | ConnectSphere".
+- The Back link follows `from` (`discovery` or `my-events` only; anything else,
+  a direct link or a login return goes to My Events), so it cannot redirect
+  elsewhere.
+- Same data and rules as the dialog: no new backend field. Withheld events
+  (cancelled or being reconfirmed) show only title, status, explanation and
+  your place; sign-up actions stay disabled; times are in SGT.
+- **Design-system deviation (product decision):** every section of the frame
+  is shown even without data: event photo, track, seat numbers, speakers,
+  session agenda and on-site amenities each show a neutral "Details to be
+  confirmed" placeholder (`PendingDetails`), so pending information is
+  obvious. These are display-only; no data model exists for them. Pricing is
+  left out (Master 3.3).
+- For the team: Master 3.4 describes `/events/[eventId]` as the role-aware
+  workspace; it could also mention the attendee event details page there.
+
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
