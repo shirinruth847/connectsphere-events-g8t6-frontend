@@ -176,11 +176,20 @@ of the five latest notifications; **See more** and the attendee sidebar's
   The count refreshes on window focus, on tab visibility and after each read
   action; nothing promises instant delivery.
 - **Go to Event** marks the notification read, then opens
-  `/my-registrations?eventId=<id>` (attendees) or `/events/<id>`. My Events
-  outlines, labels and focuses that event. A notification the backend no
-  longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without navigating.
+  `/my-registrations?eventId=<id>` (attendees) or `/events/<id>`. On My
+  Events that URL opens the event details dialog (frame `282:1271`) over the
+  outlined card; **View Event Details** on a card does the same, and closing
+  removes the parameter. A notification the backend no longer shows (404
+  `NOTIFICATION_NOT_FOUND`) is removed without navigating.
+- Event Discovery and My Events share that dialog
+  (`components/attendee/discovery/event-details-dialog.tsx`). It reads
+  `GET /api/events/discovery/:id`, which also returns events the attendee is
+  registered or waitlisted for in any status, with `attendeeStatus`,
+  `myRegistration` and `detailsWithheld`. While SPM-173 is not merged, a
+  cancelled event or one being reconfirmed shows only its title, status and an
+  explanation (`TODO(SPM-163)`/`TODO(SPM-173)` mark the follow-ups).
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
-  notification shows the offer expiry only.
+  notification shows the offer expiry, and the dialog keeps a footer slot.
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
