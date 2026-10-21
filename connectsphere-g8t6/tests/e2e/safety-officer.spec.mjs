@@ -76,7 +76,6 @@ const eventView = (status = "SAFETY_REVIEW", overrides = {}) => ({
 const bookings = [
   {
     bookingId: 101,
-    bookingReference: "VB-101",
     label: "Main stage",
     status: "APPROVED",
     startDatetime: "2027-11-20T08:00:00.000Z",
@@ -87,7 +86,6 @@ const bookings = [
   },
   {
     bookingId: 102,
-    bookingReference: "VB-102",
     label: null,
     status: "APPROVED",
     startDatetime: "2027-11-20T08:00:00.000Z",
@@ -152,7 +150,8 @@ async function installSafetyBackend(page, options = {}) {
       expectedAttendance: 240,
       registeredCount: 3,
       preferredLayoutType: "THEATRE",
-      accessibilityNeeds: ["Step-free access"],
+      // The API passes accessibility_needs through: a list, plain text or null.
+      accessibilityNeeds: options.accessibilityNeeds === undefined ? ["Step-free access"] : options.accessibilityNeeds,
       arrangementVersion: 5,
     },
     bookings,
@@ -403,6 +402,16 @@ test("[SPM-243 AC6 / TC-03 / TC-09] the five steps show the review data, counts 
   // The checklist list in the side panel jumps to a factor's step.
   await page.getByRole("region", { name: "Checklist" }).getByRole("button", { name: /Emergency access/ }).click();
   await expect(page.getByRole("heading", { name: "Venues & layout", level: 2 })).toBeVisible();
+});
+
+test("[SPM-243 AC6] accessibility needs sent as null or plain text still render (live integration regression)", async ({ page }) => {
+  await openReview(page, { round: { claimedBy: OFFICER }, accessibilityNeeds: null });
+  await goToStep(page, "Accessibility & equipment");
+  await expect(page.getByText("No accessibility needs were requested.")).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await openReview(page, { round: { claimedBy: OFFICER }, accessibilityNeeds: "Hearing loop in the main hall" });
+  await goToStep(page, "Accessibility & equipment");
+  await expect(page.getByText("Hearing loop in the main hall")).toBeVisible();
 });
 
 test("[SPM-243 AC4] an unclaimed review is read-only until the officer claims it on the page", async ({ page }) => {

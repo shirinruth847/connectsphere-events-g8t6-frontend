@@ -68,7 +68,6 @@ export interface SafetyOutcome {
 
 export interface PanelBooking {
   bookingId: number;
-  bookingReference: string | null;
   label: string | null;
   status: string;
   startDatetime: string;
@@ -109,6 +108,7 @@ export interface SafetyPanel {
     expectedAttendance: number | null;
     registeredCount: number;
     preferredLayoutType: string | null;
+    // Normalised by getSafetyPanel; the API may send a list, plain text or null.
     accessibilityNeeds: string[];
     arrangementVersion: number;
   };
@@ -165,7 +165,19 @@ export const saveSafetyProgress = (reviewId: number, progress: SafetyProgress) =
   });
 
 // GET .../panel: 404 outside the caller's scope.
-export const getSafetyPanel = (reviewId: number) => apiRequest<SafetyPanel>(reviewPath(reviewId, "panel"));
+// accessibility_needs is stored as text: a JSON list when saved through the event
+// forms, but older rows hold plain text or null, which the API passes through.
+const toAccessibilityList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : typeof value === "string" && value.trim()
+      ? [value.trim()]
+      : [];
+
+export async function getSafetyPanel(reviewId: number): Promise<SafetyPanel> {
+  const panel = await apiRequest<SafetyPanel>(reviewPath(reviewId, "panel"));
+  return { ...panel, event: { ...panel.event, accessibilityNeeds: toAccessibilityList(panel.event.accessibilityNeeds) } };
+}
 
 // POST .../decision with an Idempotency-Key. A retry of the same decision must
 // reuse its key. 409 ARRANGEMENTS_CHANGED means the round was superseded instead.
