@@ -38,7 +38,10 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
   ];
 }
 
-export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
+// Null when the page has no tab: attendees reach /notifications from the
+// Updates panel in the page header (SPM-155), so no tab is marked current.
+export function activeNavigationId(role: UserRole, pathname: string, status: string | null): string | null {
+  if (pathname === ROUTES.notifications) return null;
   if (role === "COORDINATOR_LEAD") {
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
