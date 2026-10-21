@@ -22,7 +22,8 @@ const makeNotification = (id, overrides = {}) => ({
 
 // A stateful inbox: read actions change what later requests return. `gone`
 // holds IDs the backend now hides (404 NOTIFICATION_NOT_FOUND).
-async function installInbox(page, { notifications = [], role = 'ATTENDEE', gone = [], listFailures = 0, registrations = [] } = {}) {
+// `details` maps an event ID to the attendee detail body, or to a status number.
+async function installInbox(page, { notifications = [], role = 'ATTENDEE', gone = [], listFailures = 0, registrations = [], details = {} } = {}) {
   const state = await installConnectSphereMocks(page, { role });
   const inbox = {
     items: notifications.map((item) => ({ ...item })),
@@ -76,8 +77,34 @@ async function installInbox(page, { notifications = [], role = 'ATTENDEE', gone 
     contentType: 'application/json',
     body: JSON.stringify({ registrations, page: { next_offset: null } }),
   }));
+  await page.route('**/api/events/discovery/*', (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').pop();
+    const body = details[id];
+    const json = (payload, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(payload) });
+    if (typeof body === 'number' || !body) return json({ error: 'Event not found.', code: 'EVENT_NOT_FOUND' }, typeof body === 'number' ? body : 404);
+    return json({ event: body });
+  });
   return { state, inbox };
 }
+
+// The attendee detail (GET /api/events/discovery/:id) for an event the
+// attendee holds a place on.
+const eventDetail = (eventId, title, overrides = {}) => ({
+  eventId,
+  title,
+  description: `${title} description`,
+  startDatetime: '2026-10-28T01:00:00.000Z',
+  endDatetime: '2026-10-28T09:00:00.000Z',
+  organisationName: 'SMU Computing Club',
+  location: 'SMU Hall A',
+  registrationAvailability: 'OPEN',
+  registrationOpenAt: null,
+  registrationCloseAt: null,
+  attendeeStatus: 'CONFIRMED',
+  detailsWithheld: false,
+  myRegistration: { status: 'REGISTERED', registeredAt: '2026-10-01T00:00:00.000Z' },
+  ...overrides,
+});
 
 const cards = (page) => page.locator('main li article');
 const unreadCards = (page) => page.locator('main li article[data-unread="true"]');
@@ -161,34 +188,91 @@ test('[SPM-155 TC-08] the Updates badge on My Events counts down as notification
   await expect(updatesButton(page)).toBeFocused();
 });
 
-test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read and highlights the event in My Events', async ({ page }, testInfo) => {
+test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read and opens the event details in My Events', async ({ page }, testInfo) => {
   const { inbox } = await installInbox(page, {
     notifications: [
       makeNotification(1),
       makeNotification(2, { type: 'EVENT_CHANGED', title: 'Event details changed', message: 'The date and time for "Event 2" changed.' }),
     ],
     registrations: [registration(51, 'Event 1'), registration(52, 'Event 2'), registration(53, 'Another event')],
+    details: { 52: eventDetail(52, 'Event 2') },
   });
   await page.goto('/notifications');
   const changed = cards(page).filter({ hasText: 'Event details changed' });
   await changed.getByRole('button', { name: 'Go to Event: Event 2', exact: true }).click();
   await expect(page).toHaveURL(/\/my-registrations\?eventId=52$/);
   expect(inbox.readRequests).toEqual([2]);
+
+  // The latest attendee-visible details, in SGT, with the attendee's own place.
+  const dialog = page.getByRole('dialog', { name: 'Event 2', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Event 2 description');
+  await expect(dialog).toContainText('Wed, 28 Oct 2026');
+  await expect(dialog).toContainText('09:00 – 17:00 SGT');
+  await expect(dialog).toContainText('SMU Hall A');
+  await expect(dialog).toContainText('Your place');
+  await expect(dialog.getByText('Registered', { exact: true }).first()).toBeVisible();
+  // Someone already registered is not offered sign-up.
+  await expect(dialog.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+  await attachScreenshot(testInfo, page, 'my-events-details');
+
+  // Behind the dialog, the event's card is outlined.
   const highlighted = page.locator('[data-highlighted="true"]');
   await expect(highlighted).toHaveCount(1);
   await expect(highlighted).toContainText('Event 2');
-  await expect(highlighted).toContainText('From your notification');
-  await expect(highlighted).toBeFocused();
-  await expect(highlighted).toHaveAttribute('aria-current', 'true');
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/my-registrations$/);
+  await expect(page.locator('#registration-event-52')).toBeFocused();
   await expect(updatesButton(page)).toHaveAccessibleName('Updates, 1 unread');
-  await attachScreenshot(testInfo, page, 'my-events-highlight');
 });
 
-test('[SPM-155 AC4] an event no longer in My Events is explained, not highlighted', async ({ page }) => {
-  await installInbox(page, { registrations: [registration(51, 'Event 1')] });
+test('[SPM-155 AC5] a cancelled event shows its title and status but holds back date and venue', async ({ page }, testInfo) => {
+  await installInbox(page, {
+    registrations: [registration(54, 'Cancelled gala', 'WAITLISTED')],
+    details: {
+      54: eventDetail(54, 'Cancelled gala', {
+        description: null, startDatetime: null, endDatetime: null, location: null, organisationName: null,
+        registrationAvailability: 'CLOSED', attendeeStatus: 'CANCELLED', detailsWithheld: true,
+        myRegistration: { status: 'WAITLISTED', registeredAt: '2026-10-01T00:00:00.000Z' },
+      }),
+    },
+  });
+  await page.goto('/my-registrations?eventId=54');
+  const dialog = page.getByRole('dialog', { name: 'Cancelled gala', exact: true });
+  await expect(dialog.getByText('Cancelled', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('This event has been cancelled', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Waitlisted', { exact: true })).toBeVisible();
+  // No schedule, venue or description; only the attendee's own place has a time.
+  await expect(dialog).not.toContainText('Schedule');
+  await expect(dialog).not.toContainText('Location');
+  await expect(dialog).not.toContainText('About this event');
+  await expect(dialog.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+  await attachScreenshot(testInfo, page, 'cancelled-details');
+});
+
+test('[SPM-155] View Event Details on a My Events card opens the same details and returns focus', async ({ page }) => {
+  await installInbox(page, { registrations: [registration(51, 'Event 1')], details: { 51: eventDetail(51, 'Event 1') } });
+  await page.goto('/my-registrations');
+  const view = page.getByRole('button', { name: 'View Event Details: Event 1', exact: true });
+  await view.click();
+  await expect(page).toHaveURL(/\/my-registrations\?eventId=51$/);
+  const dialog = page.getByRole('dialog', { name: 'Event 1', exact: true });
+  await expect(dialog).toContainText('Event 1 description');
+  await dialog.getByRole('button', { name: 'Close event details', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(view).toBeFocused();
+});
+
+test('[SPM-155 AC6] an event the attendee can no longer see is explained, not highlighted', async ({ page }) => {
+  await installInbox(page, { registrations: [registration(51, 'Event 1')], details: { 99: 404 } });
   await page.goto('/my-registrations?eventId=99');
-  await expect(page.getByText('This event is no longer in My Registrations')).toBeVisible();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('This event is no longer available', { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('You may have withdrawn, or this event is no longer available to you.');
   await expect(page.locator('[data-highlighted="true"]')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close event details', exact: true }).click();
   await expect(page.getByText('Event 1', { exact: true })).toBeVisible();
 });
 
