@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { PageContent } from "@/components/layout/page-content";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { AlertBanner, Button, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { ROLE_LABELS } from "@/lib/auth";
 import type { AttendeeEventSummary } from "@/lib/api/discovery";
@@ -39,6 +40,7 @@ export function AttendeeEventDiscovery() {
       eyebrow={ROLE_LABELS.ATTENDEE}
       title="Event Discovery"
       description="Browse confirmed events open to attendees. Open an event to see its full details and registration availability."
+      action={<NotificationsBell />}
     >
       <section aria-labelledby="discovery-list-heading" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
