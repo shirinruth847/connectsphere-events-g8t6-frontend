@@ -176,18 +176,23 @@ of the five latest notifications; **See more** and the attendee sidebar's
   The count refreshes on window focus, on tab visibility and after each read
   action; nothing promises instant delivery.
 - **Go to Event** marks the notification read, then opens
-  `/my-registrations?eventId=<id>` (attendees) or `/events/<id>`. On My
-  Events that URL opens the event details dialog (frame `282:1271`) over the
-  outlined card; **View Event Details** on a card does the same, and closing
-  removes the parameter. A notification the backend no longer shows (404
-  `NOTIFICATION_NOT_FOUND`) is removed without navigating.
+  `/my-registrations?eventId=<id>&from=notification` (attendees) or
+  `/events/<id>`. On My Events that URL opens the event details dialog (frame
+  `282:1271`) over the outlined card, labelled "Opened from your
+  notification"; **View Event Details** on a card opens the same dialog
+  without that label, and closing removes the parameters. A notification the
+  backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
+  navigating, and a background refresh drops any it no longer returns.
 - Event Discovery and My Events share that dialog
   (`components/attendee/discovery/event-details-dialog.tsx`). It reads
   `GET /api/events/discovery/:id`, which also returns events the attendee is
   registered or waitlisted for in any status, with `attendeeStatus`,
   `myRegistration` and `detailsWithheld`. While SPM-173 is not merged, a
-  cancelled event or one being reconfirmed shows only its title, status and an
-  explanation (`TODO(SPM-163)`/`TODO(SPM-173)` mark the follow-ups).
+  cancelled event, or one being reconfirmed or not published, shows only its
+  title, status and a short notice that states only what is known ("This
+  event has been cancelled" or "This event's details are being confirmed"),
+  without promising a notification (`TODO(SPM-163)`/`TODO(SPM-173)` mark the
+  follow-ups).
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
   notification shows the offer expiry, and the dialog keeps a footer slot.
 
@@ -209,10 +214,11 @@ The dialog is a summary; its **View Event Details** link opens the full page at
   your place; sign-up actions stay disabled; times are in SGT.
 - **Design-system deviation (product decision):** every section of the frame
   is shown even without data: event photo, track, seat numbers, speakers,
-  session agenda and on-site amenities each show a neutral "Details to be
-  confirmed" placeholder (`PendingDetails`), so pending information is
-  obvious. These are display-only; no data model exists for them. Pricing is
-  left out (Master 3.3).
+  session agenda and on-site amenities each show a neutral "Not available
+  yet" placeholder (`PendingDetails`) saying the information is not available
+  in ConnectSphere yet, without promising that anyone will provide it. These
+  are display-only; no data model exists for them. Pricing is left out
+  (Master 3.3).
 - For the team: Master 3.4 describes `/events/[eventId]` as the role-aware
   workspace; it could also mention the attendee event details page there.
 
