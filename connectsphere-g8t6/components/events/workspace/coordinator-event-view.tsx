@@ -132,9 +132,6 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             </ReviewSection>
             <ReviewSection step={5} title="Equipment requirements" action={significantPill}>
               <RequirementList items={equipmentItems(event)} empty="No equipment was requested." />
-              <p className="mt-3 text-sm text-on-surface-variant">
-                Technical-support requests are created during Planning.
-              </p>
             </ReviewSection>
           </div>
 

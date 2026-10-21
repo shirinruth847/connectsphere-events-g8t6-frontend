@@ -101,7 +101,7 @@ test("[SPM-38 AC1 / TC-1, TC-3] coordinator can review assigned request details 
   await expect(page.getByText("1. Venue #7, 2. Venue #8", { exact: true })).toBeVisible();
   await expect(page.getByText("Equipment #12 × 2", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Section 5: Equipment requirements", exact: true })).toBeVisible();
-  await expect(page.getByText("Technical-support requests are created during Planning.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Technical-support requests are created during Planning.", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Synthetic Organiser", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "organiser@example.test", exact: true })).toHaveAttribute("href", "mailto:organiser@example.test");
   await expect(page.getByRole("heading", { name: "Event activity" })).toBeVisible();
