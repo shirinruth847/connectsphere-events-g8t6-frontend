@@ -30,19 +30,24 @@ const eventView = (overrides = {}) => ({
   viewerRelationship: "ASSIGNED_COORDINATOR",
   permissions: { canEdit: true, editableFields: ["title", "purpose", "description"], canViewDraftHistory: false, canViewStaffHistory: true },
   coordinatorId: 11,
-  organiser: { userId: 5, name: "Synthetic Organiser" },
+  organiser: { userId: 5, name: "Synthetic Organiser", email: "organiser@example.test" },
   ...overrides,
 });
 
-async function routeEvent(page, event) {
+async function routeEvent(page, event, { unavailableStatus = 404, history = [] } = {}) {
   await page.route(/\/api\/events\/42(\/history.*)?$|\/api\/events\/42\/history\?/, (route) => {
     if (route.request().method() === "OPTIONS") return route.fallback();
     if (new URL(route.request().url()).pathname.endsWith("/history")) {
-      return route.fulfill({ json: { history: [], nextCursor: null } });
+      return route.fulfill({ json: { history, nextCursor: null } });
     }
     return event
       ? route.fulfill({ json: { event } })
-      : route.fulfill({ status: 404, json: { error: "Not found.", code: "NOT_FOUND" } });
+      : route.fulfill({
+          status: unavailableStatus,
+          json: unavailableStatus === 403
+            ? { error: "Forbidden.", code: "FORBIDDEN" }
+            : { error: "Not found.", code: "NOT_FOUND" },
+        });
   });
 }
 
@@ -57,6 +62,54 @@ test("[SPM-33 TC-05] assigned coordinator gets the coordination view in the shar
   await expect(page.getByText("Access denied")).toHaveCount(0);
 });
 
+test("[SPM-38 AC1 / TC-1, TC-3] coordinator can review assigned request details and long text", async ({ page }) => {
+  const description = "Full request detail. ".repeat(100).slice(0, 2000);
+  const submittedHistory = [
+    {
+      historyId: 2,
+      action: "COORDINATOR_ASSIGNED",
+      actor: { userId: 10, name: "Synthetic Lead", role: "COORDINATOR_LEAD" },
+      occurredAt: "2026-10-12T10:00:00.000Z",
+      summary: "Coordinator assigned.",
+      changes: [{ field: "status", before: "SUBMITTED", after: "UNDER_REVIEW" }],
+      audience: "STAFF_ONLY",
+    },
+    {
+      historyId: 1,
+      action: "EVENT_SUBMITTED",
+      actor: { userId: 5, name: "Synthetic Organiser", role: "ORGANISER" },
+      occurredAt: "2026-10-12T09:00:00.000Z",
+      summary: null,
+      changes: [],
+      audience: "ORGANISER_SAFE",
+    },
+  ];
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeEvent(page, eventView({
+    description,
+    venuePreferences: [7, 8],
+    equipmentRequirements: [{ equipmentId: 12, quantity: 2 }],
+  }), { history: submittedHistory });
+  await page.goto("/events/42");
+
+  await expect(page.getByRole("heading", { name: "Workspace review event", exact: true })).toBeVisible();
+  await expect(page.getByText("Under Review", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Annual planning forum", { exact: true })).toBeVisible();
+  await expect(page.getByText(description, { exact: true })).toBeVisible();
+  await expect(page.getByText("Date & time").locator("..").getByText(/20 Nov 2026 · 17:00–19:00 SGT/)).toBeVisible();
+  await expect(page.getByText("120 people", { exact: true })).toBeVisible();
+  await expect(page.getByText("1. Venue #7, 2. Venue #8", { exact: true })).toBeVisible();
+  await expect(page.getByText("Equipment #12 × 2", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Section 5: Equipment requirements", exact: true })).toBeVisible();
+  await expect(page.getByText("Technical-support requests are created during Planning.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Synthetic Organiser", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "organiser@example.test", exact: true })).toHaveAttribute("href", "mailto:organiser@example.test");
+  await expect(page.getByRole("heading", { name: "Event activity" })).toBeVisible();
+  await expect(page.getByText("Request submitted", { exact: true })).toBeVisible();
+  await expect(page.getByText("Request status: Submitted", { exact: true })).toBeVisible();
+  await expect(page.getByText("Request status: Submitted → Under Review", { exact: true })).toBeVisible();
+});
+
 test("[SPM-33 AC1 / Master 3.5] owner sees organiser labels in the shared shell", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "ORGANISER" });
   // A label equal to the stored state means the backend had none; show the organiser label.
@@ -69,13 +122,35 @@ test("[SPM-33 AC1 / Master 3.5] owner sees organiser labels in the shared shell"
   await expect(page.getByRole("link", { name: "My Requests", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
-test("[SPM-33 AC5 / TC-14] an event outside the viewer's scope is not found, inside the shell", async ({ page }) => {
-  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+test("[SPM-38 AC2 / Master 4.2] an unassigned coordinator cannot open an event", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await routeEvent(page, null);
   await page.goto("/events/42");
-  await expect(page.locator('[data-dashboard-shell="VENUE_STAFF"]')).toBeVisible();
+  await expect(page.locator('[data-dashboard-shell="COORDINATOR"]')).toBeVisible();
   await expect(page.getByText("Event not available")).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to your workspace" })).toHaveAttribute("href", "/dashboard");
+});
+
+test("[SPM-38 AC2] an attendee opening an event directly cannot see its details", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "ATTENDEE" });
+  await routeEvent(page, null);
+  await page.goto("/events/42");
+  await expect(page.getByText("Event not available")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Workspace review event", exact: true })).toHaveCount(0);
+});
+
+test("[SPM-38 TC-2] an unauthenticated user is redirected from the review URL to sign-in", async ({ page }) => {
+  await installConnectSphereMocks(page, { authenticated: false });
+  await page.goto("/events/42");
+  await expect(page).toHaveURL(/\/login\?next=%2Fevents%2F42/);
+});
+
+test("[SPM-38 / Master 4.2] a forbidden response does not reveal private event details", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeEvent(page, null, { unavailableStatus: 403 });
+  await page.goto("/events/42");
+  await expect(page.getByText("Event not available")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Workspace review event", exact: true })).toHaveCount(0);
 });
 
 test("[SPM-33] coordinator workspace works at mobile width", async ({ page }) => {
