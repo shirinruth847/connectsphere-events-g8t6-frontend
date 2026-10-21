@@ -28,6 +28,19 @@ const ROLE_LABELS: Record<string, string> = {
   ATTENDEE: "Attendee",
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  SUBMITTED: "Submitted",
+  UNDER_REVIEW: "Under Review",
+  AWAITING_CLARIFICATION: "Returned",
+  PLANNING: "Planning",
+  SAFETY_REVIEW: "Safety review",
+  CONFIRMED: "Confirmed",
+  PREPARATION: "Preparation",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+  REJECTED: "Rejected",
+};
+
 const actionLabel = (entry: EventHistoryEntry) =>
   ACTION_LABELS[entry.action] ?? entry.summary ?? entry.action;
 
@@ -47,6 +60,8 @@ function describeHistory(event: EventView) {
 }
 
 function HistoryItem({ entry }: { entry: EventHistoryEntry }) {
+  const statusChange = entry.changes.find((change) => change.field === "status");
+
   return (
     <li className="relative pl-7">
       <span aria-hidden="true" className="absolute left-0 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-primary-fixed text-primary">
@@ -63,6 +78,13 @@ function HistoryItem({ entry }: { entry: EventHistoryEntry }) {
         {" · "}
         <time dateTime={entry.occurredAt}>{formatTimestamp(entry.occurredAt)}</time>
       </p>
+      {statusChange ? (
+        <p className="mt-1 text-xs text-on-surface-variant">
+          Request status: {STATUS_LABELS[String(statusChange.before)] ?? String(statusChange.before)} → {STATUS_LABELS[String(statusChange.after)] ?? String(statusChange.after)}
+        </p>
+      ) : entry.action === "EVENT_SUBMITTED" ? (
+        <p className="mt-1 text-xs text-on-surface-variant">Request status: Submitted</p>
+      ) : null}
       {entry.changes.length ? (
         <dl className="mt-2 grid gap-2 rounded-control bg-surface-container-low p-3">
           {entry.changes.map((change) => (

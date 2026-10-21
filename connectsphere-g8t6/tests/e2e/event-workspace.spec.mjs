@@ -64,15 +64,26 @@ test("[SPM-33 TC-05] assigned coordinator gets the coordination view in the shar
 
 test("[SPM-38 AC1 / TC-1, TC-3] coordinator can review assigned request details and long text", async ({ page }) => {
   const description = "Full request detail. ".repeat(100).slice(0, 2000);
-  const submittedHistory = [{
-    historyId: 1,
-    action: "EVENT_SUBMITTED",
-    actor: { userId: 5, name: "Synthetic Organiser", role: "ORGANISER" },
-    occurredAt: "2026-10-12T09:00:00.000Z",
-    summary: null,
-    changes: [],
-    audience: "ORGANISER_SAFE",
-  }];
+  const submittedHistory = [
+    {
+      historyId: 2,
+      action: "COORDINATOR_ASSIGNED",
+      actor: { userId: 10, name: "Synthetic Lead", role: "COORDINATOR_LEAD" },
+      occurredAt: "2026-10-12T10:00:00.000Z",
+      summary: "Coordinator assigned.",
+      changes: [{ field: "status", before: "SUBMITTED", after: "UNDER_REVIEW" }],
+      audience: "STAFF_ONLY",
+    },
+    {
+      historyId: 1,
+      action: "EVENT_SUBMITTED",
+      actor: { userId: 5, name: "Synthetic Organiser", role: "ORGANISER" },
+      occurredAt: "2026-10-12T09:00:00.000Z",
+      summary: null,
+      changes: [],
+      audience: "ORGANISER_SAFE",
+    },
+  ];
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await routeEvent(page, eventView({
     description,
@@ -95,6 +106,8 @@ test("[SPM-38 AC1 / TC-1, TC-3] coordinator can review assigned request details 
   await expect(page.getByRole("link", { name: "organiser@example.test", exact: true })).toHaveAttribute("href", "mailto:organiser@example.test");
   await expect(page.getByRole("heading", { name: "Event activity" })).toBeVisible();
   await expect(page.getByText("Request submitted", { exact: true })).toBeVisible();
+  await expect(page.getByText("Request status: Submitted", { exact: true })).toBeVisible();
+  await expect(page.getByText("Request status: Submitted → Under Review", { exact: true })).toBeVisible();
 });
 
 test("[SPM-33 AC1 / Master 3.5] owner sees organiser labels in the shared shell", async ({ page }) => {
