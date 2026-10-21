@@ -63,18 +63,20 @@ export function SectionLabel({ id, children }: { id: string; children: ReactNode
 }
 
 // Shown instead of the date, time and venue while they may not be the
-// confirmed ones. TODO(SPM-173): show the last confirmation snapshot instead.
+// confirmed ones (being reconfirmed, or not published). It states only what is
+// known: no promised notification or organiser action.
+// TODO(SPM-173): show the last confirmation snapshot instead.
+const WITHHELD_NOTICES = {
+  cancelled: { title: "This event has been cancelled", text: "Its date, time and venue are no longer shown." },
+  confirming: { title: "This event's details are being confirmed", text: "Check back here for the latest information." },
+} as const;
+
 export function WithheldNotice({ attendeeStatus }: { attendeeStatus?: string }) {
-  if (attendeeStatus === "CANCELLED") {
-    return (
-      <AlertBanner tone="error" title="This event has been cancelled">
-        Its date, time and venue are no longer shown. Your notifications have the organisers&apos; message about the cancellation.
-      </AlertBanner>
-    );
-  }
+  const cancelled = attendeeStatus === "CANCELLED";
+  const notice = cancelled ? WITHHELD_NOTICES.cancelled : WITHHELD_NOTICES.confirming;
   return (
-    <AlertBanner tone="info" title="This event is being updated">
-      The organisers are changing this event. Its date, time and venue will show here again once the changes are confirmed, and you will get a notification.
+    <AlertBanner tone={cancelled ? "error" : "info"} title={notice.title}>
+      {notice.text}
     </AlertBanner>
   );
 }
@@ -96,15 +98,16 @@ export function MyPlaceCard({ registration }: { registration: AttendeeRegistrati
   );
 }
 
-// A frame section with no data yet (SPM-155 decision): labelled so it is
-// obvious the information is still pending, never filled with sample content.
+// A frame section ConnectSphere has no data for (SPM-155 decision): labelled
+// so it is obvious the information is not available, never filled with sample
+// content, and without promising that anyone will provide it.
 export function PendingDetails({ name, children }: { name: string; children: ReactNode }) {
   return (
     <div data-pending={name} className="flex items-start gap-3 rounded-control bg-surface-container-low p-3 sm:p-4">
       <Icon name="info" size={18} className="mt-0.5 text-on-surface-variant" />
       <div className="flex min-w-0 flex-col gap-1.5">
         <span className="w-fit rounded-pill bg-surface-container-high px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.04em] text-on-surface-variant">
-          Details to be confirmed
+          Not available yet
         </span>
         <p className="text-sm leading-relaxed text-on-surface-variant">{children}</p>
       </div>

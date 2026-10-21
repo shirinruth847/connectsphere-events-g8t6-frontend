@@ -30,7 +30,7 @@ import {
 // The full attendee event page at /events/<id> (SPM-155), frame 282:1271 at page
 // width. Data comes from GET /api/events/discovery/:id with its attendee rules.
 // Sections the frame shows but ConnectSphere has no data for (photo, track,
-// seats, speakers, agenda, amenities) are labelled "Details to be confirmed" by
+// seats, speakers, agenda, amenities) are labelled "Not available yet" by
 // decision; pricing is left out (Master 3.3). Render inside DashboardWorkspace.
 export function AttendeeEventPage({ eventId: rawEventId }: { eventId: string }) {
   const back = eventBackLink(useSearchParams().get("from"));
@@ -100,7 +100,7 @@ function EventPageBody({ event }: { event: AttendeeEventDetail }) {
           {!withheld ? (
             <>
               <span data-pending="track" className="inline-flex items-center rounded-tag bg-surface-container-high px-2.5 py-1 text-xs font-medium text-on-surface-variant">
-                Track: To be confirmed
+                Track: Not available yet
               </span>
               <span className="inline-flex items-center rounded-tag bg-primary-fixed px-2.5 py-1 text-xs font-medium text-primary">
                 {event.location ?? LOCATION_PENDING_LABEL}
@@ -133,10 +133,10 @@ function ConfirmedEventSections({ event }: { event: AttendeeEventDetail }) {
   return (
     <>
       {/* The frame's photo banner. There is no event imagery, so the lavender
-          fallback carries the date and venue and says the photo is pending. */}
+          fallback carries the date and venue and says there is no photo. */}
       <section aria-label="Event photo" className="flex min-h-56 flex-col justify-between gap-6 rounded-panel bg-gradient-to-br from-primary-fixed to-tertiary-fixed p-5 sm:p-6">
         <span data-pending="photo" className="w-fit rounded-pill bg-surface-container-lowest/80 px-3 py-1 text-xs font-semibold text-on-surface-variant">
-          Event photo to be confirmed
+          Event photo not available yet
         </span>
         <div className="flex flex-wrap gap-2">
           <HeroChip icon="calendar">{formatEventDate(event.startDatetime, event.endDatetime)}</HeroChip>
@@ -149,7 +149,7 @@ function ConfirmedEventSections({ event }: { event: AttendeeEventDetail }) {
         <section aria-labelledby="event-capacity-heading" className="flex flex-col gap-3 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
           <SectionLabel id="event-capacity-heading">Capacity</SectionLabel>
           {!myRegistration ? <RegistrationAvailabilityChip value={event.registrationAvailability} /> : null}
-          <PendingDetails name="capacity">Seat numbers will show here once the organisers confirm them.</PendingDetails>
+          <PendingDetails name="capacity">Seat numbers are not available in ConnectSphere yet.</PendingDetails>
         </section>
       </div>
 
@@ -164,19 +164,19 @@ function ConfirmedEventSections({ event }: { event: AttendeeEventDetail }) {
 
       <section aria-labelledby="event-speakers-heading" className="flex flex-col gap-3">
         <SectionLabel id="event-speakers-heading">Featured speakers</SectionLabel>
-        <PendingDetails name="speakers">Speakers will be listed here once the organisers confirm them.</PendingDetails>
+        <PendingDetails name="speakers">Speaker information is not available in ConnectSphere yet.</PendingDetails>
       </section>
 
       <div className="grid gap-6 md:grid-cols-12">
         <section aria-labelledby="event-schedule-heading" className="flex flex-col gap-3 md:col-span-7">
           <SectionLabel id="event-schedule-heading">Session agenda and schedule</SectionLabel>
           <DiscoveryDetailsPanel rows={scheduleRows(event)} />
-          <PendingDetails name="agenda">The session agenda will show here once the organisers confirm it.</PendingDetails>
+          <PendingDetails name="agenda">A session agenda is not available in ConnectSphere yet.</PendingDetails>
         </section>
         <section aria-labelledby="event-venue-heading" className="flex flex-col gap-3 md:col-span-5">
           <SectionLabel id="event-venue-heading">Venue and on-site amenities</SectionLabel>
           <DiscoveryDetailsPanel rows={placeRows(event)} />
-          <PendingDetails name="amenities">On-site amenities will show here once the venue confirms them.</PendingDetails>
+          <PendingDetails name="amenities">On-site amenity information is not available in ConnectSphere yet.</PendingDetails>
         </section>
       </div>
 
