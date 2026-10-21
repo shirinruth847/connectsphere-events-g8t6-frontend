@@ -6,6 +6,7 @@ import { EventRequestDetails } from "@/components/events/event-request-details";
 import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { homeForRole, ROUTES } from "@/lib/auth";
+import { SafetyReviewView } from "@/components/safety-officer/review-view";
 import { CoordinatorEventView } from "./coordinator-event-view";
 import { useEventView } from "./use-event-view";
 
@@ -46,6 +47,9 @@ function LoadedWorkspace({ eventId, home }: { eventId: number; home: string }) {
   }
   if (state.event.viewerRelationship === "ASSIGNED_COORDINATOR") {
     return <CoordinatorEventView event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
+  }
+  if (state.event.viewerRelationship === "SAFETY_OFFICER") {
+    return <SafetyReviewView event={state.event} onEventChanged={refresh} />;
   }
   return <EventRequestDetails event={state.event} />;
 }
