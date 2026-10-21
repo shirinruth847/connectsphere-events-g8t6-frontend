@@ -59,6 +59,95 @@ async function complete(page,title) {
 // SPM-173 AC8-AC11 through the real coordinator UI and backend. Bookings and the
 // safety approval are seeded directly because their own stories (SPM-186,
 // SPM-249) have no UI yet; every lifecycle action goes through the panel.
+// ---------- SPM-243 Safety Officer review through the real UI and API ----------
+const reviewStep=async(page,title)=>{await page.getByRole('navigation',{name:'Review steps'}).getByRole('button',{name:new RegExp(title)}).click();await page.getByRole('heading',{name:title,level:2}).waitFor();};
+const assessFactor=async(page,label,result,comment)=>{const group=page.getByRole('group',{name:label,exact:true});await group.getByRole('radio',{name:result,exact:true}).check();if(comment)await group.getByRole('textbox').fill(comment);};
+async function assessAllFactors(page) {
+ await reviewStep(page,'Attendance & schedule');await assessFactor(page,'Attendance and capacity','Satisfactory');
+ await reviewStep(page,'Venues & layout');await assessFactor(page,'Layout','Satisfactory');await assessFactor(page,'Emergency access','Satisfactory');
+ await assessFactor(page,'Known venue restrictions','Not applicable','No venue safety record; nothing known restricts this event.');
+ await reviewStep(page,'Accessibility & equipment');await assessFactor(page,'Accessibility','Not applicable','No accessibility needs requested.');await assessFactor(page,'Equipment placement','Not applicable','No equipment requested.');
+}
+async function recordSafetyDecision(page) {
+ await reviewStep(page,'Decision');await page.getByRole('region',{name:'Review actions'}).getByRole('button',{name:'Record decision'}).click();
+ await page.getByRole('dialog',{name:'Record this decision?'}).getByRole('button',{name:'Record decision'}).click();await page.getByText('Safety decision recorded',{exact:true}).waitFor();
+}
+async function claimFromQueue(page,title) {
+ await page.goto(base+'/dashboard');const card=page.getByRole('region',{name:'Awaiting review'}).getByRole('article',{name:title});await card.waitFor();
+ await card.getByRole('button',{name:'Claim'}).click();await page.getByText('Review claimed',{exact:true}).waitFor();
+ await page.getByRole('region',{name:'My reviews'}).getByRole('article',{name:title}).getByRole('link',{name:'Continue review'}).click();
+ await page.getByText('Claimed by you',{exact:true}).waitFor();
+}
+async function safetyOfficerReview({eventId,title,coordinator,organiser,coordinatorPage,coordinatorPanel,state}) {
+ const officer=users.find(user=>user.role==='SAFETY_OFFICER');assert(officer,'Missing seed Safety Officer');
+ const rounds=async()=>check(await supabase.from('safety_reviews').select('review_id,round_number,status,claimed_by,checklist,requested_changes,decided_by,organiser_comment,internal_notes').eq('event_id',eventId).order('round_number'));
+ const coordinatorNotices=async()=>check(await supabase.from('notification').select('notification_id,notification_recipient!inner(recipient_id)').eq('event_id',eventId).eq('notification_recipient.recipient_id',coordinator.user_id)).length;
+ const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ try {
+  await login(page,officer);await page.getByRole('heading',{name:'Safety Officer dashboard',exact:true}).waitFor();
+  await claimFromQueue(page,title);
+  let [round]=await rounds();assert(round.claimed_by===officer.user_id,'Claim was not recorded');
+  record('SPM-243 queue, claim and open the review',{eventId,reviewId:round.review_id});
+
+  await reviewStep(page,'Venues & layout');await page.getByText('No venue safety record exists for this venue.',{exact:true}).waitFor();
+  await reviewStep(page,'Attendance & schedule');await page.getByText('participant details are not shown',{exact:false}).waitFor();
+  await assessFactor(page,'Attendance and capacity','Satisfactory');await page.getByRole('button',{name:'Save progress'}).click();await page.getByText('Progress saved',{exact:true}).waitFor();
+  [round]=await rounds();assert(round.checklist?.attendanceCapacity?.result==='SATISFACTORY','Progress was not saved');
+  await page.reload();await page.getByRole('group',{name:'Attendance and capacity',exact:true}).getByRole('radio',{name:'Satisfactory',exact:true}).waitFor();
+  assert(await page.getByRole('group',{name:'Attendance and capacity',exact:true}).getByRole('radio',{name:'Satisfactory',exact:true}).isChecked(),'Saved progress was not restored');
+  record('SPM-243 panel data, MongoDB venue detail and saved progress',{eventId});
+
+  await page.getByRole('button',{name:'Hand back to the queue'}).click();const handBack=page.getByRole('dialog',{name:'Hand this review back?'});
+  await handBack.getByRole('textbox').fill(runId+' live hand-back check');await handBack.getByRole('button',{name:'Hand back',exact:true}).click();await page.getByText('Review handed back',{exact:true}).waitFor();
+  [round]=await rounds();assert(round.claimed_by===null&&round.checklist===null&&round.status==='OPEN','Hand-back did not clear the claim and progress');
+  record('SPM-243 hand back clears the claim and progress',{eventId});
+
+  await page.getByRole('button',{name:'Claim this review'}).click();await page.getByText('Claimed by you',{exact:true}).waitFor();
+  await assessAllFactors(page);await reviewStep(page,'Decision');await page.getByRole('radio',{name:/Request changes/}).check();
+  await page.getByRole('textbox',{name:'Change 1',exact:true}).fill('Add two stewards at the main exit');await page.getByRole('button',{name:'Add a change'}).click();await page.getByRole('textbox',{name:'Change 2',exact:true}).fill('Mark the accessible route on the floor plan');
+  const noticesBefore=await coordinatorNotices();await recordSafetyDecision(page);
+  [round]=await rounds();assert(round.status==='CHANGES_REQUESTED'&&round.requested_changes.length===2&&round.decided_by===officer.user_id,'Changes were not recorded');
+  assert(await state()==='PLANNING','Requested changes did not return the event to PLANNING');assert(await coordinatorNotices()>noticesBefore,'Coordinator not notified of the outcome');
+  record('SPM-243 request changes returns the event to planning and notifies the coordinator',{eventId,reviewId:round.review_id});
+
+  // Forbidden, conflict and error paths against the real API with the officer's own token.
+  const token=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>/^sb-.*-auth-token$/.test(key));return key?JSON.parse(localStorage.getItem(key)).access_token:null;});
+  const call=async(method,path,body,headers={})=>{const response=await fetch(api+'/api'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,body:await response.json().catch(()=>({}))};};
+  const reclaim=await call('POST',`/safety-reviews/${round.review_id}/claim`,{});assert(reclaim.status===409&&reclaim.body.code==='ROUND_NOT_CLAIMABLE','Decided round could be claimed: '+reclaim.status);
+  const keyless=await call('POST',`/safety-reviews/${round.review_id}/decision`,{outcome:'APPROVED'});assert(keyless.status===400&&keyless.body.fields?.idempotencyKey,'Decision without Idempotency-Key was not refused');
+  const edit=await call('PUT',`/events/${eventId}`,{title:'x',version:1},{'Idempotency-Key':crypto.randomUUID()});assert(edit.status===403,'Safety Officer could edit the event: '+edit.status);
+  const outside=check(await supabase.from('event').select('event_id').neq('event_id',eventId).neq('status','DRAFT').limit(1).single());
+  const unrelated=await call('GET',`/events/${outside.event_id}`);assert(unrelated.status===404,'Unrelated event visible to the Safety Officer: '+unrelated.status);
+  await page.goto(base+'/events/'+outside.event_id);await page.getByText('Event not available',{exact:true}).waitFor();
+  record('SPM-243 conflict, validation and forbidden paths',{reclaim:reclaim.status,missingKey:keyless.status,edit:edit.status,unrelatedEvent:unrelated.status});
+
+  // The coordinator sees the requested changes and resubmits; a second round opens.
+  await coordinatorPage.reload();const section=coordinatorPage.getByRole('region',{name:'Safety review'});await section.getByText('Add two stewards at the main exit',{exact:true}).waitFor();
+  await coordinatorPanel.getByText('Ready',{exact:true}).waitFor();await coordinatorPanel.getByRole('button',{name:'Submit for safety review'}).click();await coordinatorPanel.getByRole('button',{name:'Confirm event'}).waitFor();
+  const reopened=await rounds();assert(reopened.length===2&&reopened[1].status==='OPEN','Resubmission did not open round 2');
+  record('SPM-251 coordinator sees requested changes and resubmits',{eventId,round:2});
+
+  await claimFromQueue(page,title);await assessAllFactors(page);await reviewStep(page,'Decision');await page.getByRole('radio',{name:/Approve/}).check();
+  await page.getByLabel('Comment for the organiser').fill(runId+' arrangements are safe');await page.getByLabel(/Internal notes/).fill(runId+' staff-only note');
+  await recordSafetyDecision(page);await page.getByText('Decided · read-only',{exact:true}).waitFor();
+  const approved=(await rounds())[1];assert(approved.status==='APPROVED'&&approved.decided_by===officer.user_id,'Approval was not recorded');assert(await state()==='SAFETY_REVIEW','Approval moved the event out of SAFETY_REVIEW');
+  await page.setViewportSize({width:390,height:844});await reviewStep(page,'Venues & layout');
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Review page scrolls sideways at 390px');
+  record('SPM-243 approval keeps SAFETY_REVIEW; review fits 390px',{eventId,reviewId:approved.review_id});
+  assert(errors.length===0,'Safety Officer browser error: '+errors.join('; '));
+ } finally {await context.close();}
+
+ // The organiser sees outcomes and their comment, never internal notes or the checklist.
+ const organiserContext=await browser.newContext({timezoneId:'Asia/Singapore'});const organiserPage=await organiserContext.newPage();
+ try {
+  await login(organiserPage,organiser);await organiserPage.goto(base+'/events/'+eventId);const section=organiserPage.getByRole('region',{name:'Safety review'});
+  await section.getByText(runId+' arrangements are safe',{exact:true}).waitFor();
+  assert(await section.getByRole('article').count()===2,'Organiser does not see both rounds');
+  assert(await section.getByText(runId+' staff-only note').count()===0&&await section.getByText('Internal notes').count()===0&&await section.getByText('Checklist').count()===0,'Organiser sees staff-only review detail');
+  record('SPM-251 organiser sees outcomes and organiser comments only',{eventId});
+ } finally {await organiserContext.close();}
+}
+
 async function coordinatorLifecycle(page,coordinator) {
  assert(process.env.TEST_DATABASE_URL,'TEST_DATABASE_URL is needed to clean up the lifecycle flow');
  const organiser=users.find(user=>user.role==='ORGANISER');const venueStaff=users.find(user=>user.role==='VENUE_STAFF');assert(organiser&&venueStaff,'Missing seed organiser or Venue Staff');
@@ -88,8 +177,8 @@ async function coordinatorLifecycle(page,coordinator) {
  assert(await state()==='SAFETY_REVIEW','Confirmed without a safety approval');
  record('SPM-173 confirm refused before safety approval',{eventId:event.event_id});
 
- // Stands in for a Safety Officer's approval (SPM-249); there is no seed Safety Officer before SPM-245.
- check(await supabase.from('safety_reviews').update({status:'APPROVED',decided_by:coordinator.user_id,decided_at:new Date().toISOString()}).eq('review_id',round.review_id).select('review_id'));
+ // SPM-243: the seed Safety Officer requests changes, the coordinator resubmits, then the officer approves.
+ await safetyOfficerReview({eventId:event.event_id,title:runId+' lifecycle',coordinator,organiser,coordinatorPage:page,coordinatorPanel:panel,state});
  await page.reload();await panel.getByRole('button',{name:'Confirm event'}).click();await panel.getByRole('button',{name:'Start preparation'}).waitFor();
  assert(await state()==='CONFIRMED','Confirm did not enter CONFIRMED');
  const snapshot=check(await supabase.from('event_confirmation_snapshots').select('snapshot').eq('event_id',event.event_id).single());assert(snapshot.snapshot.primary_venue?.venue_id===venue.venue_id,'Snapshot lacks the primary venue');
