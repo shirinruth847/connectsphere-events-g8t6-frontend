@@ -33,6 +33,11 @@ export type CalendarEvent = {
   createdAt?: string;
 };
 
+// What each lane (legend entry) is called. Defaults to coordinators; the venue
+// availability calendar (SPM-181) shows venues.
+export type CalendarEntityLabel = { singular: string; plural: string };
+const COORDINATOR_LABEL: CalendarEntityLabel = { singular: "coordinator", plural: "coordinators" };
+
 export type CalendarCoordinator = {
   coordinatorId: number;
   name: string;
@@ -296,13 +301,16 @@ function CoordinatorLegend({
   onToggle,
   onSetVisibleIds,
   colorMap,
+  entityLabel = COORDINATOR_LABEL,
 }: {
   coordinators: CalendarCoordinator[];
   visibleIds: Set<number>;
   onToggle: (id: number) => void;
   onSetVisibleIds: (ids: Set<number>) => void;
   colorMap: Map<number, string>;
+  entityLabel?: CalendarEntityLabel;
 }) {
+  const { singular, plural } = entityLabel;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -334,7 +342,7 @@ function CoordinatorLegend({
   const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
 
   return (
-    <div className="cal-legend" role="group" aria-label="Filter by coordinator">
+    <div className="cal-legend" role="group" aria-label={`Filter by ${singular}`}>
       <button
         type="button"
         className="cal-legend-trigger"
@@ -343,15 +351,15 @@ function CoordinatorLegend({
         aria-haspopup="listbox"
       >
         <span className="cal-legend-trigger-label">
-          {selectedCoords.length === coordinators.length ? "All coordinators"
-            : selectedCoords.length === 0 ? "No coordinators"
-            : `${selectedCoords.length} coordinator${selectedCoords.length === 1 ? "" : "s"}`}</span>
+          {selectedCoords.length === coordinators.length ? `All ${plural}`
+            : selectedCoords.length === 0 ? `No ${plural}`
+            : `${selectedCoords.length} ${selectedCoords.length === 1 ? singular : plural}`}</span>
         <span className="cal-legend-trigger-arrow">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
         <div className="cal-legend-panel" role="listbox">
           <div className="cal-legend-panel-header">
-            <span className="cal-legend-panel-title">Filter coordinators</span>
+            <span className="cal-legend-panel-title">Filter {plural}</span>
             <button
               type="button"
               className="cal-legend-close"
@@ -364,10 +372,10 @@ function CoordinatorLegend({
           <input
             className="cal-legend-search"
             type="search"
-            placeholder="Search coordinators…"
+            placeholder={`Search ${plural}…`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search coordinators"
+            aria-label={`Search ${plural}`}
           />
           <div className="cal-legend-actions">
             <button
@@ -389,7 +397,7 @@ function CoordinatorLegend({
           </div>
           <div className="cal-legend-list">
             {filtered.length === 0 ? (
-              <p className="cal-legend-empty">No coordinators match.</p>
+              <p className="cal-legend-empty">No {plural} match.</p>
             ) : (
               filtered.map((coordinator) => {
                 const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
@@ -1249,6 +1257,7 @@ export type CalendarViewProps = {
   onViewModeChange?: (mode: CalendarViewMode) => void;
   currentDate?: Date;
   onCurrentDateChange?: (date: Date) => void;
+  entityLabel?: CalendarEntityLabel;
 };
 
 export function CalendarView({
@@ -1262,6 +1271,7 @@ export function CalendarView({
   onViewModeChange,
   currentDate: controlledDate,
   onCurrentDateChange,
+  entityLabel = COORDINATOR_LABEL,
 }: CalendarViewProps) {
   const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
     defaultView,
@@ -1393,7 +1403,7 @@ export function CalendarView({
     return (
       <div className="calendar-view">
         <div className="calendar-empty">
-          <p>No coordinators with events to display.</p>
+          <p>No {entityLabel.plural} with events to display.</p>
         </div>
       </div>
     );
@@ -1450,13 +1460,14 @@ export function CalendarView({
         onToggle={toggleCoordinator}
         onSetVisibleIds={setManualVisibleIds}
         colorMap={colorMap}
+        entityLabel={entityLabel}
       />
 
       <div className="calendar-grid-wrapper">
         {visibleCoordinators.length === 0 ? (
           <div className="calendar-empty">
             <p>
-              No coordinators selected. Click a name in the legend above to
+              No {entityLabel.plural} selected. Click a name in the legend above to
               show their events.
             </p>
           </div>

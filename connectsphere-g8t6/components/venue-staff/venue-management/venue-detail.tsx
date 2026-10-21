@@ -21,6 +21,7 @@ import {
   type VenueStatus,
 } from "@/lib/api/venues";
 import { BufferFields, Field, VenueCoreFields, VenueStatusChip, type FieldErrors } from "./venue-fields";
+import { VenueGallery } from "./venue-gallery";
 import { EMPTY_VENUE_FORM, formatList, parseList, validateVenueForm, type VenueFormValues } from "./venue-form-rules";
 
 type Loaded = { venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus };
@@ -348,6 +349,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
       <Link href="/venues" className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
         <Icon name="arrow-back" size={16} />My Venues
       </Link>
+      <VenueGallery venueId={venue.venueId} venueName={venue.name} />
       <PageHeader
         eyebrow="Venue management"
         title={venue.name}
