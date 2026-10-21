@@ -154,3 +154,32 @@ rollback and real hosted/browser verification commands.
 stale rejection, role restrictions, queue resilience and calendar boundaries
 using mocked APIs. These journeys do not establish real backend/database
 integration; the backend's opt-in `leadAssignment.browser.cjs` runner does.
+
+## Attendee notifications (SPM-155)
+
+Attendees open their in-app inbox from the **Updates** button in the page
+header of My Events (`/my-registrations`) and Event Discovery (`/events`),
+following the Figma frames `282:664` (Updates button) and `282:1173`
+(notification panel). The button shows the unread count and opens a panel of
+the five latest notifications; **See more** opens the full inbox at
+`/notifications`, which is also the login return target (TC-12). There is no
+sidebar tab, so no tab is current on `/notifications`.
+
+- Data comes from the backend `/api/notifications` routes through
+  `lib/api/notifications.ts`; display rules (Go to Event targets, SGT times,
+  offer expiry, badge text, page merging) are in `lib/notifications.ts`.
+- Components are role-agnostic in `components/notifications/`. Other roles get
+  the inbox by widening `canViewPath`, the page's `DashboardWorkspace` role and
+  placing `NotificationsBell` on their pages (SPM-192/193).
+- Read state and the unread count change only after the backend confirms them.
+  The count refreshes on window focus, on tab visibility and after each read
+  action; nothing promises instant delivery.
+- **Go to Event** marks the notification read, then opens
+  `/my-registrations?eventId=<id>` (attendees) or `/events/<id>`. My Events
+  outlines, labels and focuses that event. A notification the backend no
+  longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without navigating.
+- Accept Slot and Decline for waitlist offers belong to SPM-163; the
+  notification shows the offer expiry only.
+
+See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
+command: `npm run test:e2e -- --grep SPM-155`.
