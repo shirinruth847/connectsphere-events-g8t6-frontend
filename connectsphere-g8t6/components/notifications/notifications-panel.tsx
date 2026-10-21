@@ -101,11 +101,11 @@ export function NotificationsPanel({ id, onClose }: { id: string; onClose: () =>
         <Button
           type="button"
           variant="quiet"
-          className="min-h-9 px-2 text-xs max-lg:min-h-11"
+          className="min-h-9 px-2 max-lg:min-h-11"
           onClick={panel.markAllRead}
           disabled={panel.status !== "ready" || panel.unreadCount === 0 || panel.markingAll}
         >
-          {panel.markingAll ? "Marking all as read…" : "Mark all as read"}
+          <span className="text-xs font-medium">{panel.markingAll ? "Marking all as read…" : "Mark all as read"}</span>
         </Button>
         <Link
           href={ROUTES.notifications}

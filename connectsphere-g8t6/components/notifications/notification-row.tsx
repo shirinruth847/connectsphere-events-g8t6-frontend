@@ -14,7 +14,11 @@ import {
 // "Go to Event ›" from the notification frame (282:1173): a compact tonal
 // button, raised to the shared 36px (44px on touch) target size.
 const goButtonClasses =
-  "inline-flex min-h-9 items-center gap-2 rounded-tag bg-surface-container px-3 text-xs font-semibold tracking-[0.02em] text-on-surface shadow-elevation-1 transition-colors duration-150 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-55 max-lg:min-h-11";
+  "inline-flex min-h-9 items-center gap-2 rounded-tag bg-surface-container px-3 text-on-surface shadow-elevation-1 transition-colors duration-150 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-55 max-lg:min-h-11";
+
+// The global `button { font: inherit }` rule outranks text utilities on the
+// button itself, so compact labels carry their type style on a span.
+export const COMPACT_LABEL = "text-xs font-semibold tracking-[0.02em]";
 
 interface NotificationRowProps {
   notification: NotificationItem;
@@ -84,7 +88,7 @@ export function NotificationRow({ notification, now, busy, variant, onGoToEvent,
             <div className="flex flex-wrap items-center gap-2">
               {href ? (
                 <button type="button" className={goButtonClasses} disabled={busy} onClick={() => onGoToEvent(notification)}>
-                  Go to Event
+                  <span className={COMPACT_LABEL}>Go to Event</span>
                   <Icon name="chevron-right" size={16} />
                   {notification.event ? <span className="sr-only">: {notification.event.title}</span> : null}
                 </button>
@@ -93,15 +97,15 @@ export function NotificationRow({ notification, now, busy, variant, onGoToEvent,
                 <Button
                   type="button"
                   variant="secondary"
-                  className="min-h-9 text-xs max-lg:min-h-11"
+                  className="min-h-9 max-lg:min-h-11"
                   onClick={(event) => onView(notification, event.currentTarget)}
                 >
-                  View<span className="sr-only"> {notification.title}</span>
+                  <span className={COMPACT_LABEL}>View</span><span className="sr-only"> {notification.title}</span>
                 </Button>
               ) : null}
               {!page && !href && unread && onMarkRead ? (
-                <Button type="button" variant="quiet" className="min-h-9 text-xs max-lg:min-h-11" disabled={busy} onClick={() => onMarkRead(notification)}>
-                  Mark as read<span className="sr-only">: {notification.title}</span>
+                <Button type="button" variant="quiet" className="min-h-9 max-lg:min-h-11" disabled={busy} onClick={() => onMarkRead(notification)}>
+                  <span className={COMPACT_LABEL}>Mark as read</span><span className="sr-only">: {notification.title}</span>
                 </Button>
               ) : null}
             </div>

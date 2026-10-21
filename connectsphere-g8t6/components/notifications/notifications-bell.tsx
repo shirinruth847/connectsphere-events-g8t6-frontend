@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/shared/icon";
 import { unreadBadgeText } from "@/lib/notifications";
+import { COMPACT_LABEL } from "./notification-row";
 import { NotificationsPanel } from "./notifications-panel";
 import { useUnreadCount } from "./use-unread-count";
 
@@ -45,10 +46,10 @@ export function NotificationsBell() {
         aria-haspopup="dialog"
         aria-label={badge ? `Updates, ${count} unread` : "Updates"}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-10 items-center gap-2 rounded-tag bg-surface-container px-3 text-xs font-semibold tracking-[0.02em] text-on-surface shadow-elevation-1 transition-colors duration-150 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-lg:min-h-11"
+        className="inline-flex min-h-10 items-center gap-2 rounded-tag bg-surface-container px-3 text-on-surface shadow-elevation-1 transition-colors duration-150 hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-lg:min-h-11"
       >
         <Icon name="notifications" size={16} />
-        Updates
+        <span className={COMPACT_LABEL}>Updates</span>
         {badge ? (
           <span aria-hidden="true" className="rounded-pill bg-primary px-1.5 text-[11px] font-bold leading-[14px] tracking-[0.04em] text-on-primary">
             {badge}
