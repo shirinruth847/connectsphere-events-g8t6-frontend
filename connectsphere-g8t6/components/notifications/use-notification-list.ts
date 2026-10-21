@@ -76,9 +76,16 @@ function reducer(state: ListState, action: ListAction): ListState {
     case "reload":
       return { ...initialState };
     case "loaded":
-      // A background refresh keeps the pages already loaded (and their cursor).
+      // A background refresh keeps the older pages already loaded (and their
+      // cursor), unless it returned everything.
       if (action.background && state.status === "ready") {
-        return { ...state, items: mergeFirstPage(state.items, action.items), unreadCount: action.unreadCount };
+        const complete = action.nextCursor === null;
+        return {
+          ...state,
+          items: mergeFirstPage(state.items, action.items, complete),
+          nextCursor: complete ? null : state.nextCursor,
+          unreadCount: action.unreadCount,
+        };
       }
       return {
         ...initialState,

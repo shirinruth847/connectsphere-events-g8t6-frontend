@@ -99,10 +99,16 @@ export function appendNotifications(current: NotificationItem[], next: Notificat
 }
 
 // Merges a refreshed first page into the loaded list: new notifications are
-// added, refreshed ones replace their copy, and pages already loaded are kept.
-export function mergeFirstPage(current: NotificationItem[], firstPage: NotificationItem[]) {
+// added and refreshed ones replace their copy. Older loaded pages are kept, but
+// a row inside the refreshed page's range that the backend no longer returns
+// (hidden meanwhile, AC6) is dropped. `complete` means the refresh returned
+// everything (no next page), so nothing else is kept.
+export function mergeFirstPage(current: NotificationItem[], firstPage: NotificationItem[], complete: boolean) {
+  if (complete) return [...firstPage].sort(newestFirst);
   const fresh = new Set(firstPage.map((item) => item.notification_id));
-  return [...firstPage, ...current.filter((item) => !fresh.has(item.notification_id))].sort(newestFirst);
+  const oldest = firstPage.reduce<NotificationItem | null>((last, item) => (!last || newestFirst(last, item) < 0 ? item : last), null);
+  const older = current.filter((item) => !fresh.has(item.notification_id) && (!oldest || newestFirst(oldest, item) < 0));
+  return [...firstPage, ...older].sort(newestFirst);
 }
 
 // Applies the read state the backend confirmed.
