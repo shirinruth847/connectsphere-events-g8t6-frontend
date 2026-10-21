@@ -145,6 +145,7 @@ export function AttendeeEventDiscovery() {
 
       <EventDetailsDialog
         event={selected}
+        detailsFrom="discovery"
         onClose={() => setSelected(null)}
         onClosed={restoreFocus}
         onLoaded={discovery.patchEvent}

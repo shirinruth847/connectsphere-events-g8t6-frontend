@@ -67,6 +67,7 @@ function RegistrationCards({ items }: { items: Registration[] }) {
     }) : <p>You have no registrations or waitlist entries.</p>}
     <EventDetailsDialog
       event={eventId === null ? null : { eventId, title: match?.event.title ?? "Event details" }}
+      detailsFrom="my-events"
       onClose={closeDetails}
       onClosed={restoreFocus}
       notFoundDescription="You may have withdrawn, or this event is no longer available to you."
