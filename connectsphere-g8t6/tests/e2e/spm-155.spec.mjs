@@ -105,9 +105,10 @@ test('[SPM-155 AC8 / TC-08] inbox lists newest first; opening one and Mark all a
   await expect(first).toContainText('Event 3');
   await expect(first).toContainText('Message for notification 3.');
   await expect(first.locator('time')).toHaveAttribute('title', 'Thu, 1 Oct 2026, 08:03 SGT');
-  // No sidebar tab is current on the inbox, and attendees have no Notifications tab.
-  await expect(page.locator('aside [aria-current="page"]')).toHaveCount(0);
-  await expect(page.locator('aside').getByText('Notifications', { exact: true })).toHaveCount(0);
+  // The attendee sidebar's Notifications tab is the one current tab.
+  await expect(page.locator('aside [aria-current="page"]')).toHaveCount(1);
+  await expect(page.locator('aside').getByRole('link', { name: 'Notifications', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('aside').getByRole('link', { name: 'Notifications', exact: true })).toHaveAttribute('href', '/notifications');
 
   await first.getByRole('button', { name: /^View/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Notification 3' });
@@ -134,6 +135,11 @@ test('[SPM-155 TC-08] the Updates badge on My Events counts down as notification
   });
   await page.goto('/my-registrations');
   await expect(updatesButton(page)).toHaveAccessibleName('Updates, 3 unread');
+  // The unread pill is red (error token) with white text.
+  const pill = updatesButton(page).getByText('3', { exact: true });
+  await expect(pill).toHaveCSS('background-color', 'rgb(186, 26, 26)');
+  await expect(pill).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(page.locator('aside').getByRole('link', { name: 'My Events', exact: true })).toHaveAttribute('aria-current', 'page');
   await updatesButton(page).click();
   await expect(updatesButton(page)).toHaveAttribute('aria-expanded', 'true');
   await expect(panel(page)).toBeVisible();

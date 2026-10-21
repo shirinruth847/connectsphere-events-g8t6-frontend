@@ -160,10 +160,11 @@ integration; the backend's opt-in `leadAssignment.browser.cjs` runner does.
 Attendees open their in-app inbox from the **Updates** button in the page
 header of My Events (`/my-registrations`) and Event Discovery (`/events`),
 following the Figma frames `282:664` (Updates button) and `282:1173`
-(notification panel). The button shows the unread count and opens a panel of
-the five latest notifications; **See more** opens the full inbox at
-`/notifications`, which is also the login return target (TC-12). There is no
-sidebar tab, so no tab is current on `/notifications`.
+(notification panel). The button shows the unread count in a red pill (a
+deliberate departure from the design system's primary pill) and opens a panel
+of the five latest notifications; **See more** and the attendee sidebar's
+**Notifications** tab open the full inbox, read and unread, at
+`/notifications`, which is also the login return target (TC-12).
 
 - Data comes from the backend `/api/notifications` routes through
   `lib/api/notifications.ts`; display rules (Go to Event targets, SGT times,
