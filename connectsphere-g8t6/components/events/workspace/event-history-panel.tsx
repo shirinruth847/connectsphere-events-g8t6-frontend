@@ -41,9 +41,9 @@ const formatValue = (field: string, value: unknown) => {
 };
 
 function describeHistory(event: EventView) {
-  if (event.permissions.canViewDraftHistory) return "Includes your draft saves, which only you can see.";
-  if (event.permissions.canViewStaffHistory) return "Includes staff-only assignment records.";
-  return "Changes made since the request was submitted.";
+  if (event.permissions.canViewDraftHistory) return "Includes your draft saves and event changes.";
+  if (event.permissions.canViewStaffHistory) return "Includes event changes and staff-only assignment records.";
+  return "Includes event changes recorded since submission.";
 }
 
 function HistoryItem({ entry }: { entry: EventHistoryEntry }) {
@@ -86,20 +86,20 @@ export function EventHistoryPanel({ event, refreshKey }: { event: EventView; ref
 
   return (
     <section aria-labelledby={headingId} className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
-      <SectionHeading id={headingId} title="Change history" description={describeHistory(event)} />
+      <SectionHeading id={headingId} title="Event activity" description={describeHistory(event)} />
       <div className="mt-4">
         {state.status === "loading" ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading change history">
+          <div className="space-y-3" aria-busy="true" aria-label="Loading event activity">
             <Skeleton className="h-14 w-full" />
             <Skeleton className="h-14 w-full" />
           </div>
         ) : state.status === "error" ? (
-          <AlertBanner tone="error" title="Change history unavailable">
+          <AlertBanner tone="error" title="Event activity unavailable">
             {state.message}
             <div className="mt-3"><Button variant="secondary" onClick={retry}><Icon name="refresh" size={16} />Try again</Button></div>
           </AlertBanner>
         ) : state.entries.length === 0 ? (
-          <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">No changes have been recorded for this event yet.</p>
+          <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">No event activity has been recorded for this event yet.</p>
         ) : (
           <>
             <ol className="relative grid gap-5 before:absolute before:bottom-2 before:left-2.5 before:top-2 before:w-px before:bg-outline-variant">
