@@ -16,10 +16,14 @@ test('[SPM-173 AC9-AC12] each status offers only its next coordinator actions', 
   }
 });
 
-test('[SPM-173 AC8] submit and confirm wait for readiness; unknown readiness does not block', () => {
+test('[SPM-173 AC8] submit and confirm wait for a loaded, passing readiness check', () => {
   assert.deepEqual(actions('PLANNING', null, false), [['submitForSafetyReview', false]]);
   assert.deepEqual(actions('SAFETY_REVIEW', null, false), [['confirm', false]]);
-  assert.deepEqual(actions('PLANNING', null, null), [['submitForSafetyReview', true]]);
+  assert.deepEqual(actions('PLANNING', null, null), [['submitForSafetyReview', false]]);
+  assert.deepEqual(actions('SAFETY_REVIEW', null, null), [['confirm', false]]);
+  assert.equal(lifecycleActionsFor('PLANNING', null, null, NOW)[0].disabledReason, 'Available once readiness has loaded.');
+  // Readiness does not gate the later steps.
+  assert.deepEqual(actions('CONFIRMED', '2027-05-01T00:00:00Z', null), [['startPreparation', true], ['complete', true]]);
   assert.equal(showsReadiness('PLANNING'), true);
   assert.equal(showsReadiness('CONFIRMED'), false);
 });
