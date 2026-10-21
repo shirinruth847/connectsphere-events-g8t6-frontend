@@ -68,7 +68,7 @@ const eventBookings = {
 
 // The mock filters like the backend for status, venue and search; the order
 // it returns is the backend's job, so tests assert the parameters sent.
-async function routeBookings(page, requests = []) {
+async function routeBookings(page, requests = [], items = listItems) {
   await page.route("**/api/venues/bookings**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/venues/bookings/events/442") {
@@ -79,7 +79,7 @@ async function routeBookings(page, requests = []) {
     const status = url.searchParams.get("status");
     const venueId = url.searchParams.get("venueId");
     const q = (url.searchParams.get("q") ?? "").toLowerCase();
-    const bookings = listItems.filter((item) => (!status || item.status === status)
+    const bookings = items.filter((item) => (!status || item.status === status)
       && (!venueId || String(item.venueId) === venueId)
       && (!q || `${item.venueName} ${item.label ?? ""} ${item.event.title} #${item.bookingId}`.toLowerCase().includes(q)));
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ bookings, hasMore: false, pendingCount: 2 }) });
@@ -119,8 +119,9 @@ test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests an
   await page.getByLabel("Date (SGT)").fill("2026-11-04");
   await expect.poll(() => requests.at(-1)).toEqual({ status: "REJECTED", from: "2026-11-04T00:00:00+08:00", to: "2026-11-05T00:00:00+08:00" });
 
-  await page.getByRole("button", { name: "Clear search and filters" }).first().click();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(page.getByRole("article")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Clear", exact: true })).toHaveCount(0);
 });
 
 test("[SPM-181 AC6] the list says when nothing is pending", async ({ page }) => {
@@ -225,7 +226,6 @@ test("[TC-VENUE-181-52] the search runs as you type, without pressing Enter", as
 for (const [label, sort, order] of [
   ["Date/time", "date", "asc"],
   ["Venue attendance", "attendance", "desc"],
-  ["Last edited", "lastEdited", "desc"],
   ["Alphabetical (event)", "alphabetical", "asc"],
 ]) {
   test(`[TC-VENUE-181-53] sorting by ${label} asks the backend in both directions`, async ({ page }) => {
@@ -237,31 +237,79 @@ for (const [label, sort, order] of [
     await page.getByLabel("Sort by").selectOption({ label });
     await expect.poll(() => requests.at(-1)).toEqual(order === "desc" ? { sort, order: "desc" } : { sort });
 
-    await page.getByLabel("Order").selectOption(order === "desc" ? "asc" : "desc");
+    await page.getByRole("button", { name: /Switch to (ascending|descending)/ }).click();
     await expect.poll(() => requests.at(-1)).toEqual(order === "desc" ? { sort } : { sort, order: "desc" });
   });
 }
 
-test("[TC-VENUE-181-54] Last opened sorts by this viewer's openings, never-opened last", async ({ page }) => {
+test("[TC-VENUE-181-54] should_sort_by_last_accessed_when_opened_or_edited_most_recently", async ({ page }) => {
+  // 110 was never opened here but was edited on 25 Oct; 112 and 111 were opened on 20 and 15 Oct.
+  const items = listItems.map((item) => (item.bookingId === 110 ? { ...item, updatedAt: "2026-10-25T00:00:00.000Z" } : item));
+  const requests = [];
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
-  await routeBookings(page);
+  await routeBookings(page, requests, items);
   await page.addInitScript(() => {
-    localStorage.setItem("connectsphere:venue-bookings-opened:11", JSON.stringify({ 112: 2000, 111: 1000 }));
+    localStorage.setItem("connectsphere:venue-bookings-opened:11", JSON.stringify({ 112: Date.parse("2026-10-20T00:00:00Z"), 111: Date.parse("2026-10-15T00:00:00Z") }));
   });
   await page.goto("/dashboard");
 
-  await page.getByLabel("Sort by").selectOption({ label: "Last opened" });
+  await expect(page.getByLabel("Sort by").locator("option")).toHaveText(["Pending first", "Date/time", "Venue attendance", "Last accessed", "Alphabetical (event)"]);
+  await page.getByLabel("Sort by").selectOption({ label: "Last accessed" });
   const order = () => page.getByRole("article").evaluateAll((cards) => cards.map((node) => node.textContent.match(/Booking #(\d+)/)[1]));
-  await expect.poll(order).toEqual(["112", "111", "110"]);
+  await expect.poll(order).toEqual(["110", "112", "111"]);
+  // Sorted in the browser: the backend is asked for its default order.
+  expect(requests.at(-1)).toEqual({});
+  await expect(card(page, 110).getByText("25 Oct 2026", { exact: false })).toBeVisible();
 
-  await page.getByLabel("Order").selectOption("asc");
+  await page.getByRole("button", { name: "Descending order. Switch to ascending" }).click();
   await expect.poll(order).toEqual(["111", "112", "110"]);
 
-  // Opening a booking records it as the most recent.
-  await card(page, 110).getByRole("link", { name: "Review booking" }).click();
-  await expect(page).toHaveURL(/booking=110$/);
+  // Opening a booking records it as the most recent access.
+  await card(page, 111).getByRole("link", { name: "Review booking" }).click();
+  await expect(page).toHaveURL(/booking=111$/);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("connectsphere:venue-bookings-opened:11")));
-  expect(stored["110"]).toBeGreaterThan(2000);
+  expect(stored["111"]).toBeGreaterThan(Date.parse("2026-10-20T00:00:00Z"));
+});
+
+test("[TC-VENUE-181-56] should_offer_no_event_filter_and_a_single_row_filter_bar_when_on_desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeBookings(page);
+  await page.goto("/dashboard");
+  const bar = page.getByRole("region", { name: "Search, sort and filter booking requests" });
+  await expect(page.getByRole("article")).toHaveCount(3);
+
+  await expect(bar.getByLabel("Event", { exact: true })).toHaveCount(0);
+  await expect(bar.getByLabel("Order", { exact: true })).toHaveCount(0);
+  for (const label of ["Search", "Status", "Venue", "Date (SGT)", "Sort by"]) await expect(bar.getByLabel(label, { exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Ascending order. Switch to descending" })).toBeVisible();
+  // One row of controls: every control's top edge lines up.
+  const tops = await bar.locator("input, select, button").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().bottom)));
+  expect(new Set(tops).size).toBe(1);
+  // Selects are sized to their options rather than stretched.
+  const statusWidth = await bar.getByLabel("Status", { exact: true }).evaluate((node) => node.getBoundingClientRect().width);
+  expect(statusWidth).toBeLessThan(180);
+});
+
+test("[TC-VENUE-181-57] should_ease_a_booking_panel_open_and_closed_when_toggled", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeBookings(page);
+  await page.goto("/events/442");
+  const toggle = page.getByRole("button", { name: /Synthetic Room B/ }).first();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const panel = page.locator("#booking-panel-111");
+  await expect(panel).toHaveAttribute("data-state", "open");
+  const animation = await panel.evaluate((node) => getComputedStyle(node).animationName);
+  expect(animation).toMatch(/collapse-open/);
+  await expect(panel.getByText("Reserved front row for speakers.")).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  // The panel stays (inert) while it eases closed, then is removed.
+  await expect(panel).toHaveCount(0);
 });
 
 test("[TC-VENUE-181-55] the venue filter lists every venue and follows venue changes when the page regains focus", async ({ page }) => {

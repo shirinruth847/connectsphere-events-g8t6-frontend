@@ -7,8 +7,11 @@ test('[SPM-181 AC5] no filters send no query', () => {
   assert.equal(bookingFilterQuery({ status: '', venueId: '', eventId: '', date: '' }), '');
 });
 
-test('[SPM-181 AC5] status, venue and event filters are passed through', () => {
-  assert.equal(bookingFilterQuery({ status: 'PENDING', venueId: '45', eventId: '442' }), '?status=PENDING&venueId=45&eventId=442');
+// The event filter was removed at the developer's request (21 Oct 2026); events
+// are found through the search instead (title or REQ- reference).
+test('[SPM-181 AC5] status and venue filters are passed through', () => {
+  assert.equal(bookingFilterQuery({ status: 'PENDING', venueId: '45' }), '?status=PENDING&venueId=45');
+  assert.equal(bookingFilterQuery({ q: 'REQ-000442' }), '?q=REQ-000442');
 });
 
 test('[SPM-181 AC5] a date filter is the whole Singapore day, across month ends', () => {

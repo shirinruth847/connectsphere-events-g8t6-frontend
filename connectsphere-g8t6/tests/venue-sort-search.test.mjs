@@ -6,7 +6,8 @@ import {
   openedStorageKey,
   parseOpenedRecord,
   recordOpened,
-  sortByLastOpened,
+  lastAccessedAt,
+  sortByLastAccessed,
 } from '../components/venue-staff/booking-requests/booking-filters.ts';
 import { managedVenueQuery } from '../components/venues/venue-queries.ts';
 import { calendarRange, civilDate, toCalendarLanes } from '../components/venues/availability-calendar-model.ts';
@@ -22,8 +23,12 @@ test('[TC-VENUE-181-31] search, sort and order are sent; a blank search is not',
   assert.equal(bookingFilterQuery({ q: '   ', sort: 'date', order: 'asc' }), '?sort=date');
 });
 
-test('[TC-VENUE-181-32] "Last opened" is sorted in the browser, so the server gets the default order', () => {
-  assert.equal(bookingFilterQuery({ sort: 'lastOpened', order: 'desc', status: 'PENDING' }), '?status=PENDING');
+test('[TC-VENUE-181-32] should_send_the_default_order_when_sorting_by_last_accessed_in_the_browser', () => {
+  assert.equal(bookingFilterQuery({ sort: 'lastAccessed', order: 'desc', status: 'PENDING' }), '?status=PENDING');
+});
+
+test('[TC-VENUE-181-42] should_never_send_an_event_filter_when_one_is_given', () => {
+  assert.equal(bookingFilterQuery({ eventId: '442', venueId: '45' }), '?venueId=45');
 });
 
 test('[TC-VENUE-181-33] the booking reference is the booking ID', () => {
@@ -46,11 +51,25 @@ test('[TC-VENUE-181-35] recording an opening keeps the newest 500 entries', () =
   assert.equal(next['1'], undefined);
 });
 
-test('[TC-VENUE-181-36] last-opened sort puts the most recent first and never-opened bookings last, in arrival order', () => {
-  const items = [{ bookingId: 1 }, { bookingId: 2 }, { bookingId: 3 }, { bookingId: 4 }];
-  const record = { 2: 100, 4: 300 };
-  assert.deepEqual(sortByLastOpened(items, record, 'desc').map((item) => item.bookingId), [4, 2, 1, 3]);
-  assert.deepEqual(sortByLastOpened(items, record, 'asc').map((item) => item.bookingId), [2, 4, 1, 3]);
+test('[TC-VENUE-181-36] should_take_the_later_of_opened_and_edited_as_last_accessed', () => {
+  const edited = '2026-10-20T00:00:00.000Z';
+  assert.equal(lastAccessedAt({ bookingId: 1, updatedAt: edited }, { 1: Date.parse('2026-10-25T00:00:00Z') }), Date.parse('2026-10-25T00:00:00Z'));
+  assert.equal(lastAccessedAt({ bookingId: 1, updatedAt: edited }, { 1: Date.parse('2026-10-01T00:00:00Z') }), Date.parse(edited));
+  assert.equal(lastAccessedAt({ bookingId: 1, updatedAt: edited }, {}), Date.parse(edited));
+  assert.equal(lastAccessedAt({ bookingId: 1, updatedAt: null }, {}), null);
+  assert.equal(lastAccessedAt({ bookingId: 1, updatedAt: 'not a date' }, { 1: 5 }), 5);
+});
+
+test('[TC-VENUE-181-43] should_sort_most_recently_accessed_first_and_unknown_last_when_sorting_by_last_accessed', () => {
+  const items = [
+    { bookingId: 1, updatedAt: null },
+    { bookingId: 2, updatedAt: '2026-10-10T00:00:00.000Z' },
+    { bookingId: 3, updatedAt: null },
+    { bookingId: 4, updatedAt: '2026-10-01T00:00:00.000Z' },
+  ];
+  const record = { 4: Date.parse('2026-10-30T00:00:00Z') };
+  assert.deepEqual(sortByLastAccessed(items, record, 'desc').map((item) => item.bookingId), [4, 2, 1, 3]);
+  assert.deepEqual(sortByLastAccessed(items, record, 'asc').map((item) => item.bookingId), [2, 4, 1, 3]);
   assert.deepEqual(items.map((item) => item.bookingId), [1, 2, 3, 4], 'the input is not reordered');
 });
 

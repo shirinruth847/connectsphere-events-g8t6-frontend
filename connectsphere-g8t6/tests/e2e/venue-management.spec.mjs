@@ -510,7 +510,7 @@ for (const [label, sort] of [
 
     await filters.getByLabel("Sort by").selectOption({ label });
     await expect.poll(lastQuery).toEqual({ sort });
-    await filters.getByLabel("Order").selectOption("desc");
+    await filters.getByRole("button", { name: "Ascending order. Switch to descending" }).click();
     await expect.poll(lastQuery).toEqual({ sort, order: "desc" });
   });
 }
@@ -525,7 +525,7 @@ test("[TC-VENUE-181-61] alphabetical is the default My Venues order and can be r
 
   await expect(filters.getByLabel("Sort by").locator("option:checked")).toHaveText("Alphabetical");
   await expect.poll(lastQuery).toEqual({});
-  await filters.getByLabel("Order").selectOption("desc");
+  await filters.getByRole("button", { name: "Ascending order. Switch to descending" }).click();
   await expect.poll(lastQuery).toEqual({ order: "desc" });
 });
 
@@ -583,20 +583,58 @@ test("[TC-VENUE-181-64] the list shows setup and turnaround times and warns when
 const gallery = (page) => page.getByRole("region", { name: "Photo gallery" });
 const pngFile = (name) => ({ name, mimeType: "image/png", buffer: PNG_1PX });
 
-test("[TC-VENUE-181-150] should_show_the_gallery_above_the_venue_name_with_an_empty_state_when_there_are_no_photos", async ({ page }) => {
+// Drops files on the gallery the way a browser does for a drag from the desktop.
+async function dropFiles(page, files) {
+  const transfer = await page.evaluateHandle((items) => {
+    const data = new DataTransfer();
+    for (const { name, type, bytes } of items) data.items.add(new File([new Uint8Array(bytes)], name, { type }));
+    return data;
+  }, files.map(({ name, mimeType, buffer }) => ({ name, type: mimeType, bytes: [...buffer] })));
+  const region = gallery(page);
+  await region.dispatchEvent("dragover", { dataTransfer: transfer });
+  await expect(region.getByText("Drop photos to upload")).toBeVisible();
+  await region.dispatchEvent("drop", { dataTransfer: transfer });
+}
+
+test("[TC-VENUE-181-150] should_show_the_gallery_above_the_venue_name_with_an_upload_area_when_there_are_no_photos", async ({ page }) => {
   const state = managementState();
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeManagement(page, state);
   await page.goto("/venues/7");
 
-  await expect(gallery(page).getByText("No photos yet")).toBeVisible();
-  const galleryBox = await gallery(page).boundingBox();
+  const region = gallery(page);
+  await expect(region.getByText("No photos yet")).toBeVisible();
+  await expect(region.getByText(/Drag photos here, or choose files/)).toBeVisible();
+  const galleryBox = await region.boundingBox();
   const headingBox = await page.getByRole("heading", { name: "Marina Conference Hall", exact: true }).boundingBox();
   expect(galleryBox.y + galleryBox.height).toBeLessThanOrEqual(headingBox.y);
-  await expect(gallery(page).getByText(/0 of 20 photos/)).toBeVisible();
+  await expect(region.getByText(/0 of 20 photos/)).toBeVisible();
+  // No photo yet, so nothing to edit or delete.
+  await expect(region.getByRole("button", { name: "Edit photo" })).toHaveCount(0);
+  await expect(region.getByRole("button", { name: "Delete photo" })).toHaveCount(0);
 });
 
-test("[TC-VENUE-181-151] should_upload_caption_browse_and_reorder_photos_when_venue_staff_manage_the_gallery", async ({ page }) => {
+test("[TC-VENUE-181-151] should_open_the_file_picker_when_upload_photos_is_clicked_or_activated_from_the_keyboard", async ({ page }) => {
+  const state = managementState();
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  await page.goto("/venues/7");
+  const upload = gallery(page).getByRole("button", { name: "Upload photos" });
+  await expect(upload).toBeVisible();
+
+  const clicked = page.waitForEvent("filechooser");
+  await upload.click();
+  expect((await clicked).isMultiple()).toBe(true);
+
+  const keyed = page.waitForEvent("filechooser");
+  await upload.focus();
+  await page.keyboard.press("Enter");
+  await (await keyed).setFiles(pngFile("hall.png"));
+  await expect(gallery(page).getByText("1 photo added. Use Edit photo to add a caption.")).toBeVisible();
+  expect(state.photos).toHaveLength(1);
+});
+
+test("[TC-VENUE-181-152] should_upload_several_photos_at_once_when_files_are_chosen_or_dropped", async ({ page }) => {
   const state = managementState();
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeManagement(page, state);
@@ -604,41 +642,54 @@ test("[TC-VENUE-181-151] should_upload_caption_browse_and_reorder_photos_when_ve
   const region = gallery(page);
   await expect(region.getByText("No photos yet")).toBeVisible();
 
-  await page.getByTestId("gallery-add-input").setInputFiles(pngFile("hall.png"));
-  const addDialog = page.getByRole("dialog", { name: "Add photo" });
-  await expect(addDialog.getByText("hall.png")).toBeVisible();
-  await addDialog.getByLabel("Caption (optional)").fill("Main hall");
-  await addDialog.getByRole("button", { name: "Upload photo" }).click();
-  await expect(region.getByText("Photo added.")).toBeVisible();
-  await expect(region.getByRole("img", { name: "Main hall" })).toBeVisible();
-  const upload = state.requests.find((item) => item.method === "POST" && item.path === "/api/venues/7/photos");
-  expect(upload.query).toEqual({ caption: "Main hall" });
-  expect(upload.body).toEqual({ bytes: PNG_1PX.length, contentType: "image/png" });
-
-  await page.getByTestId("gallery-add-input").setInputFiles(pngFile("stage.png"));
-  await page.getByRole("dialog", { name: "Add photo" }).getByRole("button", { name: "Upload photo" }).click();
+  await page.getByTestId("gallery-add-input").setInputFiles([pngFile("hall.png"), pngFile("stage.png")]);
+  await expect(region.getByText("2 photos added. Use Edit photo to add a caption.")).toBeVisible();
   await expect(region.getByText("2 / 2")).toBeVisible();
+  const uploads = state.requests.filter((item) => item.method === "POST" && item.path === "/api/venues/7/photos");
+  expect(uploads.map((item) => item.body)).toEqual([
+    { bytes: PNG_1PX.length, contentType: "image/png" },
+    { bytes: PNG_1PX.length, contentType: "image/png" },
+  ]);
+
+  await dropFiles(page, [pngFile("foyer.png"), { name: "notes.gif", mimeType: "image/gif", buffer: Buffer.from("GIF89a") }]);
+  await expect(region.getByText(/1 photo added\..*notes\.gif: Upload a JPEG, PNG or WebP image\./)).toBeVisible();
+  expect(state.photos).toHaveLength(3);
+});
+
+test("[TC-VENUE-181-153] should_edit_caption_and_position_in_the_edit_photo_dialog", async ({ page }) => {
+  const state = managementState();
+  state.photos = [photo("p1", 0, "Front"), photo("p2", 1, null)];
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  await page.goto("/venues/7");
+  const region = gallery(page);
+  await region.getByRole("button", { name: "Next photo" }).click();
   await expect(region.getByTestId("gallery-caption")).toHaveText("No caption");
 
-  await region.getByRole("button", { name: "Edit caption" }).click();
-  const editDialog = page.getByRole("dialog", { name: "Edit caption" });
-  await editDialog.getByLabel("Caption (optional)").fill("Stage view");
-  await editDialog.getByRole("button", { name: "Save caption" }).click();
+  await region.getByRole("button", { name: "Edit photo" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit photo" });
+  await expect(dialog.getByText("Photo 2 of 2")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save caption" })).toBeDisabled();
+  await dialog.getByLabel("Caption (optional)").fill("Stage view");
+  await dialog.getByRole("button", { name: "Save caption" }).click();
+  await expect(region.getByText("Photo updated.")).toBeVisible();
   await expect(region.getByTestId("gallery-caption")).toHaveText("Stage view");
 
-  await region.getByRole("button", { name: "Set as cover" }).click();
+  await dialog.getByRole("button", { name: "Set as cover" }).click();
   await expect(region.getByText("Cover photo updated.")).toBeVisible();
+  await expect(dialog.getByText("Photo 1 of 2 · cover photo")).toBeVisible();
+  expect(state.photos.map((item) => item.caption)).toEqual(["Stage view", "Front"]);
+  await dialog.getByRole("button", { name: "Close dialog" }).click();
   await expect(region.getByText("Cover · 1 / 2")).toBeVisible();
-  expect(state.photos.map((item) => item.caption)).toEqual(["Stage view", "Main hall"]);
 
   // Arrow keys and the previous/next buttons move through the gallery.
   await region.getByRole("group", { name: "Marina Conference Hall photos" }).press("ArrowRight");
-  await expect(region.getByTestId("gallery-caption")).toHaveText("Main hall");
+  await expect(region.getByTestId("gallery-caption")).toHaveText("Front");
   await region.getByRole("button", { name: "Previous photo" }).click();
   await expect(region.getByTestId("gallery-caption")).toHaveText("Stage view");
 });
 
-test("[TC-VENUE-181-152] should_replace_and_delete_a_photo_only_after_confirmation", async ({ page }) => {
+test("[TC-VENUE-181-154] should_replace_from_the_edit_dialog_and_delete_only_after_confirmation", async ({ page }) => {
   const state = managementState();
   state.photos = [photo("p1", 0, "Front"), photo("p2", 1, "Back")];
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
@@ -647,11 +698,15 @@ test("[TC-VENUE-181-152] should_replace_and_delete_a_photo_only_after_confirmati
   const region = gallery(page);
   await expect(region.getByTestId("gallery-caption")).toHaveText("Front");
 
-  await page.getByTestId("gallery-replace-input").setInputFiles(pngFile("front-new.png"));
+  await region.getByRole("button", { name: "Edit photo" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit photo" });
+  const chooser = page.waitForEvent("filechooser");
+  await dialog.getByRole("button", { name: "Replace image" }).click();
+  await (await chooser).setFiles(pngFile("front-new.png"));
   await expect(region.getByText("Photo replaced.")).toBeVisible();
   expect(state.requests.some((item) => item.method === "PUT" && item.path === "/api/venues/7/photos/p1/image")).toBe(true);
 
-  await region.getByRole("button", { name: "Delete photo" }).click();
+  await dialog.getByRole("button", { name: "Delete photo…" }).click();
   const confirm = page.getByRole("dialog", { name: "Delete this photo?" });
   await expect(confirm.getByText(/The next photo becomes the cover\./)).toBeVisible();
   await confirm.getByRole("button", { name: "Keep photo" }).click();
@@ -664,7 +719,7 @@ test("[TC-VENUE-181-152] should_replace_and_delete_a_photo_only_after_confirmati
   expect(state.photos.map((item) => item.photoId)).toEqual(["p2"]);
 });
 
-test("[TC-VENUE-181-153] should_refuse_wrong_files_before_upload_and_disable_add_when_the_gallery_is_full", async ({ page }) => {
+test("[TC-VENUE-181-155] should_refuse_wrong_files_and_disable_upload_when_the_gallery_is_full", async ({ page }) => {
   const state = managementState();
   state.photos = Array.from({ length: 20 }, (_, index) => photo(`p${index + 1}`, index, `Photo ${index + 1}`));
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
@@ -672,21 +727,24 @@ test("[TC-VENUE-181-153] should_refuse_wrong_files_before_upload_and_disable_add
   await page.goto("/venues/7");
   const region = gallery(page);
 
-  await expect(region.getByRole("button", { name: "Add photo" })).toBeDisabled();
+  await expect(region.getByRole("button", { name: "Upload photos" })).toBeDisabled();
   await expect(region.getByText("20 photos (the limit). Delete one to add another.")).toBeVisible();
+
+  state.photos = state.photos.slice(0, 19);
+  await page.reload();
+  await expect(region.getByRole("button", { name: "Upload photos" })).toBeEnabled();
+  // Two chosen with one place left: one is sent, the other explained.
+  await page.getByTestId("gallery-add-input").setInputFiles([pngFile("a.png"), pngFile("b.png")]);
+  await expect(region.getByText(/1 photo added\..*1 photo not added: a venue can have 20 photos\./)).toBeVisible();
 
   state.photos = state.photos.slice(0, 1);
   await page.reload();
-  await expect(region.getByRole("button", { name: "Add photo" })).toBeEnabled();
-  await page.getByTestId("gallery-add-input").setInputFiles({ name: "notes.gif", mimeType: "image/gif", buffer: Buffer.from("GIF89a") });
-  await expect(region.getByText("Upload a JPEG, PNG or WebP image.")).toBeVisible();
   await page.getByTestId("gallery-add-input").setInputFiles({ name: "huge.png", mimeType: "image/png", buffer: Buffer.alloc(2 * 1024 * 1024 + 1) });
-  await expect(region.getByText("Images must be 2 MB or smaller.")).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Add photo" })).toHaveCount(0);
-  expect(state.requests.some((item) => item.method === "POST")).toBe(false);
+  await expect(region.getByText("huge.png: Images must be 2 MB or smaller.")).toBeVisible();
+  expect(state.requests.filter((item) => item.method === "POST")).toHaveLength(1);
 });
 
-test("[TC-VENUE-181-154] should_keep_the_venue_page_usable_when_photos_are_unavailable", async ({ page }) => {
+test("[TC-VENUE-181-156] should_keep_the_venue_page_usable_when_photos_are_unavailable", async ({ page }) => {
   const state = managementState();
   state.photosUnavailable = true;
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
@@ -703,11 +761,16 @@ test("[TC-VENUE-181-154] should_keep_the_venue_page_usable_when_photos_are_unava
   await expect(gallery(page).getByTestId("gallery-caption")).toHaveText("Front");
 });
 
-test("[TC-VENUE-181-155] should_show_the_first_gallery_photo_on_the_large_icon_card_and_the_placeholder_otherwise", async ({ page }) => {
+test("[TC-VENUE-181-157] should_show_the_cover_with_even_padding_and_no_overflow_on_large_icon_cards", async ({ page }) => {
   const state = managementState();
   state.photos = [photo("p1", 0, "Front")];
   state.venues[0] = { ...state.venues[0], coverPhotoId: "p1" };
-  state.venues[1] = { ...state.venues[1], coverPhotoId: null };
+  state.venues[1] = {
+    ...state.venues[1],
+    coverPhotoId: null,
+    name: "Studio Room With An Unusually Long Venue Name For Testing Wrapping",
+    address: "Level 12, Tower B, 1234 Extremely Long Boulevard Name, Singapore 018989",
+  };
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeManagement(page, state);
   await page.goto("/venues");
@@ -717,9 +780,36 @@ test("[TC-VENUE-181-155] should_show_the_first_gallery_photo_on_the_large_icon_c
   const withCover = venues.getByRole("listitem").filter({ hasText: "Marina Conference Hall" });
   await expect(withCover.getByTestId("venue-tile-cover")).toBeVisible();
   expect(await withCover.getByTestId("venue-tile-cover").evaluate((img) => img.naturalWidth)).toBe(1);
-  await expect(venues.getByRole("listitem").filter({ hasText: "Studio Room" }).getByTestId("venue-tile-placeholder")).toBeVisible();
+  const long = venues.getByRole("listitem").filter({ hasText: "Unusually Long" });
+  await expect(long.getByTestId("venue-tile-placeholder")).toBeVisible();
+  await expect(long.getByText("Under Maintenance")).toBeVisible();
+
+  // Every card: nothing reaches past the card's edges, and the text block has the same padding.
+  const cards = await venues.locator(":scope > li > a").evaluateAll((links) => links.map((link) => {
+    const box = link.getBoundingClientRect();
+    const overflow = [...link.querySelectorAll("*")].some((child) => child.getBoundingClientRect().right > box.right + 0.5);
+    const body = link.lastElementChild;
+    return { overflow, padding: getComputedStyle(body).padding };
+  }));
+  expect(cards.every((item) => !item.overflow)).toBe(true);
+  expect(new Set(cards.map((item) => item.padding)).size).toBe(1);
 
   // The list layout shows no pictures at all.
   await page.getByRole("button", { name: "List" }).click();
   await expect(page.getByTestId("venue-tile-cover")).toHaveCount(0);
+});
+
+test("[TC-VENUE-181-158] should_flip_my_venues_order_with_the_funnel_toggle", async ({ page }) => {
+  const state = managementState();
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  await page.goto("/venues");
+  const filters = page.getByRole("region", { name: "Search, sort and filter venues" });
+  const lastQuery = () => state.requests.filter((item) => item.path === "/api/venues/manage").at(-1)?.query;
+
+  await expect(filters.getByLabel("Order", { exact: true })).toHaveCount(0);
+  await filters.getByRole("button", { name: "Ascending order. Switch to descending" }).click();
+  await expect.poll(lastQuery).toMatchObject({ order: "desc" });
+  await filters.getByRole("button", { name: "Descending order. Switch to ascending" }).click();
+  await expect.poll(lastQuery).not.toHaveProperty("order");
 });
