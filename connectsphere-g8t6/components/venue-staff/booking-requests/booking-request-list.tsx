@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageContent } from "@/components/layout/page-content";
-import { AlertBanner, Button, buttonClasses, EmptyState, FormLabel, ReferenceIdTag, Skeleton, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, buttonClasses, EmptyState, ReferenceIdTag, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
+import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { useDebouncedValue } from "@/components/venues/use-debounced-value";
 import { useVenueOptions } from "@/components/venues/use-venue-options";
 import { ROLE_LABELS } from "@/lib/auth";
@@ -16,7 +17,7 @@ import {
   type VenueBookingFilters,
   type VenueBookingListItem,
 } from "@/lib/api/venue-bookings";
-import { BOOKING_SORT_OPTIONS, formatBookingId, sortByLastOpened, type BookingSort, type SortOrder } from "./booking-filters";
+import { BOOKING_SORT_OPTIONS, formatBookingId, lastAccessedAt, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
 import { BOOKING_BORDERS, BookingStatusChip } from "./booking-status-chip";
 import { useOpenedBookings } from "./use-opened-bookings";
 
@@ -26,23 +27,24 @@ type ListState =
   | { status: "error"; message: string; fields?: Record<string, string> };
 
 type Option = { value: string; label: string };
-type Filters = { status: string; venueId: string; eventId: string; date: string };
+type Filters = { status: string; venueId: string; date: string };
 
 const STATUS_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected", CANCELLED: "Cancelled" };
-const EMPTY_FILTERS: Filters = { status: "", venueId: "", eventId: "", date: "" };
+const EMPTY_FILTERS: Filters = { status: "", venueId: "", date: "" };
 // The direction each sort starts in when it is chosen.
 const DEFAULT_ORDER: Record<BookingSort, SortOrder> = {
   default: "asc",
   date: "asc",
   attendance: "desc",
-  lastOpened: "desc",
-  lastEdited: "desc",
+  lastAccessed: "desc",
   alphabetical: "asc",
 };
+// Compact controls: each select is as wide as its longest option.
+const compactField = fieldClasses.replace("w-full", "");
 
 const bookingHref = (booking: VenueBookingListItem) => `/events/${booking.event.eventId}?booking=${booking.bookingId}`;
 
-function BookingRequestCard({ booking, openedAt, onOpen }: { booking: VenueBookingListItem; openedAt?: number; onOpen: () => void }) {
+function BookingRequestCard({ booking, accessedAt, onOpen }: { booking: VenueBookingListItem; accessedAt: number | null; onOpen: () => void }) {
   const titleId = `booking-${booking.bookingId}-title`;
   return (
     <article
@@ -71,8 +73,7 @@ function BookingRequestCard({ booking, openedAt, onOpen }: { booking: VenueBooki
             value: booking.expectedAttendance ? `${booking.expectedAttendance.toLocaleString()} people` : "Not provided",
           },
           { icon: "history", label: "Submitted", value: formatTimestamp(booking.submittedAt) },
-          ...(booking.updatedAt ? [{ icon: "history" as const, label: "Last edited", value: formatTimestamp(booking.updatedAt) }] : []),
-          ...(openedAt ? [{ icon: "history" as const, label: "Last opened", value: formatTimestamp(new Date(openedAt).toISOString()) }] : []),
+          ...(accessedAt ? [{ icon: "history" as const, label: "Last accessed", value: formatTimestamp(new Date(accessedAt).toISOString()) }] : []),
         ]}
       />
       <div className="mt-auto">
@@ -84,18 +85,19 @@ function BookingRequestCard({ booking, openedAt, onOpen }: { booking: VenueBooki
   );
 }
 
-function FilterSelect({ id, label, value, options, allLabel, onChange }: {
+function FilterSelect({ id, label, value, options, allLabel, width, onChange }: {
   id: string;
   label: string;
   value: string;
   options: Option[];
   allLabel?: string;
+  width: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <div>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <select id={id} className={fieldClasses} value={value} onChange={(event) => onChange(event.target.value)}>
+    <div className="grid gap-1">
+      <label htmlFor={id} className="text-xs font-semibold text-on-surface-variant">{label}</label>
+      <select id={id} className={`${compactField} ${width}`} value={value} onChange={(event) => onChange(event.target.value)}>
         {allLabel !== undefined ? <option value="">{allLabel}</option> : null}
         {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
@@ -103,15 +105,10 @@ function FilterSelect({ id, label, value, options, allLabel, onChange }: {
   );
 }
 
-const uniqueOptions = (bookings: VenueBookingListItem[], pick: (booking: VenueBookingListItem) => Option) =>
-  [...new Map(bookings.map((booking) => {
-    const option = pick(booking);
-    return [option.value, option];
-  })).values()].sort((a, b) => a.label.localeCompare(b.label));
-
 // The Venue Staff dashboard and "My Requests" tab (SPM-181): every venue
-// booking request, pending first by default, searchable as you type, sortable
-// and filterable by status, venue, date and event.
+// booking request, pending first by default, searchable as you type (booking
+// ID, request ID, event title, venue or label), sortable and filterable by
+// status, venue and date.
 export function BookingRequestList() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [search, setSearch] = useState("");
@@ -120,13 +117,10 @@ export function BookingRequestList() {
   const q = useDebouncedValue(search.trim());
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [busy, setBusy] = useState(false);
-  // Event choices come from the unfiltered list, so narrowing one filter never
-  // removes the choices of another.
-  const [allBookings, setAllBookings] = useState<VenueBookingListItem[]>([]);
   const [attempt, setAttempt] = useState(0);
   const venueOptions = useVenueOptions();
   const { opened, markOpened } = useOpenedBookings();
-  const filtered = Boolean(filters.status || filters.venueId || filters.eventId || filters.date || q);
+  const filtered = Boolean(filters.status || filters.venueId || filters.date || q);
 
   const request: VenueBookingFilters = useMemo(() => ({ ...filters, q, sort, order }), [filters, q, sort, order]);
 
@@ -137,9 +131,7 @@ export function BookingRequestList() {
     setBusy(true);
     listVenueBookings(request)
       .then((result) => {
-        if (!alive) return;
-        setState({ status: "ready", ...result });
-        if (!filtered) setAllBookings(result.bookings);
+        if (alive) setState({ status: "ready", ...result });
       })
       .catch((caught: unknown) => {
         if (!alive) return;
@@ -152,7 +144,7 @@ export function BookingRequestList() {
     return () => {
       alive = false;
     };
-  }, [request, filtered, attempt]);
+  }, [request, attempt]);
 
   const retry = useCallback(() => {
     setState({ status: "loading" });
@@ -169,48 +161,43 @@ export function BookingRequestList() {
     () => (venueOptions.venues ?? []).map((venue) => ({ value: String(venue.venueId), label: venue.name })),
     [venueOptions.venues],
   );
-  const eventOptions = useMemo(
-    () => uniqueOptions(allBookings, (b) => ({ value: String(b.event.eventId), label: `${b.event.title} (${b.event.requestId})` })),
-    [allBookings],
-  );
   const update = (key: keyof Filters) => (value: string) => setFilters((current) => ({ ...current, [key]: value }));
   const visibleBookings = state.status === "ready"
-    ? (sort === "lastOpened" ? sortByLastOpened(state.bookings, opened, order) : state.bookings)
+    ? (sort === "lastAccessed" ? sortByLastAccessed(state.bookings, opened, order) : state.bookings)
     : [];
 
   return (
     <PageContent title="My Requests" eyebrow={ROLE_LABELS.VENUE_STAFF} description="Venue booking requests from event coordinators. Open a request to review its venue requirements and the event it belongs to.">
-      <section aria-label="Search, sort and filter booking requests" className="mb-5 grid gap-3 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="sm:col-span-2">
-          <FormLabel htmlFor="booking-search">Search</FormLabel>
+      <section aria-label="Search, sort and filter booking requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
+        <div className="grid min-w-[14rem] flex-1 gap-1">
+          <label htmlFor="booking-search" className="text-xs font-semibold text-on-surface-variant">Search</label>
           <input
             id="booking-search"
             type="search"
             className={fieldClasses}
-            placeholder="Booking ID, request ID, event, venue or label"
+            placeholder="Booking ID, event, venue or label"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             aria-describedby="booking-search-hint"
           />
-          <p id="booking-search-hint" className="mt-1 text-xs text-on-surface-variant">Results update as you type.</p>
+          <span id="booking-search-hint" className="sr-only">Results update as you type.</span>
         </div>
-        <FilterSelect id="booking-sort" label="Sort by" value={sort} options={BOOKING_SORT_OPTIONS}
-          onChange={(value) => { setSort(value as BookingSort); setOrder(DEFAULT_ORDER[value as BookingSort]); }} />
-        <FilterSelect id="booking-order" label="Order" value={order}
-          options={[{ value: "asc", label: "Ascending" }, { value: "desc", label: "Descending" }]}
-          onChange={(value) => setOrder(value as SortOrder)} />
-        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses"
+        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[9.5rem]"
           options={VENUE_BOOKING_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))} onChange={update("status")} />
-        <FilterSelect id="booking-venue" label="Venue" value={filters.venueId} allLabel="All venues" options={venueChoices} onChange={update("venueId")} />
-        <div>
-          <FormLabel htmlFor="booking-date">Date (SGT)</FormLabel>
-          <input id="booking-date" type="date" className={fieldClasses} value={filters.date} onChange={(event) => update("date")(event.target.value)} />
+        <FilterSelect id="booking-venue" label="Venue" value={filters.venueId} allLabel="All venues" width="w-[13rem]" options={venueChoices} onChange={update("venueId")} />
+        <div className="grid gap-1">
+          <label htmlFor="booking-date" className="text-xs font-semibold text-on-surface-variant">Date (SGT)</label>
+          <input id="booking-date" type="date" className={`${compactField} w-[10.5rem]`} value={filters.date} onChange={(event) => update("date")(event.target.value)} />
         </div>
-        <FilterSelect id="booking-event" label="Event" value={filters.eventId} allLabel="All events" options={eventOptions} onChange={update("eventId")} />
-        <div className="flex items-end sm:col-span-2 xl:col-span-4">
-          <Button variant="quiet" onClick={clearAll} disabled={!filtered && !search}>Clear search and filters</Button>
-          {venueOptions.error ? <p className="ml-3 text-xs text-error">Venue list unavailable: {venueOptions.error}</p> : null}
+        <div className="flex items-end gap-1">
+          <FilterSelect id="booking-sort" label="Sort by" value={sort} options={BOOKING_SORT_OPTIONS} width="w-[11.5rem]"
+            onChange={(value) => { setSort(value as BookingSort); setOrder(DEFAULT_ORDER[value as BookingSort]); }} />
+          <SortOrderToggle order={order} onChange={setOrder} />
         </div>
+        {filtered || search ? (
+          <Button variant="quiet" className="px-3" onClick={clearAll}>Clear</Button>
+        ) : null}
+        {venueOptions.error ? <p className="basis-full text-xs text-error">Venue list unavailable: {venueOptions.error}</p> : null}
       </section>
 
       <div aria-live="polite">
@@ -253,7 +240,7 @@ export function BookingRequestList() {
               <BookingRequestCard
                 key={booking.bookingId}
                 booking={booking}
-                openedAt={opened[String(booking.bookingId)]}
+                accessedAt={lastAccessedAt(booking, opened)}
                 onOpen={() => markOpened(booking.bookingId)}
               />
             ))}

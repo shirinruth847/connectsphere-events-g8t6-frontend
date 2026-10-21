@@ -8,6 +8,7 @@ import { Icon } from "@/components/shared/icon";
 import { ApiError } from "@/lib/api";
 import { formatTimestamp } from "@/lib/datetime";
 import { useVenuePhoto } from "@/components/venues/use-venue-photo";
+import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { useDebouncedValue } from "@/components/venues/use-debounced-value";
 import { MANAGED_VENUE_SORT_OPTIONS, type ManagedVenueSort } from "@/components/venues/venue-queries";
 import {
@@ -182,22 +183,26 @@ function VenueTileCover({ venueId, photoId }: { venueId: number; photoId?: strin
 
 function ManagedVenueTile({ venue }: { venue: ManagedVenue }) {
   const titleId = `venue-tile-${venue.venueId}`;
+  // Same padding and line rules on every card: the status sits on the picture,
+  // the name wraps to two lines and each detail line truncates with a tooltip.
   return (
-    <li>
+    <li className="min-w-0">
       <Link
         href={`/venues/${venue.venueId}`}
         aria-labelledby={titleId}
-        className="flex h-full flex-col overflow-hidden rounded-panel bg-surface-container-lowest shadow-elevation-1 transition-shadow duration-150 hover:shadow-elevation-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="flex h-full min-w-0 flex-col overflow-hidden rounded-panel bg-surface-container-lowest shadow-elevation-1 transition-shadow duration-150 hover:shadow-elevation-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
-        <VenueTileCover venueId={venue.venueId} photoId={venue.coverPhotoId} />
-        <div className="grid gap-1 p-3">
-          <div className="flex items-start justify-between gap-2">
-            <h3 id={titleId} className="line-clamp-2 text-sm font-semibold text-on-surface">{venue.name}</h3>
+        <div className="relative">
+          <VenueTileCover venueId={venue.venueId} photoId={venue.coverPhotoId} />
+          <div className="absolute left-2 top-2 rounded-chip bg-surface-container-lowest/95 shadow-elevation-1">
             <VenueStatusChip status={venue.status} />
           </div>
-          <p className="line-clamp-1 text-xs text-on-surface-variant">{venue.address}</p>
-          <p className="text-xs text-on-surface-variant"><span className="font-semibold text-on-surface">{venue.maxCapacity.toLocaleString()}</span> capacity</p>
-          <p className="text-xs text-on-surface-variant">Updated {formatTimestamp(venue.updatedAt)}</p>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1 p-4">
+          <h3 id={titleId} className="line-clamp-2 break-words text-sm font-semibold leading-snug text-on-surface" title={venue.name}>{venue.name}</h3>
+          <p className="truncate text-xs text-on-surface-variant" title={venue.address}>{venue.address}</p>
+          <p className="truncate text-xs text-on-surface-variant"><span className="font-semibold text-on-surface">{venue.maxCapacity.toLocaleString()}</span> capacity</p>
+          <p className="mt-auto truncate pt-1 text-xs text-on-surface-variant" title={`Updated ${formatTimestamp(venue.updatedAt)}`}>Updated {formatTimestamp(venue.updatedAt)}</p>
         </div>
       </Link>
     </li>
@@ -301,7 +306,7 @@ export function VenueManagementList() {
 
       <section
         aria-label="Search, sort and filter venues"
-        className="grid gap-3 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:grid-cols-2 xl:grid-cols-[2fr_2fr_1fr_1fr_1fr] xl:items-end"
+        className="grid gap-3 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:grid-cols-2 xl:grid-cols-[2fr_2fr_1fr_1fr_0.5fr] xl:items-end"
       >
         <div>
           <FormLabel htmlFor="manage-search">Venue name</FormLabel>
@@ -318,18 +323,14 @@ export function VenueManagementList() {
             {Object.entries(VENUE_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
-        <div>
+        <div className="xl:col-span-2">
           <FormLabel htmlFor="manage-sort">Sort by</FormLabel>
-          <select id="manage-sort" className={fieldClasses} value={sort} onChange={(event) => setSort(event.target.value as ManagedVenueSort)}>
-            {MANAGED_VENUE_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <FormLabel htmlFor="manage-order">Order</FormLabel>
-          <select id="manage-order" className={fieldClasses} value={order} onChange={(event) => setOrder(event.target.value as "asc" | "desc")}>
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
-          </select>
+          <div className="flex gap-1">
+            <select id="manage-sort" className={fieldClasses} value={sort} onChange={(event) => setSort(event.target.value as ManagedVenueSort)}>
+              {MANAGED_VENUE_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <SortOrderToggle order={order} onChange={setOrder} />
+          </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2 xl:col-span-5">
           <p className="text-xs text-on-surface-variant">Results update as you type.</p>
@@ -374,7 +375,7 @@ export function VenueManagementList() {
               {state.venues.map((venue) => <ManagedVenueRow key={venue.venueId} venue={venue} />)}
             </ul>
           ) : (
-            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" aria-label="Venues" aria-busy={busy}>
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] gap-4" aria-label="Venues" aria-busy={busy}>
               {state.venues.map((venue) => <ManagedVenueTile key={venue.venueId} venue={venue} />)}
             </ul>
           )}

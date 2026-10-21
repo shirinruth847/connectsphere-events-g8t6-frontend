@@ -1,23 +1,22 @@
 // Query string for GET /api/venues/bookings (SPM-181). Pure, so it is unit tested.
 
-// "lastOpened" is per viewer: the list is fetched in the default order and the
-// browser sorts it by its own record of when each booking was opened.
-export type BookingSort = "default" | "date" | "attendance" | "lastOpened" | "lastEdited" | "alphabetical";
+// "lastAccessed" is the later of this viewer's last opening (kept in the
+// browser) and the booking's last edit, so the list is fetched in the default
+// order and sorted in the browser.
+export type BookingSort = "default" | "date" | "attendance" | "lastAccessed" | "alphabetical";
 export type SortOrder = "asc" | "desc";
 
 export const BOOKING_SORT_OPTIONS: { value: BookingSort; label: string }[] = [
   { value: "default", label: "Pending first" },
   { value: "date", label: "Date/time" },
   { value: "attendance", label: "Venue attendance" },
-  { value: "lastOpened", label: "Last opened" },
-  { value: "lastEdited", label: "Last edited" },
+  { value: "lastAccessed", label: "Last accessed" },
   { value: "alphabetical", label: "Alphabetical (event)" },
 ];
 
 export interface VenueBookingFilters {
   status?: string;
   venueId?: string;
-  eventId?: string;
   // A calendar day (YYYY-MM-DD) in Singapore time, matching lib/datetime.ts.
   date?: string;
   q?: string;
@@ -38,15 +37,14 @@ export const bookingFilterQuery = (filters: VenueBookingFilters) => {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.venueId) params.set("venueId", filters.venueId);
-  if (filters.eventId) params.set("eventId", filters.eventId);
   if (filters.date && /^\d{4}-\d{2}-\d{2}$/.test(filters.date)) {
     params.set("from", `${filters.date}T00:00:00${SGT_OFFSET}`);
     params.set("to", `${nextDay(filters.date)}T00:00:00${SGT_OFFSET}`);
   }
   const text = filters.q?.trim();
   if (text) params.set("q", text);
-  if (filters.sort && filters.sort !== "default" && filters.sort !== "lastOpened") params.set("sort", filters.sort);
-  if (filters.order === "desc" && filters.sort !== "lastOpened") params.set("order", "desc");
+  if (filters.sort && filters.sort !== "default" && filters.sort !== "lastAccessed") params.set("sort", filters.sort);
+  if (filters.order === "desc" && filters.sort !== "lastAccessed") params.set("order", "desc");
   const query = params.toString();
   return query ? `?${query}` : "";
 };
@@ -84,15 +82,24 @@ export const recordOpened = (record: OpenedRecord, bookingId: number, now: numbe
   return Object.fromEntries(next);
 };
 
-// Most recently opened first by default; never-opened bookings always go last,
-// keeping the order they arrived in.
-export const sortByLastOpened = <T extends { bookingId: number }>(items: T[], record: OpenedRecord, order: SortOrder = "desc"): T[] =>
+// When this viewer last accessed a booking: the later of their last opening
+// and the booking's last edit. Null when neither is known.
+export const lastAccessedAt = (item: { bookingId: number; updatedAt?: string | null }, record: OpenedRecord): number | null => {
+  const opened = record[String(item.bookingId)];
+  const edited = item.updatedAt ? Date.parse(item.updatedAt) : Number.NaN;
+  const times = [opened, edited].filter((time): time is number => typeof time === "number" && Number.isFinite(time));
+  return times.length ? Math.max(...times) : null;
+};
+
+// Most recently accessed first by default; bookings with no known access go
+// last, keeping the order they arrived in.
+export const sortByLastAccessed = <T extends { bookingId: number; updatedAt?: string | null }>(items: T[], record: OpenedRecord, order: SortOrder = "desc"): T[] =>
   items
-    .map((item, index) => ({ item, index, time: record[String(item.bookingId)] }))
+    .map((item, index) => ({ item, index, time: lastAccessedAt(item, record) }))
     .sort((a, b) => {
-      if (a.time === undefined && b.time === undefined) return a.index - b.index;
-      if (a.time === undefined) return 1;
-      if (b.time === undefined) return -1;
-      return order === "asc" ? a.time - b.time : b.time - a.time;
+      if (a.time === null && b.time === null) return a.index - b.index;
+      if (a.time === null) return 1;
+      if (b.time === null) return -1;
+      return (order === "asc" ? a.time - b.time : b.time - a.time) || a.index - b.index;
     })
     .map(({ item }) => item);

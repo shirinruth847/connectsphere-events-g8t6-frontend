@@ -14,6 +14,7 @@ import { formatDuration, formatEventWindow, formatTimestamp } from "@/lib/dateti
 import { getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
 import { formatBookingId } from "./booking-filters";
 import { BookingStatusChip } from "./booking-status-chip";
+import { Collapse } from "./collapse";
 import { useOpenedBookings } from "./use-opened-bookings";
 
 type ViewState =
@@ -122,14 +123,16 @@ function VenueBookingsSection({ bookings, selectedId, onSelect }: {
                 </span>
                 <span className="flex items-center gap-2">
                   <BookingStatusChip status={booking.status} label={booking.statusLabel} />
-                  <Icon name={selected ? "close" : "arrow-forward"} size={16} />
+                  <span className={`inline-flex transition-transform duration-200 ease-out ${selected ? "rotate-90" : ""}`}>
+                    <Icon name="arrow-forward" size={16} />
+                  </span>
                 </span>
               </button>
-              {selected ? (
-                <div id={panelId} className="border-t border-outline-variant p-3 sm:p-4">
+              <Collapse open={selected} id={panelId}>
+                <div className="border-t border-outline-variant p-3 sm:p-4">
                   <BookingRequirements booking={booking} />
                 </div>
-              ) : null}
+              </Collapse>
             </li>
           );
         })}

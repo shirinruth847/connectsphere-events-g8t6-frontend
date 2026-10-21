@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Dialog } from "@/components/shared/dialog";
-import { AlertBanner, Button, Skeleton, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, Skeleton, buttonClasses, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { useVenuePhoto } from "@/components/venues/use-venue-photo";
 import { ApiError } from "@/lib/api";
@@ -20,11 +20,14 @@ import {
 } from "@/lib/api/venues";
 
 type GalleryState = { status: "loading" } | { status: "ready"; photos: VenuePhoto[] } | { status: "error"; message: string };
-type Notice = { tone: "success" | "error"; text: string } | null;
+type Notice = { tone: "success" | "error" | "warning"; text: string } | null;
 
 const ACCEPT = PHOTO_TYPES.join(",");
+const UPLOAD_INPUT_ID = "gallery-upload-input";
+const REPLACE_INPUT_ID = "gallery-replace-input";
 const errorText = (caught: unknown, fallback: string) =>
   caught instanceof ApiError ? caught.fields?.image || caught.message : fallback;
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 function PhotoImage({ venueId, photo, className }: { venueId: number; photo: VenuePhoto; className: string }) {
   const source = useVenuePhoto(venueId, photo.photoId, photo.version);
@@ -43,19 +46,40 @@ function PhotoImage({ venueId, photo, className }: { venueId: number; photo: Ven
   );
 }
 
+// A real <label> for the hidden file input, so a click opens the browser's
+// file picker natively. The label is the keyboard stop too: Enter or Space
+// opens the same picker.
+function FilePickerLabel({ htmlFor, disabled, children, className }: { htmlFor: string; disabled?: boolean; children: ReactNode; className?: string }) {
+  return (
+    <label
+      htmlFor={htmlFor}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        if (!disabled) (document.getElementById(htmlFor) as HTMLInputElement | null)?.click();
+      }}
+      className={`${className ?? buttonClasses("secondary")} cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${disabled ? "pointer-events-none opacity-55" : ""}`}
+    >
+      {children}
+    </label>
+  );
+}
+
 // Photo gallery carousel at the top of a venue page (T28, SPM-181). Venue
-// Staff add, re-caption, reorder, replace and delete photos; the first photo
-// is the cover shown on My Venues cards. Stored in MongoDB.
+// Staff upload photos (file picker or drag and drop, several at once), then
+// edit a photo's caption, position or image, or delete it; the first photo is
+// the cover shown on My Venues cards. Stored in MongoDB.
 export function VenueGallery({ venueId, venueName }: { venueId: number; venueName: string }) {
   const [state, setState] = useState<GalleryState>({ status: "loading" });
   const [index, setIndex] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [editing, setEditing] = useState<VenuePhoto | null>(null);
   const [deleting, setDeleting] = useState<VenuePhoto | null>(null);
-  const [adding, setAdding] = useState<File | null>(null);
-  const addInput = useRef<HTMLInputElement>(null);
-  const replaceInput = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   const load = useCallback(async (focusPhotoId?: string) => {
     try {
@@ -66,8 +90,10 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
         if (found >= 0) return found;
         return Math.min(current, Math.max(photos.length - 1, 0));
       });
+      return photos;
     } catch (caught) {
       setState({ status: "error", message: errorText(caught, "The photos could not be loaded.") });
+      return null;
     }
   }, [venueId]);
 
@@ -81,15 +107,19 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
 
   const photos = state.status === "ready" ? state.photos : [];
   const current = photos[index] ?? null;
-  const full = photos.length >= MAX_PHOTOS_PER_VENUE;
+  const remaining = MAX_PHOTOS_PER_VENUE - photos.length;
+  const full = remaining <= 0;
+  const working = busy !== null;
 
-  const run = async (work: () => Promise<{ message: string; photoId?: string }>, failure: string) => {
-    setBusy(true);
+  // Runs one change, then reloads the gallery (keeping `photoId` selected).
+  const run = async (label: string, work: () => Promise<{ message: string; photoId?: string }>, failure: string) => {
+    setBusy(label);
     setNotice(null);
     try {
       const { message, photoId } = await work();
-      await load(photoId);
+      const reloaded = await load(photoId);
       setNotice({ tone: "success", text: message });
+      if (editing && reloaded) setEditing(reloaded.find((photo) => photo.photoId === editing.photoId) ?? null);
       return true;
     } catch (caught) {
       setNotice({ tone: "error", text: errorText(caught, failure) });
@@ -97,24 +127,87 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
       if (caught instanceof ApiError && (caught.status === 404 || caught.status === 409)) await load();
       return false;
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  const pickFile = (event: ChangeEvent<HTMLInputElement>, onFile: (file: File) => void) => {
+  // Uploads the chosen or dropped files one after another, up to the limit.
+  const uploadFiles = async (files: File[]) => {
+    if (!files.length || state.status !== "ready") return;
+    const problems: string[] = [];
+    const accepted = files.filter((file) => {
+      const problem = photoFileProblem(file);
+      if (problem) problems.push(`${file.name}: ${problem}`);
+      return !problem;
+    });
+    const toSend = accepted.slice(0, Math.max(remaining, 0));
+    if (accepted.length > toSend.length) problems.push(`${plural(accepted.length - toSend.length, "photo")} not added: a venue can have ${MAX_PHOTOS_PER_VENUE} photos.`);
+    if (!toSend.length) {
+      setNotice({ tone: "error", text: problems.join(" ") });
+      return;
+    }
+
+    setNotice(null);
+    let added = 0;
+    let lastId: string | undefined;
+    for (const [position, file] of toSend.entries()) {
+      setBusy(`Uploading ${position + 1} of ${toSend.length}…`);
+      try {
+        lastId = (await addVenuePhoto(venueId, file)).photo.photoId;
+        added += 1;
+      } catch (caught) {
+        problems.push(`${file.name}: ${errorText(caught, "could not be uploaded.")}`);
+      }
+    }
+    await load(lastId);
+    setBusy(null);
+    const summary = added ? `${plural(added, "photo")} added. Use Edit photo to add a caption.` : "";
+    setNotice({ tone: problems.length ? (added ? "warning" : "error") : "success", text: [summary, ...problems].filter(Boolean).join(" ") });
+  };
+
+  const onPick = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    void uploadFiles(files);
+  };
+
+  const onReplace = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file) return;
+    const photo = editing ?? current;
+    if (!file || !photo) return;
     const problem = photoFileProblem(file);
-    if (problem) setNotice({ tone: "error", text: problem });
-    else onFile(file);
+    if (problem) {
+      setNotice({ tone: "error", text: problem });
+      return;
+    }
+    void run("Replacing…", async () => {
+      await replaceVenuePhotoImage(venueId, photo.photoId, file);
+      return { message: "Photo replaced.", photoId: photo.photoId };
+    }, "The photo could not be replaced.");
   };
 
   const move = (photo: VenuePhoto, position: number, message: string) =>
-    run(async () => {
+    run("Moving…", async () => {
       await updateVenuePhoto(venueId, photo.photoId, { position });
       return { message, photoId: photo.photoId };
     }, "The photo could not be moved.");
+
+  const dropProps = {
+    onDragOver: (event: DragEvent) => {
+      if (!event.dataTransfer.types.includes("Files") || full || working) return;
+      event.preventDefault();
+      setDragging(true);
+    },
+    onDragLeave: (event: DragEvent) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+    },
+    onDrop: (event: DragEvent) => {
+      event.preventDefault();
+      setDragging(false);
+      void uploadFiles(Array.from(event.dataTransfer.files));
+    },
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowLeft" && index > 0) setIndex(index - 1);
@@ -122,17 +215,12 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
   };
 
   return (
-    <section aria-label="Photo gallery" className="grid gap-3 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1 sm:p-4">
-      <input ref={addInput} type="file" accept={ACCEPT} className="sr-only" tabIndex={-1} aria-hidden="true" data-testid="gallery-add-input"
-        onChange={(event) => pickFile(event, setAdding)} />
-      <input ref={replaceInput} type="file" accept={ACCEPT} className="sr-only" tabIndex={-1} aria-hidden="true" data-testid="gallery-replace-input"
-        onChange={(event) => pickFile(event, (file) => {
-          if (!current) return;
-          void run(async () => {
-            await replaceVenuePhotoImage(venueId, current.photoId, file);
-            return { message: "Photo replaced.", photoId: current.photoId };
-          }, "The photo could not be replaced.");
-        })} />
+    <section aria-label="Photo gallery" className="relative grid gap-3 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1 sm:p-4" {...dropProps}>
+      {dragging ? (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-panel border-2 border-dashed border-primary bg-primary-fixed/80 text-sm font-semibold text-primary">
+          Drop photos to upload
+        </div>
+      ) : null}
 
       {state.status === "loading" ? <Skeleton className="aspect-[16/7] w-full" /> : null}
 
@@ -143,14 +231,24 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
         </AlertBanner>
       ) : null}
 
+      {state.status === "ready" ? (
+        <input id={UPLOAD_INPUT_ID} type="file" accept={ACCEPT} multiple className="sr-only" tabIndex={-1} data-testid="gallery-add-input"
+          disabled={full || working} onChange={onPick} aria-hidden="true" />
+      ) : null}
+
       {state.status === "ready" && !current ? (
-        <div className="grid aspect-[16/7] place-items-center rounded-control bg-primary-fixed text-center text-primary">
-          <div className="grid justify-items-center gap-2 px-4">
+        <FilePickerLabel
+          htmlFor={UPLOAD_INPUT_ID}
+          disabled={working}
+          className="grid aspect-[16/7] place-items-center rounded-control border-2 border-dashed border-outline-variant bg-primary-fixed/40 text-center text-primary transition-colors hover:border-primary hover:bg-primary-fixed/70"
+        >
+          <span className="grid justify-items-center gap-2 px-4">
             <Icon name="venue" size={20} />
-            <p className="text-sm font-semibold">No photos yet</p>
-            <p className="text-xs text-on-surface-variant">The first photo you add becomes the cover on My Venues.</p>
-          </div>
-        </div>
+            <span className="text-sm font-semibold">No photos yet</span>
+            <span className="text-sm">Drag photos here, or <span className="underline">choose files</span> from your computer.</span>
+            <span className="text-xs text-on-surface-variant">JPEG, PNG or WebP, up to 2 MB each. The first photo becomes the cover on My Venues.</span>
+          </span>
+        </FilePickerLabel>
       ) : null}
 
       {current ? (
@@ -203,25 +301,19 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
 
       {state.status === "ready" ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={() => addInput.current?.click()} disabled={busy || full}>Add photo</Button>
+          <FilePickerLabel htmlFor={UPLOAD_INPUT_ID} disabled={full || working}>
+            <Icon name="arrow-forward" size={16} className="-rotate-90" />Upload photos
+          </FilePickerLabel>
           {current ? (
             <>
-              <Button variant="quiet" onClick={() => setEditing(current)} disabled={busy}><Icon name="edit" size={16} />Edit caption</Button>
-              <Button variant="quiet" onClick={() => replaceInput.current?.click()} disabled={busy}>Replace image</Button>
-              {index > 0 ? (
-                <>
-                  <Button variant="quiet" onClick={() => void move(current, 0, "Cover photo updated.")} disabled={busy}>Set as cover</Button>
-                  <Button variant="quiet" onClick={() => void move(current, index - 1, "Photo moved earlier.")} disabled={busy}>Move earlier</Button>
-                </>
-              ) : null}
-              {index < photos.length - 1 ? (
-                <Button variant="quiet" onClick={() => void move(current, index + 1, "Photo moved later.")} disabled={busy}>Move later</Button>
-              ) : null}
-              <Button variant="quiet" className="text-error" onClick={() => setDeleting(current)} disabled={busy}><Icon name="close" size={16} />Delete photo</Button>
+              <Button variant="quiet" onClick={() => setEditing(current)} disabled={working}><Icon name="edit" size={16} />Edit photo</Button>
+              <Button variant="quiet" className="text-error" onClick={() => setDeleting(current)} disabled={working}><Icon name="close" size={16} />Delete photo</Button>
             </>
           ) : null}
-          <p className="ml-auto text-xs text-on-surface-variant">
-            {full ? `${MAX_PHOTOS_PER_VENUE} photos (the limit). Delete one to add another.` : `${photos.length} of ${MAX_PHOTOS_PER_VENUE} photos · JPEG, PNG or WebP, up to 2 MB`}
+          <p className="ml-auto text-xs text-on-surface-variant" aria-live="polite">
+            {busy ?? (full
+              ? `${MAX_PHOTOS_PER_VENUE} photos (the limit). Delete one to add another.`
+              : `${photos.length} of ${MAX_PHOTOS_PER_VENUE} photos · drag and drop or upload JPEG, PNG or WebP, up to 2 MB each`)}
           </p>
         </div>
       ) : null}
@@ -230,41 +322,25 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
         {notice ? <AlertBanner tone={notice.tone} live={false}>{notice.text}</AlertBanner> : null}
       </div>
 
-      <CaptionDialog
-        title="Add photo"
-        open={adding !== null}
-        initial=""
-        submitLabel="Upload photo"
-        busy={busy}
-        fileName={adding?.name}
-        onClose={() => setAdding(null)}
-        onSubmit={async (caption) => {
-          const file = adding;
-          if (!file) return;
-          const ok = await run(async () => {
-            const { message, photo } = await addVenuePhoto(venueId, file, caption);
-            return { message, photoId: photo.photoId };
-          }, "The photo could not be uploaded.");
-          if (ok) setAdding(null);
-        }}
-      />
-      <CaptionDialog
-        title="Edit caption"
-        open={editing !== null}
-        initial={editing?.caption ?? ""}
-        submitLabel="Save caption"
-        busy={busy}
-        onClose={() => setEditing(null)}
-        onSubmit={async (caption) => {
-          const photo = editing;
-          if (!photo) return;
-          const ok = await run(async () => {
-            const { message } = await updateVenuePhoto(venueId, photo.photoId, { caption: caption.trim() || null });
-            return { message, photoId: photo.photoId };
-          }, "The caption could not be saved.");
-          if (ok) setEditing(null);
-        }}
-      />
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} title="Edit photo">
+        {editing ? (
+          <EditPhotoForm
+            key={`${editing.photoId}-${editing.version}`}
+            venueId={venueId}
+            photo={editing}
+            count={photos.length}
+            busy={working}
+            onSaveCaption={(caption) => run("Saving…", async () => {
+              const { message } = await updateVenuePhoto(venueId, editing.photoId, { caption: caption.trim() || null });
+              return { message, photoId: editing.photoId };
+            }, "The caption could not be saved.")}
+            onMove={(position, message) => move(editing, position, message)}
+            onReplace={onReplace}
+            onDelete={() => { setDeleting(editing); setEditing(null); }}
+          />
+        ) : null}
+      </Dialog>
+
       <Dialog
         open={deleting !== null}
         onClose={() => setDeleting(null)}
@@ -272,10 +348,10 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="quiet" onClick={() => setDeleting(null)}>Keep photo</Button>
-            <Button variant="danger" disabled={busy} onClick={async () => {
+            <Button variant="danger" disabled={working} onClick={async () => {
               const photo = deleting;
               if (!photo) return;
-              await run(async () => ({ message: (await deleteVenuePhoto(venueId, photo.photoId)).message }), "The photo could not be deleted.");
+              await run("Deleting…", async () => ({ message: (await deleteVenuePhoto(venueId, photo.photoId)).message }), "The photo could not be deleted.");
               setDeleting(null);
             }}>Delete photo</Button>
           </div>
@@ -289,51 +365,64 @@ export function VenueGallery({ venueId, venueName }: { venueId: number; venueNam
   );
 }
 
-function CaptionDialog(props: {
-  title: string;
-  open: boolean;
-  initial: string;
-  submitLabel: string;
+// Everything about one photo in one place: preview, caption, position, image
+// replacement and deletion.
+function EditPhotoForm({ venueId, photo, count, busy, onSaveCaption, onMove, onReplace, onDelete }: {
+  venueId: number;
+  photo: VenuePhoto;
+  count: number;
   busy: boolean;
-  fileName?: string;
-  onClose: () => void;
-  onSubmit: (caption: string) => Promise<void>;
+  onSaveCaption: (caption: string) => Promise<boolean>;
+  onMove: (position: number, message: string) => Promise<boolean>;
+  onReplace: (event: ChangeEvent<HTMLInputElement>) => void;
+  onDelete: () => void;
 }) {
-  return (
-    <Dialog open={props.open} onClose={props.onClose} title={props.title}>
-      {/* Mounted only while open, so each opening starts from the saved caption. */}
-      {props.open ? <CaptionForm {...props} /> : null}
-    </Dialog>
-  );
-}
-
-function CaptionForm({ initial, submitLabel, busy, fileName, onClose, onSubmit }: {
-  initial: string;
-  submitLabel: string;
-  busy: boolean;
-  fileName?: string;
-  onClose: () => void;
-  onSubmit: (caption: string) => Promise<void>;
-}) {
-  const [caption, setCaption] = useState(initial);
+  const [caption, setCaption] = useState(photo.caption ?? "");
   const tooLong = caption.trim().length > MAX_CAPTION_LENGTH;
+  const changed = (caption.trim() || null) !== (photo.caption ?? null);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!tooLong) void onSubmit(caption);
+    if (!tooLong && changed) void onSaveCaption(caption);
   };
   return (
-    <form noValidate onSubmit={submit} className="grid gap-3">
-      {fileName ? <p className="text-sm text-on-surface-variant">File: <span className="font-semibold text-on-surface">{fileName}</span></p> : null}
-      <label htmlFor="gallery-caption-input" className="text-sm font-semibold text-on-surface">Caption (optional)</label>
-      <input id="gallery-caption-input" className={fieldClasses} value={caption} maxLength={MAX_CAPTION_LENGTH + 50}
-        aria-invalid={tooLong || undefined} aria-describedby="gallery-caption-help" onChange={(event) => setCaption(event.target.value)} />
-      <p id="gallery-caption-help" className={`text-xs ${tooLong ? "text-error" : "text-on-surface-variant"}`}>
-        {tooLong ? `Caption must be ${MAX_CAPTION_LENGTH} characters or fewer.` : `${caption.trim().length} / ${MAX_CAPTION_LENGTH} characters`}
-      </p>
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="quiet" onClick={onClose}>Cancel</Button>
-        <Button type="submit" disabled={busy || tooLong}>{busy ? "Saving…" : submitLabel}</Button>
+    <div className="grid gap-4">
+      <PhotoImage venueId={venueId} photo={photo} className="aspect-[16/9] w-full rounded-control" />
+      <p className="text-xs text-on-surface-variant">Photo {photo.position + 1} of {count}{photo.position === 0 ? " · cover photo" : ""}</p>
+
+      <form noValidate onSubmit={submit} className="grid gap-2">
+        <label htmlFor="gallery-caption-input" className="text-sm font-semibold text-on-surface">Caption (optional)</label>
+        <input id="gallery-caption-input" className={fieldClasses} value={caption} maxLength={MAX_CAPTION_LENGTH + 50}
+          aria-invalid={tooLong || undefined} aria-describedby="gallery-caption-help" onChange={(event) => setCaption(event.target.value)} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p id="gallery-caption-help" className={`text-xs ${tooLong ? "text-error" : "text-on-surface-variant"}`}>
+            {tooLong ? `Caption must be ${MAX_CAPTION_LENGTH} characters or fewer.` : `${caption.trim().length} / ${MAX_CAPTION_LENGTH} characters`}
+          </p>
+          <Button type="submit" disabled={busy || tooLong || !changed}>Save caption</Button>
+        </div>
+      </form>
+
+      <div className="grid gap-2 border-t border-outline-variant/60 pt-3">
+        <p className="text-sm font-semibold text-on-surface">Position and image</p>
+        <div className="flex flex-wrap gap-2">
+          {photo.position > 0 ? (
+            <>
+              <Button variant="secondary" onClick={() => void onMove(0, "Cover photo updated.")} disabled={busy}>Set as cover</Button>
+              <Button variant="quiet" onClick={() => void onMove(photo.position - 1, "Photo moved earlier.")} disabled={busy}><Icon name="arrow-back" size={16} />Move earlier</Button>
+            </>
+          ) : null}
+          {photo.position < count - 1 ? (
+            <Button variant="quiet" onClick={() => void onMove(photo.position + 1, "Photo moved later.")} disabled={busy}>Move later<Icon name="arrow-forward" size={16} /></Button>
+          ) : null}
+          {/* Inside the dialog: everything outside a modal dialog is inert. */}
+          <input id={REPLACE_INPUT_ID} type="file" accept={ACCEPT} className="sr-only" tabIndex={-1} data-testid="gallery-replace-input"
+            disabled={busy} onChange={onReplace} aria-hidden="true" />
+          <FilePickerLabel htmlFor={REPLACE_INPUT_ID} disabled={busy} className={buttonClasses("quiet")}>Replace image</FilePickerLabel>
+        </div>
       </div>
-    </form>
+
+      <div className="flex justify-end border-t border-outline-variant/60 pt-3">
+        <Button variant="quiet" className="text-error" onClick={onDelete} disabled={busy}><Icon name="close" size={16} />Delete photo…</Button>
+      </div>
+    </div>
   );
 }
