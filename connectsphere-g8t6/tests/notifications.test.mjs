@@ -19,8 +19,8 @@ const item = (notification_id, created_at, overrides = {}) => ({
   is_read: false, read_at: null, event: null, target: null, action_expires_at: null, ...overrides,
 });
 
-test('[SPM-155 AC4/AC5] MY_EVENTS opens the event in My Events', () => {
-  assert.equal(notificationTargetHref({ page: 'MY_EVENTS', event_id: 42 }), '/my-registrations?eventId=42');
+test('[SPM-155 AC4/AC5] MY_EVENTS opens the event in My Events, marked as from a notification', () => {
+  assert.equal(notificationTargetHref({ page: 'MY_EVENTS', event_id: 42 }), '/my-registrations?eventId=42&from=notification');
 });
 test('[SPM-155] EVENT_WORKSPACE opens the event workspace', () => {
   assert.equal(notificationTargetHref({ page: 'EVENT_WORKSPACE', event_id: 7 }), '/events/7');
@@ -70,15 +70,24 @@ test('[SPM-155 AC8] Load more keeps shown notifications in place', () => {
   assert.deepEqual(merged.map((n) => n.notification_id), [3, 2, 1]);
   assert.equal(merged[1].title, 'Notification 2');
 });
-test('[SPM-155 AC8] a refreshed first page adds new ones and keeps loaded pages, newest first', () => {
+test('[SPM-155 AC8] a refreshed first page adds new ones and keeps older loaded pages, newest first', () => {
   const current = [item(3, '2026-10-21T03:00:00Z'), item(2, '2026-10-21T02:00:00Z'), item(1, '2026-10-21T01:00:00Z')];
-  const merged = mergeFirstPage(current, [item(4, '2026-10-21T03:30:00Z'), item(3, '2026-10-21T03:00:00Z', { is_read: true })]);
+  const merged = mergeFirstPage(current, [item(4, '2026-10-21T03:30:00Z'), item(3, '2026-10-21T03:00:00Z', { is_read: true })], false);
   assert.deepEqual(merged.map((n) => n.notification_id), [4, 3, 2, 1]);
   assert.equal(merged[1].is_read, true);
 });
 test('[SPM-155 AC8] equal timestamps order by ID, newest first', () => {
-  const merged = mergeFirstPage([item(5, '2026-10-21T03:00:00Z')], [item(6, '2026-10-21T03:00:00Z')]);
-  assert.deepEqual(merged.map((n) => n.notification_id), [6, 5]);
+  const merged = mergeFirstPage([item(5, '2026-10-21T03:00:00Z')], [item(6, '2026-10-21T03:00:00Z'), item(4, '2026-10-21T03:00:00Z')], false);
+  assert.deepEqual(merged.map((n) => n.notification_id), [6, 4]);
+});
+test('[SPM-155 AC6] a refresh drops loaded rows inside its range that the backend no longer returns', () => {
+  const current = [item(4, '2026-10-21T03:30:00Z'), item(3, '2026-10-21T03:00:00Z'), item(2, '2026-10-21T02:00:00Z'), item(1, '2026-10-21T01:00:00Z')];
+  // 3 is now hidden; the refreshed page reaches back to 2, so 1 is an older page and stays.
+  const merged = mergeFirstPage(current, [item(4, '2026-10-21T03:30:00Z'), item(2, '2026-10-21T02:00:00Z')], false);
+  assert.deepEqual(merged.map((n) => n.notification_id), [4, 2, 1]);
+  // A refresh that returned everything keeps only what it returned.
+  assert.deepEqual(mergeFirstPage(current, [item(4, '2026-10-21T03:30:00Z')], true).map((n) => n.notification_id), [4]);
+  assert.deepEqual(mergeFirstPage(current, [], true), []);
 });
 test('[SPM-155 TC-08] the confirmed read state replaces only that notification', () => {
   const updated = applyReadState([item(1, '2026-10-21T01:00:00Z'), item(2, '2026-10-21T02:00:00Z')], { notification_id: 2, is_read: true, read_at: '2026-10-21T04:00:00Z' });

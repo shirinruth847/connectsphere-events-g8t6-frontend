@@ -200,7 +200,7 @@ test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read a
   await page.goto('/notifications');
   const changed = cards(page).filter({ hasText: 'Event details changed' });
   await changed.getByRole('button', { name: 'Go to Event: Event 2', exact: true }).click();
-  await expect(page).toHaveURL(/\/my-registrations\?eventId=52$/);
+  await expect(page).toHaveURL(/\/my-registrations\?eventId=52&from=notification$/);
   expect(inbox.readRequests).toEqual([2]);
 
   // The latest attendee-visible details, in SGT, with the attendee's own place.
@@ -216,10 +216,11 @@ test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read a
   await expect(dialog.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
   await attachScreenshot(testInfo, page, 'my-events-details');
 
-  // Behind the dialog, the event's card is outlined.
+  // Behind the dialog, the event's card is outlined and says where it came from.
   const highlighted = page.locator('[data-highlighted="true"]');
   await expect(highlighted).toHaveCount(1);
   await expect(highlighted).toContainText('Event 2');
+  await expect(highlighted.getByText('Opened from your notification', { exact: true })).toHaveCount(1);
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
@@ -243,6 +244,9 @@ test('[SPM-155 AC5] a cancelled event shows its title and status but holds back 
   const dialog = page.getByRole('dialog', { name: 'Cancelled gala', exact: true });
   await expect(dialog.getByText('Cancelled', { exact: true })).toBeVisible();
   await expect(dialog.getByText('This event has been cancelled', { exact: true })).toBeVisible();
+  // Only what is true: no promised notification or organiser message.
+  await expect(dialog.getByRole('alert').filter({ hasText: 'This event has been cancelled' })).toContainText('Its date, time and venue are no longer shown.');
+  await expect(dialog).not.toContainText(/notification|organiser/i);
   await expect(dialog.getByText('Waitlisted', { exact: true })).toBeVisible();
   // No schedule, venue or description; only the attendee's own place has a time.
   await expect(dialog).not.toContainText('Schedule');
@@ -260,6 +264,9 @@ test('[SPM-155] View Event Details on a My Events card opens the same details an
   await expect(page).toHaveURL(/\/my-registrations\?eventId=51$/);
   const dialog = page.getByRole('dialog', { name: 'Event 1', exact: true });
   await expect(dialog).toContainText('Event 1 description');
+  // The card is outlined, but it was not opened from a notification.
+  await expect(page.locator('[data-highlighted="true"]')).toHaveCount(1);
+  await expect(page.getByText('Opened from your notification', { exact: true })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Close event details', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(view).toBeFocused();

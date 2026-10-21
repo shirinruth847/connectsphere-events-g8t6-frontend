@@ -80,7 +80,10 @@ test('[SPM-155] the full page fills known sections and labels every pending one'
   }
   // Every section from the frame without data says so.
   for (const name of PENDING) await expect(main.locator(`[data-pending="${name}"]`)).toBeVisible();
-  await expect(main.getByText('Details to be confirmed', { exact: true })).toHaveCount(4);
+  await expect(main.getByText('Not available yet', { exact: true })).toHaveCount(4);
+  await expect(main.getByText('Seat numbers are not available in ConnectSphere yet.', { exact: true })).toBeVisible();
+  // Neutral wording: nobody is promised to provide the missing details.
+  await expect(main).not.toContainText(/to be confirmed|once the|organisers/i);
   await expect(main).not.toContainText(/complimentary|price|\$/i);
   // A registered attendee is not offered sign-up.
   await expect(main.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
@@ -119,6 +122,8 @@ test('[SPM-155 AC5] a cancelled event shows only its title, status and an explan
   await expect(page.getByRole('heading', { name: 'Cancelled gala', level: 1 })).toBeVisible();
   await expect(main.getByText('Cancelled', { exact: true })).toBeVisible();
   await expect(main.getByText('This event has been cancelled', { exact: true })).toBeVisible();
+  await expect(main.getByRole('alert').filter({ hasText: 'This event has been cancelled' })).toContainText('Its date, time and venue are no longer shown.');
+  await expect(main).not.toContainText(/notification|organiser/i);
   await expect(main.locator('[data-pending]')).toHaveCount(0);
   await expect(main).not.toContainText('About this event');
   await expect(main.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
@@ -126,6 +131,23 @@ test('[SPM-155 AC5] a cancelled event shows only its title, status and an explan
   await expect(page.getByRole('link', { name: 'Back to My Events' })).toBeVisible();
   await attachScreenshot(testInfo, page, 'event-page-cancelled');
 });
+
+// Withheld but not cancelled: being reconfirmed (PENDING_CONFIRMATION) or
+// confirmed but not published. Both say only that details are being confirmed.
+for (const [label, attendeeStatus] of [['being reconfirmed', 'PENDING_CONFIRMATION'], ['not published', 'CONFIRMED']]) {
+  test(`[SPM-155 AC5] an event ${label} says its details are being confirmed, and nothing more`, async ({ page }) => {
+    await installAttendee(page, {
+      details: { 56: detail(56, 'Held event', { description: null, startDatetime: null, endDatetime: null, location: null, organisationName: null, registrationOpenAt: null, registrationCloseAt: null, registrationAvailability: 'CLOSED', attendeeStatus, detailsWithheld: true, myRegistration: registered }) },
+    });
+    await page.goto('/events/56?from=my-events');
+    const main = page.locator('main');
+    await expect(main.getByText("This event's details are being confirmed", { exact: true })).toBeVisible();
+    await expect(main.getByRole('status').filter({ hasText: "This event's details are being confirmed" })).toContainText('Check back here for the latest information.');
+    await expect(main).not.toContainText(/notification|organiser|being updated|changing/i);
+    await expect(main.locator('[data-pending]')).toHaveCount(0);
+    await expect(main).not.toContainText('About this event');
+  });
+}
 
 test('[SPM-155 AC6] an event the attendee cannot see shows not available', async ({ page }) => {
   await installAttendee(page, { details: { 77: 404 } });
