@@ -87,10 +87,15 @@ export function NotificationRow({ notification, now, busy, variant, onGoToEvent,
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-1">
             <div className="flex flex-wrap items-center gap-2">
               {href ? (
-                <button type="button" className={goButtonClasses} disabled={busy} onClick={() => onGoToEvent(notification)}>
+                <button
+                  type="button"
+                  className={goButtonClasses}
+                  disabled={busy}
+                  aria-label={notification.event ? `Go to Event: ${notification.event.title}` : undefined}
+                  onClick={() => onGoToEvent(notification)}
+                >
                   <span className={COMPACT_LABEL}>Go to Event</span>
                   <Icon name="chevron-right" size={16} />
-                  {notification.event ? <span className="sr-only">: {notification.event.title}</span> : null}
                 </button>
               ) : null}
               {page && onView ? (
@@ -98,14 +103,22 @@ export function NotificationRow({ notification, now, busy, variant, onGoToEvent,
                   type="button"
                   variant="secondary"
                   className="min-h-9 max-lg:min-h-11"
+                  aria-label={`View ${notification.title}`}
                   onClick={(event) => onView(notification, event.currentTarget)}
                 >
-                  <span className={COMPACT_LABEL}>View</span><span className="sr-only"> {notification.title}</span>
+                  <span className={COMPACT_LABEL}>View</span>
                 </Button>
               ) : null}
               {!page && !href && unread && onMarkRead ? (
-                <Button type="button" variant="quiet" className="min-h-9 max-lg:min-h-11" disabled={busy} onClick={() => onMarkRead(notification)}>
-                  <span className={COMPACT_LABEL}>Mark as read</span><span className="sr-only">: {notification.title}</span>
+                <Button
+                  type="button"
+                  variant="quiet"
+                  className="min-h-9 max-lg:min-h-11"
+                  disabled={busy}
+                  aria-label={`Mark as read: ${notification.title}`}
+                  onClick={() => onMarkRead(notification)}
+                >
+                  <span className={COMPACT_LABEL}>Mark as read</span>
                 </Button>
               ) : null}
             </div>
