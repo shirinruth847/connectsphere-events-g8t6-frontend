@@ -27,6 +27,8 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   ATTENDEE: [
     { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
     { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
+    // The full inbox, read and unread (SPM-155); the Updates panel's See more leads here too.
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
 };
 
@@ -38,17 +40,18 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
   ];
 }
 
-// Null when the page has no tab: attendees reach /notifications from the
-// Updates panel in the page header (SPM-155), so no tab is marked current.
-export function activeNavigationId(role: UserRole, pathname: string, status: string | null): string | null {
-  if (pathname === ROUTES.notifications) return null;
+export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
   if (role === "COORDINATOR_LEAD") {
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
     if (pathname === "/calendar") return "calendar";
     return "home";
   }
-  if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
+  if (role === "ATTENDEE") {
+    if (pathname === ROUTES.events) return "discovery";
+    if (pathname === ROUTES.notifications) return "notifications";
+    return "home";
+  }
   if (role !== "ORGANISER") return "home";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";
