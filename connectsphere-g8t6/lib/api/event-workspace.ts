@@ -28,9 +28,11 @@ export interface EventPermissions {
 export interface EventView {
   eventId: number;
   requestId: string;
-  // Stored state. Typed as string because the live enum can hold values the
-  // frontend does not know (e.g. APPROVED); render those as unknown, never guess.
-  status: string;
+  // Stored state, returned only to the assigned coordinator (SPM-173 AC6);
+  // organisers get statusLabel alone, read through eventDisplayStatus. Typed as
+  // string because the live enum can hold values the frontend does not know
+  // (e.g. APPROVED); render those as unknown, never guess.
+  status?: string;
   statusLabel: string;
   // What the request is waiting for, e.g. "Waiting for a coordinator".
   statusNote?: string | null;
