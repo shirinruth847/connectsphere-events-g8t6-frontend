@@ -45,7 +45,7 @@ const notReady = {
 
 // One route for the event, its history, readiness and the four actions. A POST
 // answers "refusal" ({ status, json }) when given, otherwise succeeds with "next".
-async function routeLifecycle(page, { event, readiness = { ready: true, failures: [] }, next = null, refusal = null, requests = [] }) {
+async function routeLifecycle(page, { event, readiness = { ready: true, failures: [] }, readinessGate = Promise.resolve(), next = null, refusal = null, requests = [] }) {
   let current = event;
   await page.route(/\/api\/events\/42(\/.*)?(\?.*)?$/, async (route) => {
     const request = route.request();
@@ -53,6 +53,7 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
     const { pathname } = new URL(request.url());
     if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
     if (pathname.endsWith("/readiness")) {
+      await readinessGate;
       return route.fulfill({ json: { ...readiness, status: current.status, version: current.version, arrangementVersion: 2 } });
     }
     if (request.method() === "POST") {
@@ -73,6 +74,21 @@ test("[SPM-173 AC8 / TC-14] the coordinator sees each readiness item and cannot 
   await expect(panel.getByText("Not ready yet")).toBeVisible();
   await expect(panel.getByText("Choose one approved venue booking as the primary venue.")).toBeVisible();
   await expect(panel.getByRole("button", { name: "Submit for safety review" })).toBeDisabled();
+});
+
+test("[SPM-173 AC8] lifecycle action stays disabled until readiness is loaded", async ({ page }) => {
+  let releaseReadiness;
+  const readinessGate = new Promise((resolve) => { releaseReadiness = resolve; });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeLifecycle(page, { event: eventView(), readinessGate });
+  await page.goto("/events/42");
+  const panel = page.getByRole("region", { name: "Next step" });
+  const submit = panel.getByRole("button", { name: "Submit for safety review" });
+  await expect(submit).toBeDisabled();
+  await expect(panel.getByText("Load the readiness checklist before continuing.")).toBeVisible();
+  releaseReadiness();
+  await expect(panel.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(submit).toBeEnabled();
 });
 
 test("[SPM-173 AC9 / TC-12] a ready event is submitted for safety review with its version and a key", async ({ page }, testInfo) => {

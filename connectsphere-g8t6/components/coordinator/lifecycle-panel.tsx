@@ -81,7 +81,12 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
   }, []);
 
   const ready = wantsReadiness && readiness.status === "ready" ? readiness.readiness.ready : null;
-  const options = lifecycleActionsFor(event.status, event.endDatetime, ready);
+  const options = lifecycleActionsFor(event.status, event.endDatetime, ready).map((option) => {
+    if (wantsReadiness && readiness.status !== "ready") {
+      return { ...option, disabledReason: "Load the readiness checklist before continuing." };
+    }
+    return option;
+  });
   if (!options.length) return null;
 
   const run = async (action: LifecycleAction) => {

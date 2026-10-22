@@ -23,17 +23,27 @@ const lifecycle={eventIds:[],venueIds:[],roomIds:[],bookingIds:[]};
 async function cleanupLifecycle() {
  if(lifecycle.eventIds.length){
   const {Client}=require(path.join(backendRoot,'node_modules/pg'));const client=new Client({connectionString:process.env.TEST_DATABASE_URL});await client.connect();
-  try{await client.query('DELETE FROM public.safety_reviews WHERE event_id = ANY($1::integer[])',[lifecycle.eventIds]);await client.query('DELETE FROM public.event_confirmation_snapshots WHERE event_id = ANY($1::integer[])',[lifecycle.eventIds]);}finally{await client.end();}
+  try{
+   await client.query('BEGIN');
+   await client.query('DELETE FROM public.notification_recipient WHERE notification_id IN (SELECT notification_id FROM public.notification WHERE event_id = ANY($1::integer[]))',[lifecycle.eventIds]);
+   await client.query('DELETE FROM public.notification WHERE event_id = ANY($1::integer[])',[lifecycle.eventIds]);
+   await client.query('DELETE FROM public.safety_reviews WHERE event_id = ANY($1::integer[])',[lifecycle.eventIds]);
+   await client.query('DELETE FROM public.event_confirmation_snapshots WHERE event_id = ANY($1::integer[])',[lifecycle.eventIds]);
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{await client.end();}
  }
  for(const [table,key,values] of [['venue_booking','booking_id',lifecycle.bookingIds],['room','room_id',lifecycle.roomIds],['venue','venue_id',lifecycle.venueIds]]) {
   if(!values.length)continue;const result=await supabase.from(table).delete().in(key,values);if(result.error)throw new Error('Cleanup '+table+': '+result.error.message);
  }
 }
 async function cleanup() {
+ if(ids.size){
+  const data=check(await supabase.from('event').select('event_id,title,organiser_id').in('event_id',[...ids]));
+  assert(data.length===ids.size&&data.every(row=>row.title.startsWith(runId)&&users.some(user=>user.user_id===row.organiser_id)), 'Refusing to clean non-fixture events');
+ }
+ assert(lifecycle.eventIds.every(eventId=>ids.has(eventId)), 'Refusing to clean lifecycle rows without a registered event fixture');
  await cleanupLifecycle();
  if(!ids.size)return;
- const data=check(await supabase.from('event').select('event_id,title,organiser_id').in('event_id',[...ids]));
- assert(data.every(row=>row.title.startsWith(runId)&&users.some(user=>user.user_id===row.organiser_id)), 'Refusing to clean non-fixture events');
  for(const table of ['notification','event_assignments','event_venue_preference','event_equipment_requirement','event']) {
   const result=await supabase.from(table).delete().in('event_id',[...ids]); if(result.error)throw new Error('Cleanup '+table+': '+result.error.message);
  }
@@ -56,9 +66,8 @@ async function complete(page,title) {
  await page.getByRole('heading',{name:'Registration & Ticketing Needs',exact:true}).waitFor();
  await page.getByLabel('Enable event registration').check();await page.locator('#registrationCapacity').fill('30');
 }
-// SPM-173 AC8-AC11 through the real coordinator UI and backend. Bookings and the
-// safety approval are seeded directly because their own stories (SPM-186,
-// SPM-249) have no UI yet; every lifecycle action goes through the panel.
+// SPM-173 readiness and submission/refusal through the real coordinator UI and
+// backend. Venue decisions are seeded directly because SPM-186 has no UI yet.
 async function coordinatorLifecycle(page,coordinator) {
  assert(process.env.TEST_DATABASE_URL,'TEST_DATABASE_URL is needed to clean up the lifecycle flow');
  const organiser=users.find(user=>user.role==='ORGANISER');const venueStaff=users.find(user=>user.role==='VENUE_STAFF');assert(organiser&&venueStaff,'Missing seed organiser or Venue Staff');
@@ -88,20 +97,8 @@ async function coordinatorLifecycle(page,coordinator) {
  assert(await state()==='SAFETY_REVIEW','Confirmed without a safety approval');
  record('SPM-173 confirm refused before safety approval',{eventId:event.event_id});
 
- // Stands in for a Safety Officer's approval (SPM-249); there is no seed Safety Officer before SPM-245.
- check(await supabase.from('safety_reviews').update({status:'APPROVED',decided_by:coordinator.user_id,decided_at:new Date().toISOString()}).eq('review_id',round.review_id).select('review_id'));
- await page.reload();await panel.getByRole('button',{name:'Confirm event'}).click();await panel.getByRole('button',{name:'Start preparation'}).waitFor();
- assert(await state()==='CONFIRMED','Confirm did not enter CONFIRMED');
- const snapshot=check(await supabase.from('event_confirmation_snapshots').select('snapshot').eq('event_id',event.event_id).single());assert(snapshot.snapshot.primary_venue?.venue_id===venue.venue_id,'Snapshot lacks the primary venue');
- const notices=check(await supabase.from('notification').select('title,notification_recipient(recipient_id)').eq('event_id',event.event_id));
- assert(notices.some(n=>n.title==='Event confirmed'&&n.notification_recipient.some(r=>r.recipient_id===organiser.user_id)),'Owner not notified of the confirmation');
- record('SPM-173 confirm with snapshot and owner notification',{eventId:event.event_id});
-
- const started=page.waitForResponse(r=>r.url()===`${api}/api/events/${event.event_id}/start-preparation`&&r.request().method()==='POST');
- await panel.getByRole('button',{name:'Start preparation'}).click();const startResponse=await started;
- assert(startResponse.status()===200,'Start preparation refused: '+JSON.stringify(await startResponse.json().catch(()=>null)));
- assert(await state()==='PREPARATION','Start preparation did not enter PREPARATION');
- record('SPM-173 start preparation',{eventId:event.event_id});
+ // SPM-249 owns safety decisions. Without a seeded Safety Officer and its
+ // authorized decision endpoint, this live script verifies the refusal only.
 }
 async function main() {
  users=check(await supabase.from('user').select('user_id,name,role,email,auth_user_id,is_active').like('email','dev-%@connectsphere.test')).filter(user=>user.name.startsWith('Seed ')&&user.is_active&&user.auth_user_id);
