@@ -69,6 +69,13 @@ async function complete(page,title) {
 // ---------- SPM-243 Safety Officer review through the real UI and API ----------
 const reviewStep=async(page,title)=>{await page.getByRole('navigation',{name:'Review steps'}).getByRole('button',{name:new RegExp(title)}).click();await page.getByRole('heading',{name:title,level:2}).waitFor();};
 const assessFactor=async(page,label,result,comment)=>{const group=page.getByRole('group',{name:label,exact:true});await group.getByRole('radio',{name:result,exact:true}).check();if(comment)await group.getByRole('textbox').fill(comment);};
+// A cold MongoDB connection can briefly report venue detail as unavailable; press
+// the panel's own Retry once, as an officer would, before failing the run.
+async function waitForVenueDetail(page,text) {
+ const detail=page.getByText(text,{exact:true});const unavailable=page.getByText('Emergency access and known restrictions could not be loaded',{exact:false});
+ await detail.or(unavailable).first().waitFor();
+ if(await unavailable.isVisible()){await page.getByRole('button',{name:'Retry',exact:true}).click();await detail.waitFor();}
+}
 async function assessAllFactors(page) {
  await reviewStep(page,'Attendance & schedule');await assessFactor(page,'Attendance and capacity','Satisfactory');
  await reviewStep(page,'Venues & layout');await assessFactor(page,'Layout','Satisfactory');await assessFactor(page,'Emergency access','Satisfactory');
@@ -96,7 +103,7 @@ async function safetyOfficerReview({eventId,title,coordinator,organiser,coordina
   let [round]=await rounds();assert(round.claimed_by===officer.user_id,'Claim was not recorded');
   record('SPM-243 queue, claim and open the review',{eventId,reviewId:round.review_id});
 
-  await reviewStep(page,'Venues & layout');await page.getByText('No venue safety record exists for this venue.',{exact:true}).waitFor();
+  await reviewStep(page,'Venues & layout');await waitForVenueDetail(page,'No venue safety record exists for this venue.');
   await reviewStep(page,'Attendance & schedule');await page.getByText('participant details are not shown',{exact:false}).waitFor();
   await assessFactor(page,'Attendance and capacity','Satisfactory');await page.getByRole('button',{name:'Save progress'}).click();await page.getByText('Progress saved',{exact:true}).waitFor();
   [round]=await rounds();assert(round.checklist?.attendanceCapacity?.result==='SATISFACTORY','Progress was not saved');
