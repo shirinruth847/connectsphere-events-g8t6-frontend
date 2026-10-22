@@ -5,6 +5,7 @@ import { PageContent } from "@/components/layout/page-content";
 import { AlertBanner, Button, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { ROLE_LABELS } from "@/lib/auth";
 import type { AttendeeEventSummary } from "@/lib/api/discovery";
+import { discoveryErrorMessage } from "./discovery-state";
 import { EventDetailsDialog } from "./event-details-dialog";
 import { EventDiscoveryCard } from "./event-discovery-card";
 import { useDiscoveryEvents } from "./use-discovery-events";
@@ -82,7 +83,7 @@ export function AttendeeEventDiscovery() {
 
         {discovery.status === "error" && !sessionExpired && discovery.error?.status !== 403 ? (
           <AlertBanner tone="error" title="Could not load events">
-            {discovery.error?.message}
+            {discovery.error ? discoveryErrorMessage(discovery.error, "events") : null}
             <div className="mt-3">
               <Button variant="danger" onClick={discovery.retry} className="max-lg:min-h-11">
                 Try again
@@ -93,7 +94,7 @@ export function AttendeeEventDiscovery() {
 
         {discovery.status === "ready" && discovery.events.length === 0 && !discovery.nextCursor ? (
           <EmptyState
-            title="No events to discover right now"
+            title="No events are available at the moment."
             description="There are no confirmed events open to attendees at the moment. Newly published events will be listed here, so check back later."
           />
         ) : null}
@@ -112,7 +113,7 @@ export function AttendeeEventDiscovery() {
 
             {discovery.loadMoreError ? (
               <AlertBanner tone="error" title="Could not load more events">
-                {discovery.loadMoreError.message}
+                {discoveryErrorMessage(discovery.loadMoreError, "next events")}
                 <div className="mt-3">
                   <Button variant="danger" onClick={discovery.loadMore} className="max-lg:min-h-11">
                     Try again

@@ -3,11 +3,9 @@
 import { useEffect, useEffectEvent, useId, useRef } from "react";
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import type { AttendeeEventDetail, AttendeeEventSummary } from "@/lib/api/discovery";
-import { DiscoveryDetailsPanel, type DiscoveryDetailRow } from "./discovery-details-panel";
 import { DiscoveryIcon } from "./discovery-icon";
-import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
-import { formatEventDate, formatEventTime, formatTimestamp } from "./format-event-time";
-import { getRegistrationAction, isRegistrationEnabled } from "./registration-availability";
+import { discoveryErrorMessage } from "./discovery-state";
+import { EventDetailsBody, RegistrationActionFooter } from "./event-details-content";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
 import { useDiscoveryEvent } from "./use-discovery-event";
 
@@ -82,6 +80,9 @@ function EventDetailsContent({
 }) {
   const { state, retry } = useDiscoveryEvent(summary.eventId, { onLoaded, onNotFound });
   const shown = state.status === "ready" ? state.event : summary;
+  // After a 404 the event is no longer attendee-visible, so nothing from the
+  // list row is shown in its place (SPM-44).
+  const hidden = state.status === "not-found";
 
   return (
     <>
@@ -89,9 +90,9 @@ function EventDetailsContent({
         <div className="flex min-w-0 flex-col gap-2">
           <span className="text-[11px] font-bold uppercase tracking-label text-tertiary">Event details</span>
           <h2 id={titleId} className="text-xl font-bold leading-7 tracking-[-0.025em] text-on-surface [overflow-wrap:anywhere]">
-            {shown.title}
+            {hidden ? "Event unavailable" : shown.title}
           </h2>
-          {state.status !== "not-found" ? <RegistrationAvailabilityChip value={shown.registrationAvailability} /> : null}
+          {!hidden ? <RegistrationAvailabilityChip value={shown.registrationAvailability} /> : null}
         </div>
         <button
           type="button"
@@ -117,9 +118,20 @@ function EventDetailsContent({
           </AlertBanner>
         ) : null}
 
-        {state.status === "error" ? (
+        {state.status === "error" && state.error.status === 401 ? (
+          // apiRequest reports the 401 to AuthGate, which sends the attendee to sign in.
+          <AlertBanner tone="info" title="Your session has ended">Taking you to sign in…</AlertBanner>
+        ) : null}
+
+        {state.status === "error" && state.error.status === 403 ? (
+          <AlertBanner tone="error" title="Attendee access required">
+            Event details are available to attendee accounts only.
+          </AlertBanner>
+        ) : null}
+
+        {state.status === "error" && state.error.status !== 401 && state.error.status !== 403 ? (
           <AlertBanner tone="error" title="Could not load the event details">
-            {state.error.message}
+            {discoveryErrorMessage(state.error, "event details")}
             <div className="mt-3">
               <Button variant="danger" onClick={retry} className="max-lg:min-h-11">
                 Try again
@@ -131,67 +143,9 @@ function EventDetailsContent({
         {state.status === "ready" ? <EventDetailsBody event={state.event} /> : null}
       </div>
 
-      {state.status === "ready" ? <RegistrationActionFooter event={state.event} /> : null}
+      {state.status === "ready" ? (
+        <RegistrationActionFooter event={state.event} className="border-t border-outline-variant/60 px-5 py-4" />
+      ) : null}
     </>
-  );
-}
-
-// Read out as the disabled action's description. It explains why the action
-// is unavailable without contradicting the availability chip.
-export const REGISTRATION_UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
-
-// Shows the one registration action for this event, as unavailable: there are
-// no register, waitlist or notify endpoints yet (separate ticket). It uses
-// aria-disabled rather than disabled so keyboard and screen-reader users can
-// still reach it and hear why it is unavailable. It has no click handler.
-// The shared Button's disabled: style only matches the disabled attribute, so
-// the same classes are applied through aria-disabled: instead.
-function RegistrationActionFooter({ event }: { event: AttendeeEventDetail }) {
-  const helperId = useId();
-  const action = getRegistrationAction(event);
-  if (!action) return null;
-
-  return (
-    <footer className="flex flex-col gap-2 border-t border-outline-variant/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
-      <p id={helperId} className="text-xs text-on-surface-variant sm:order-first">
-        {REGISTRATION_UNAVAILABLE_NOTE}
-      </p>
-      <Button
-        type="button"
-        variant={action.variant}
-        aria-disabled="true"
-        aria-describedby={helperId}
-        className="w-full aria-disabled:pointer-events-none aria-disabled:opacity-55 max-lg:min-h-11 sm:w-auto"
-      >
-        {action.label}
-      </Button>
-    </footer>
-  );
-}
-
-function EventDetailsBody({ event }: { event: AttendeeEventDetail }) {
-  const rows: DiscoveryDetailRow[] = [
-    { label: "Date", icon: "calendar", value: formatEventDate(event.startDatetime, event.endDatetime) },
-    { label: "Time", icon: "schedule", value: formatEventTime(event.startDatetime, event.endDatetime) },
-    { label: "Location", icon: "venue", value: event.location ?? LOCATION_PENDING_LABEL },
-  ];
-  if (event.organisationName) {
-    rows.push({ label: "Organised by", icon: "organisation", value: event.organisationName });
-  }
-  // Events without attendee registration carry no registration wording (AC4).
-  if (isRegistrationEnabled(event.registrationAvailability)) {
-    rows.push(
-      { label: "Registration opens", icon: "registration", value: formatTimestamp(event.registrationOpenAt) ?? "Immediately" },
-      { label: "Registration closes", icon: "registration", value: formatTimestamp(event.registrationCloseAt) ?? "No closing date" },
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="max-w-[70ch] whitespace-pre-line text-sm leading-relaxed text-on-surface-variant [overflow-wrap:anywhere]">
-        {event.description?.trim() || "No description provided."}
-      </p>
-      <DiscoveryDetailsPanel rows={rows} />
-    </div>
   );
 }
