@@ -13,7 +13,7 @@ import {
   type LifecycleAction,
   type ReadinessFailure,
 } from "@/lib/api/event-workspace";
-import { describeLifecycleRefusal, lifecycleActionsFor, showsReadiness } from "@/lib/lifecycle-actions";
+import { describeLifecycleRefusal, keepsIdempotencyKey, lifecycleActionsFor, showsReadiness } from "@/lib/lifecycle-actions";
 
 interface LifecyclePanelProps {
   event: EventView;
@@ -46,7 +46,9 @@ function FailureList({ failures }: { failures: ReadinessFailure[] }) {
 // SPM-173: the assigned coordinator's next lifecycle step (submit for safety
 // review, confirm, start preparation, complete) with the readiness checklist.
 export function LifecyclePanel({ event, onEventChange, onAccessChanged }: LifecyclePanelProps) {
-  const wantsReadiness = showsReadiness(event.status);
+  // The stored status, never one inferred from a label: without it no action is offered.
+  const status = event.status ?? "";
+  const wantsReadiness = showsReadiness(status);
   const [readiness, setReadiness] = useState<ReadinessState>({ status: "loading" });
   const [readinessAttempt, setReadinessAttempt] = useState(0);
   const [running, setRunning] = useState<LifecycleAction | null>(null);
@@ -81,7 +83,7 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
   }, []);
 
   const ready = wantsReadiness && readiness.status === "ready" ? readiness.readiness.ready : null;
-  const options = lifecycleActionsFor(event.status, event.endDatetime, ready);
+  const options = lifecycleActionsFor(status, event.endDatetime, ready);
   if (!options.length) return null;
 
   const run = async (action: LifecycleAction) => {
@@ -102,6 +104,8 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
   };
 
   const handleError = (caught: unknown) => {
+    // An ambiguous failure keeps the key, so a retry is replayed if the action was applied.
+    if (!keepsIdempotencyKey(caught instanceof ApiError ? caught : null)) pendingKey.current = null;
     if (!(caught instanceof ApiError)) {
       setBanner({ tone: "error", title: "Action not completed", message: "Something went wrong. Try again.", failures: [] });
       return;
@@ -110,7 +114,6 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
       setBanner({ tone: "warning", title: "Still processing", message: "Your previous request is still being processed. Wait a moment, then try again.", failures: [] });
       return;
     }
-    pendingKey.current = null;
     if (caught.code === "EVENT_NOT_FOUND") {
       setBanner({ tone: "error", title: "Event no longer available", message: "You can no longer open this event. It may have been reassigned.", failures: [] });
       onAccessChanged();
@@ -153,7 +156,7 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
               <FailureList failures={readiness.readiness.failures} />
             </AlertBanner>
           )}
-          {event.status === "SAFETY_REVIEW" ? (
+          {status === "SAFETY_REVIEW" ? (
             <p className="mt-3 text-sm text-on-surface-variant">
               Confirmation also needs a Safety Officer&apos;s approval for the current arrangements.
             </p>

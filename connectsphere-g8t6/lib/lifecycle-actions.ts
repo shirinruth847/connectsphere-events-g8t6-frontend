@@ -56,6 +56,17 @@ export function lifecycleActionsFor(
 // Readiness matters while the event is heading for safety review or confirmation.
 export const showsReadiness = (status: string) => status === "PLANNING" || status === "SAFETY_REVIEW";
 
+// Whether a failed action may already have been applied, so a retry must reuse
+// its Idempotency-Key and be replayed rather than applied again (AC5). The
+// backend commits the action before it reloads the event for the response, so
+// a network error, timeout, rate limit or server error can follow a committed
+// action. Any other 4xx is a definitive refusal and the next attempt gets a new key.
+export function keepsIdempotencyKey(error: { status?: number; code?: string } | null | undefined): boolean {
+  if (typeof error?.status !== "number") return true;
+  if (error.code === "IDEMPOTENCY_IN_PROGRESS") return true;
+  return error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
 export interface LifecycleRefusal {
   message: string;
   failures: ReadinessFailure[];
