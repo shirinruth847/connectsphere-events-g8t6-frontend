@@ -8,7 +8,7 @@ import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
-import { statusPresentation } from "@/lib/events";
+import { eventDisplayStatus, statusPresentation } from "@/lib/events";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { editableIdentityFields } from "@/lib/permissions/event-workspace";
@@ -55,7 +55,8 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
   const [statusNotice, setStatusNotice] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
   const editable = editableIdentityFields(event.permissions);
-  const statusLabel = statusPresentation(event.status).label;
+  const status = eventDisplayStatus(event);
+  const statusLabel = statusPresentation(status).label;
   const attendance = event.expectedAttendance ?? 0;
   const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
 
@@ -69,7 +70,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         eyebrow="Event coordinator review"
         title={event.title || "Untitled request"}
         description={`Requested by ${event.organiser?.name ?? "the organiser"}${event.organisation ? ` · ${event.organisation.name}` : ""}`}
-        action={<StatusChip status={event.status} />}
+        action={<StatusChip status={status} />}
       />
 
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">

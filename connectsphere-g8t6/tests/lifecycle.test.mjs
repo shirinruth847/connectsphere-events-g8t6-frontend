@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeLifecycleRefusal, lifecycleActionsFor, showsReadiness } from '../lib/lifecycle-actions.ts';
+import { describeLifecycleRefusal, keepsIdempotencyKey, lifecycleActionsFor, showsReadiness } from '../lib/lifecycle-actions.ts';
 
 const NOW = Date.parse('2027-05-01T12:00:00Z');
 const actions = (status, end = '2027-05-02T00:00:00Z', ready = true) =>
@@ -57,4 +57,20 @@ test('[SPM-173] each refusal keeps its exact wording', () => {
   assert.equal(message({ code: 'constructor' }), 'The action could not be completed. Try again.');
   assert.equal(message({}), 'The action could not be completed. Try again.');
   assert.deepEqual(describeLifecycleRefusal({ code: 'EVENT_NOT_ENDED', details: { failures: 'x' } }).failures, []);
+});
+
+test('[SPM-173 AC5] a retry after an ambiguous failure reuses the key; a refusal does not', () => {
+  // The action may have committed before the response failed.
+  assert.equal(keepsIdempotencyKey(null), true);
+  assert.equal(keepsIdempotencyKey({ status: 0, code: 'NETWORK_ERROR' }), true);
+  assert.equal(keepsIdempotencyKey({ status: 500, code: 'INTERNAL_ERROR' }), true);
+  assert.equal(keepsIdempotencyKey({ status: 503 }), true);
+  assert.equal(keepsIdempotencyKey({ status: 408 }), true);
+  assert.equal(keepsIdempotencyKey({ status: 429 }), true);
+  assert.equal(keepsIdempotencyKey({ status: 409, code: 'IDEMPOTENCY_IN_PROGRESS' }), true);
+  // The backend refused, so nothing was applied.
+  for (const [status, code] of [[400, 'VALIDATION_FAILED'], [403, 'TRANSITION_NOT_ALLOWED'], [404, 'EVENT_NOT_FOUND'],
+    [409, 'EVENT_VERSION_CONFLICT'], [409, 'READINESS_BLOCKED'], [409, 'SAFETY_APPROVAL_REQUIRED'], [409, 'IDEMPOTENCY_KEY_REUSED']]) {
+    assert.equal(keepsIdempotencyKey({ status, code }), false, code);
+  }
 });

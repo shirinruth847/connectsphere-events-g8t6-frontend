@@ -19,7 +19,7 @@ import {
 } from "@/components/events/workspace/event-detail-rows";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
-import { eventStatusLabel } from "@/lib/events";
+import { eventDisplayStatus, eventStatusLabel, isDraftEvent } from "@/lib/events";
 
 function Card({ labelledBy, children }: { labelledBy: string; children: ReactNode }) {
   return (
@@ -37,7 +37,7 @@ function AccessNotice({ event }: { event: EventView }) {
       </AlertBanner>
     );
   }
-  if (event.status === "DRAFT") {
+  if (isDraftEvent(event)) {
     return (
       <AlertBanner tone="info" title="Only you can see this draft">
         Your organisation and coordinators see the request once you submit it.
@@ -74,7 +74,7 @@ export function EventRequestDetails({ event }: { event: EventView }) {
         eyebrow={isMember ? "Organisation event" : "My event request"}
         title={event.title || "Untitled draft"}
         description={event.purpose || event.description || "Review the details and current status of this event request."}
-        action={<StatusChip status={event.status} label={label} />}
+        action={<StatusChip status={eventDisplayStatus(event)} label={label} />}
       />
 
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -87,7 +87,7 @@ export function EventRequestDetails({ event }: { event: EventView }) {
         ) : null}
         {isMember ? (
           <PermissionPill tone="read-only">Organisation-wide • Read-only</PermissionPill>
-        ) : event.status === "DRAFT" ? (
+        ) : isDraftEvent(event) ? (
           <PermissionPill tone="edit">Owner • Editable while draft</PermissionPill>
         ) : (
           <PermissionPill tone="read-only">Owner • Changes by request</PermissionPill>
@@ -148,7 +148,7 @@ export function EventRequestDetails({ event }: { event: EventView }) {
               ]}
             />
           </Card>
-          {event.status === "DRAFT" ? null : <SafetyReviewSection eventId={event.eventId} />}
+          {isDraftEvent(event) ? null : <SafetyReviewSection eventId={event.eventId} />}
           <EventHistoryPanel event={event} refreshKey={0} />
         </aside>
       </div>

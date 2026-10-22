@@ -45,8 +45,10 @@ const notReady = {
 
 // One route for the event, its history, readiness and the four actions. A POST
 // answers "refusal" ({ status, json }) when given, otherwise succeeds with "next".
-// "readinessError" ({ status, json }) makes the readiness request fail.
-async function routeLifecycle(page, { event, readiness = { ready: true, failures: [] }, readinessError = null, next = null, refusal = null, requests = [] }) {
+// A readiness gate holds the request; readinessError simulates an API failure.
+// lostResponses answers that many POSTs with a 500 after applying them, as when
+// the backend commits the action and then fails to reload the event.
+async function routeLifecycle(page, { event, readiness = { ready: true, failures: [] }, readinessGate = Promise.resolve(), readinessError = null, next = null, refusal = null, lostResponses = 0, requests = [] }) {
   let current = event;
   await page.route(/\/api\/events\/42(\/.*)?(\?.*)?$/, async (route) => {
     const request = route.request();
@@ -55,6 +57,7 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
     if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
     if (pathname.endsWith("/safety-reviews")) return route.fulfill({ json: { reviews: [] } });
     if (pathname.endsWith("/readiness")) {
+      await readinessGate;
       if (readinessError) return route.fulfill({ status: readinessError.status, json: readinessError.json });
       return route.fulfill({ json: { ...readiness, status: current.status, version: current.version, arrangementVersion: 2 } });
     }
@@ -62,6 +65,9 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
       requests.push({ path: pathname, body: request.postDataJSON(), key: request.headers()["idempotency-key"] });
       if (refusal) return route.fulfill({ status: refusal.status, json: refusal.json });
       current = next;
+      if (requests.length <= lostResponses) {
+        return route.fulfill({ status: 500, json: { error: "Something went wrong.", code: "INTERNAL_ERROR" } });
+      }
       return route.fulfill({ json: { message: "Event submitted for safety review.", event: current } });
     }
     return route.fulfill({ json: { event: current } });
@@ -76,6 +82,21 @@ test("[SPM-173 AC8 / TC-14] the coordinator sees each readiness item and cannot 
   await expect(panel.getByText("Not ready yet")).toBeVisible();
   await expect(panel.getByText("Choose one approved venue booking as the primary venue.")).toBeVisible();
   await expect(panel.getByRole("button", { name: "Submit for safety review" })).toBeDisabled();
+});
+
+test("[SPM-173 AC8] lifecycle action stays disabled until readiness is loaded", async ({ page }) => {
+  let releaseReadiness;
+  const readinessGate = new Promise((resolve) => { releaseReadiness = resolve; });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeLifecycle(page, { event: eventView(), readinessGate });
+  await page.goto("/events/42");
+  const panel = page.getByRole("region", { name: "Next step" });
+  const submit = panel.getByRole("button", { name: "Submit for safety review" });
+  await expect(submit).toBeDisabled();
+  await expect(panel.getByText("Available once readiness has loaded.")).toBeVisible();
+  releaseReadiness();
+  await expect(panel.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(submit).toBeEnabled();
 });
 
 test("[SPM-173 AC8] submit stays disabled when readiness cannot be loaded", async ({ page }) => {
@@ -114,6 +135,29 @@ test("[SPM-173 AC9 / TC-12] a ready event is submitted for safety review with it
     { path: "/api/events/42/submit-for-safety-review", body: { version: 3 }, key: expect.stringMatching(/^[0-9a-f-]{36}$/) },
   ]);
   await attachScreenshot(testInfo, page, "lifecycle-desktop");
+});
+
+test("[SPM-173 AC5] a retry after a lost response reuses the idempotency key", async ({ page }) => {
+  const requests = [];
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeLifecycle(page, {
+    event: eventView(),
+    next: eventView({ status: "SAFETY_REVIEW", version: 4 }),
+    lostResponses: 1,
+    requests,
+  });
+  await page.goto("/events/42");
+  const panel = page.getByRole("region", { name: "Next step" });
+  const submit = panel.getByRole("button", { name: "Submit for safety review" });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(panel.getByText("Action not completed")).toBeVisible();
+  await submit.click();
+
+  await expect(panel.getByRole("button", { name: "Confirm event" })).toBeVisible();
+  expect(requests).toHaveLength(2);
+  expect(requests[1].key).toBe(requests[0].key);
+  expect(requests[1].body).toEqual({ version: 3 });
 });
 
 test("[SPM-173 TC-17] a refused confirmation is explained and nothing changes", async ({ page }) => {

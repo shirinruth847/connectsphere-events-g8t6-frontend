@@ -22,6 +22,7 @@ import {
   type SafetyPanel,
 } from "@/lib/api/safety-reviews";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
+import { eventDisplayStatus } from "@/lib/events";
 import {
   completedFactorCount,
   DECISION_LABELS,
@@ -362,7 +363,7 @@ function ReviewWorkspace({ event, panel, officerId, refreshing, step, onStep, ba
         description={`${panel.event.requestId} · ${formatEventWindow(panel.event.startDatetime, panel.event.endDatetime)}`}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <StatusChip status={event.status} />
+            <StatusChip status={eventDisplayStatus(event)} />
             <RoundStatusChip status={review.status} />
             <PermissionPill tone={pill.tone}>{pill.label}</PermissionPill>
           </div>
