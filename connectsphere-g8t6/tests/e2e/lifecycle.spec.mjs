@@ -45,7 +45,8 @@ const notReady = {
 
 // One route for the event, its history, readiness and the four actions. A POST
 // answers "refusal" ({ status, json }) when given, otherwise succeeds with "next".
-async function routeLifecycle(page, { event, readiness = { ready: true, failures: [] }, readinessGate = Promise.resolve(), next = null, refusal = null, requests = [] }) {
+// A readiness gate holds the request; readinessError simulates an API failure.
+async function routeLifecycle(page, { event, readiness = { ready: true, failures: [] }, readinessGate = Promise.resolve(), readinessError = null, next = null, refusal = null, requests = [] }) {
   let current = event;
   await page.route(/\/api\/events\/42(\/.*)?(\?.*)?$/, async (route) => {
     const request = route.request();
@@ -54,6 +55,7 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
     if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
     if (pathname.endsWith("/readiness")) {
       await readinessGate;
+      if (readinessError) return route.fulfill({ status: readinessError.status, json: readinessError.json });
       return route.fulfill({ json: { ...readiness, status: current.status, version: current.version, arrangementVersion: 2 } });
     }
     if (request.method() === "POST") {
@@ -85,10 +87,26 @@ test("[SPM-173 AC8] lifecycle action stays disabled until readiness is loaded", 
   const panel = page.getByRole("region", { name: "Next step" });
   const submit = panel.getByRole("button", { name: "Submit for safety review" });
   await expect(submit).toBeDisabled();
-  await expect(panel.getByText("Load the readiness checklist before continuing.")).toBeVisible();
+  await expect(panel.getByText("Available once readiness has loaded.")).toBeVisible();
   releaseReadiness();
   await expect(panel.getByText("Ready", { exact: true })).toBeVisible();
   await expect(submit).toBeEnabled();
+});
+
+test("[SPM-173 AC8] submit stays disabled when readiness cannot be loaded", async ({ page }) => {
+  const requests = [];
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeLifecycle(page, {
+    event: eventView(),
+    readinessError: { status: 500, json: { error: "Readiness could not be checked.", code: "INTERNAL_ERROR" } },
+    requests,
+  });
+  await page.goto("/events/42");
+  const panel = page.getByRole("region", { name: "Next step" });
+  await expect(panel.getByText("Readiness unavailable")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Submit for safety review" })).toBeDisabled();
+  await expect(panel.getByText("Available once readiness has loaded.")).toBeVisible();
+  expect(requests).toEqual([]);
 });
 
 test("[SPM-173 AC9 / TC-12] a ready event is submitted for safety review with its version and a key", async ({ page }, testInfo) => {

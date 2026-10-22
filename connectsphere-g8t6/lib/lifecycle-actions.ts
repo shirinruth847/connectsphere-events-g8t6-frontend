@@ -21,6 +21,13 @@ const completeOption = (endDatetime: string | null, now: number): LifecycleActio
   disabledReason: hasEnded(endDatetime, now) ? null : "Available after the event has ended.",
 });
 
+// Submit and confirm wait for a loaded readiness result; null means it is
+// still loading or could not be loaded.
+const readinessReasonFor = (ready: boolean | null) => {
+  if (ready === null) return "Available once readiness has loaded.";
+  return ready ? null : "Resolve the readiness items first.";
+};
+
 // Master v1.1 section 5.2, the coordinator's actions owned by SPM-173.
 export function lifecycleActionsFor(
   status: string,
@@ -28,7 +35,7 @@ export function lifecycleActionsFor(
   ready: boolean | null,
   now = Date.now(),
 ): LifecycleActionOption[] {
-  const readinessReason = ready === false ? "Resolve the readiness items first." : null;
+  const readinessReason = readinessReasonFor(ready);
   switch (status) {
     case "PLANNING":
       return [{ action: "submitForSafetyReview", label: "Submit for safety review", disabledReason: readinessReason }];
