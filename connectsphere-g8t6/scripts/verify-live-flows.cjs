@@ -28,7 +28,7 @@ async function cleanup() {
 }
 async function login(page,user) {
  await page.goto(base+'/login');await page.locator('#email').fill(user.email);await page.locator('#password').fill(process.env.SEED_ACCOUNT_PASSWORD);await page.getByRole('button',{name:'Sign in',exact:true}).click();
- await page.waitForURL(url=>['/dashboard','/my-registrations'].includes(url.pathname));
+ await page.waitForURL(url=>['/dashboard','/events'].includes(url.pathname));
  await page.getByRole('button',{name:'Logout',exact:true}).waitFor();
 }
 // SPM-44 attendee discovery. Read-only: no event data is created. The backend
@@ -39,7 +39,8 @@ let visibleDiscoveryEventId=null;
 const workspaceReads=(requests)=>requests.filter(url=>/^\/api\/events\/\d+(\/|$)/.test(url));
 async function verifyAttendeeDiscovery(page,requests) {
  const firstResponse=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/api/events/discovery'&&!u.searchParams.has('cursor');});
- await page.getByRole('link',{name:'Event Discovery',exact:true}).click();
+ // Attendees already land here after login; reload so the first page is requested again.
+ await page.goto(base+'/events');
  const first=await firstResponse;assert(first.status()===200,'Discovery list returned '+first.status());
  const page1=await first.json();
  await page.getByRole('heading',{name:'Event Discovery',exact:true,level:1}).waitFor();
@@ -125,7 +126,7 @@ async function main() {
  users=check(await supabase.from('user').select('user_id,name,role,email,auth_user_id,is_active').like('email','dev-%@connectsphere.test')).filter(user=>user.name.startsWith('Seed ')&&user.is_active&&user.auth_user_id);
  assert(process.env.SEED_ACCOUNT_PASSWORD,'SEED_ACCOUNT_PASSWORD is missing');
  browser=await chromium.launch({channel:'chrome',headless:true});
- for(const [role,heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations']]) {
+ for(const [role,heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','Event Discovery']]) {
   if(process.env.LIVE_ROLES&&!process.env.LIVE_ROLES.split(',').includes(role))continue;
   const user=users.find(user=>user.role===role);assert(user,'Missing synthetic seed for '+role);
   const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];

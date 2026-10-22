@@ -21,7 +21,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export function homeForRole(role: UserRole) {
-  return role === "ATTENDEE" ? ROUTES.registrations : ROUTES.dashboard;
+  return role === "ATTENDEE" ? ROUTES.events : ROUTES.dashboard;
 }
 
 export function safeNextPath(value: string | null): string | null {
@@ -38,7 +38,7 @@ export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
-  if (pathname === "/events") return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
+  if (pathname === ROUTES.events) return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33) and the attendee event details (SPM-44); the

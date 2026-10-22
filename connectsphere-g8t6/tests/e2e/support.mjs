@@ -110,6 +110,8 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       return json({ event: assigned, coordinator: { coordinatorId: target.coordinatorId, name: target.name } });
     }
     if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
+    // Attendees land on Event Discovery; specs needing events route it themselves.
+    if (pathname === "/api/events/discovery") return json({ events: [], nextCursor: null });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 

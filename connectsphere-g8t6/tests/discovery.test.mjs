@@ -85,3 +85,9 @@ test('[SPM-44] discovery errors never show backend wording, except the client ne
  assert.equal(discoveryErrorMessage({ status: 409, code: 'SOMETHING_NEW', message: 'raw detail' }, 'events'), safe);
  assert.equal(discoveryErrorMessage({ status: 0, code: 'NETWORK_ERROR', message: 'ConnectSphere could not reach the backend.' }, 'events'), 'ConnectSphere could not reach the backend.');
 });
+test('[SPM-44] attendees land on Event Discovery and can still return to My Events', () => {
+ assert.equal(postLoginPath({role:'ATTENDEE'}, null), '/events');
+ assert.equal(postLoginPath({role:'ATTENDEE'}, '/my-registrations'), '/my-registrations');
+ assert.equal(canViewPath('COORDINATOR_LEAD', '/my-registrations'), false);
+ assert.equal(postLoginPath({role:'COORDINATOR_LEAD'}, '/events'), '/events');
+});
