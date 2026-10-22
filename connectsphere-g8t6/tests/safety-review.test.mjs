@@ -11,7 +11,6 @@ import {
   firstErrorStep,
   formFromRound,
   officerRoundState,
-  pickOfficerRound,
   roundStatusPresentation,
   toDecisionPayload,
   toProgressPayload,
@@ -85,15 +84,11 @@ test('[SPM-243 TC-11] saved progress round-trips into the form', () => {
   assert.deepEqual(formFromRound({ checklist: null, organiserComment: null, internalNotes: null, requestedChanges: null }).form.requestedChanges, ['']);
 });
 
-test('[SPM-243 AC2 / TC-07] the officer sees the newest round in their scope', () => {
+test('[SPM-243 AC2 / TC-07] the controls follow how the officer stands to the round', () => {
   const rounds = [
-    { roundNumber: 1, status: 'CHANGES_REQUESTED', claimedBy: 5, decidedBy: 5 },
-    { roundNumber: 2, status: 'OPEN', claimedBy: 8, decidedBy: null },
+    { status: 'CHANGES_REQUESTED', claimedBy: 5 },
+    { status: 'OPEN', claimedBy: 8 },
   ];
-  assert.equal(pickOfficerRound(rounds, 5).roundNumber, 1);
-  assert.equal(pickOfficerRound(rounds, 8).roundNumber, 2);
-  assert.equal(pickOfficerRound(rounds, 9), null);
-  assert.equal(pickOfficerRound([{ roundNumber: 3, status: 'OPEN', claimedBy: null, decidedBy: null }], 9).roundNumber, 3);
   assert.equal(officerRoundState(rounds[1], 8), 'claimed-by-me');
   assert.equal(officerRoundState(rounds[1], 5), 'claimed-by-other');
   assert.equal(officerRoundState({ ...rounds[1], claimedBy: null }, 5), 'awaiting-claim');

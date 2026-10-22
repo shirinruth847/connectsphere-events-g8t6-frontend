@@ -195,7 +195,7 @@ async function installSafetyBackend(page, options = {}) {
       const target = reviewId === state.round.reviewId ? state.round : state.others.find((item) => item.reviewId === reviewId);
       if (!target) return json({ error: "Safety review not found.", code: "REVIEW_NOT_FOUND" }, 404);
       const verb = action[2];
-      if (verb === "panel") return json(panel());
+      if (verb === "panel") return inOfficerScope(target) ? json(panel()) : json({ error: "Safety review not found.", code: "REVIEW_NOT_FOUND" }, 404);
       if (verb === "claim") {
         state.claims.push(reviewId);
         const refusal = state.claimRefusals.shift();
@@ -247,11 +247,20 @@ async function installSafetyBackend(page, options = {}) {
     }
     if (pathname === "/api/events/42/safety-reviews") return json({ reviews: [state.previous, state.round] });
     if (pathname === "/api/events/42/history") return json({ history: [], nextCursor: null });
-    if (pathname === "/api/events/42") return json({ event: eventView(state.eventStatus) });
+    if (pathname === "/api/events/42") return json({ event: eventView(state.eventStatus, { safetyReviewId: officerReviewId([state.previous, state.round]) }) });
     return route.fallback();
   });
   return state;
 }
+
+// The backend's Safety Officer scope (eventModel.isRoundInOfficerScope) and the
+// round the event view names for the officer (safetyReviewId).
+const inOfficerScope = (round) => (round.status === "OPEN" && (round.claimedBy === null || round.claimedBy === OFFICER)) || round.decidedBy === OFFICER;
+const officerReviewId = (rounds) => {
+  const scoped = rounds.filter((round) => round && inOfficerScope(round));
+  const open = scoped.find((round) => round.status === "OPEN");
+  return (open ?? [...scoped].sort((left, right) => right.reviewId - left.reviewId)[0])?.reviewId ?? null;
+};
 
 const steps = (page) => page.getByRole("navigation", { name: "Review steps" });
 const statusRegion = (page) => page.getByRole("status").filter({ hasText: /./ }).first();

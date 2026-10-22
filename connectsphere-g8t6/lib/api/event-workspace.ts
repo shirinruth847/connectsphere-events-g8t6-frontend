@@ -65,8 +65,10 @@ export interface EventView {
   // SPM-173: counts changes to venue bookings, technical arrangements and
   // attendance; a safety approval is valid only for the version it reviewed.
   arrangementVersion?: number;
-  // SPM-246: Safety Officers get the registration count, never participant data.
+  // SPM-246: Safety Officers get the registration count, never participant data,
+  // and the review round to open (null when none is in their scope).
   registeredCount?: number;
+  safetyReviewId?: number | null;
 }
 
 export interface EventHistoryChange {

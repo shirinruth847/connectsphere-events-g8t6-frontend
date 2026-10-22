@@ -296,23 +296,13 @@ export function formFromRound(round: {
   };
 }
 
-// ---------- which round the officer sees ----------
+// ---------- the officer's relation to the round on screen ----------
 
+// The backend chooses which round the officer sees (EventView.safetyReviewId);
+// this only says how the officer stands to it, to pick the controls to offer.
 interface ScopedRound {
-  roundNumber: number;
   status: RoundStatus;
   claimedBy: number | null;
-  decidedBy: number | null;
-}
-
-// Mirrors the backend scope (eventModel.isRoundInOfficerScope): an open round
-// that is unclaimed or held by the officer, or a round the officer decided.
-export const isRoundInOfficerScope = (round: ScopedRound, officerId: number) =>
-  (round.status === "OPEN" && (round.claimedBy === null || round.claimedBy === officerId)) || round.decidedBy === officerId;
-
-// The newest round in the officer's scope, or null.
-export function pickOfficerRound<T extends ScopedRound>(rounds: readonly T[], officerId: number): T | null {
-  return [...rounds].sort((left, right) => right.roundNumber - left.roundNumber).find((round) => isRoundInOfficerScope(round, officerId)) ?? null;
 }
 
 export type OfficerRoundState = "awaiting-claim" | "claimed-by-me" | "claimed-by-other" | "decided" | "closed";

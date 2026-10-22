@@ -572,11 +572,11 @@ function ReviewWorkspace({ event, panel, officerId, refreshing, step, onStep, ba
 }
 
 // SPM-252: the Safety Officer's view of /events/[eventId]. The round shown is
-// the newest one in the officer's scope; out-of-scope events answer "not found".
+// the one the backend names (safetyReviewId); out-of-scope events answer "not found".
 export function SafetyReviewView({ event, onEventChanged }: { event: EventView; onEventChanged: () => void }) {
   const user = useSessionUser();
   const officerId = user?.user_id ?? 0;
-  const { state, reload, refresh } = useSafetyReview(event.eventId, officerId);
+  const { state, reload, refresh } = useSafetyReview(event.safetyReviewId ?? null);
   const [chosenStep, setChosenStep] = useState<number | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
 

@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { getEventSafetyReviews, getSafetyPanel, type SafetyPanel, type SafetyRound } from "@/lib/api/safety-reviews";
-import { pickOfficerRound } from "@/lib/safety-review";
+import { getSafetyPanel, type SafetyPanel } from "@/lib/api/safety-reviews";
 
 export type SafetyReviewState =
   | { status: "loading" }
@@ -11,20 +10,16 @@ export type SafetyReviewState =
   | { status: "not-found" }
   | { status: "error"; message: string };
 
-// The officer's round for an event: the event's rounds give the review ID (the
-// newest round in the officer's scope), then the panel loads that round.
-export function useSafetyReview(eventId: number, officerId: number) {
+// The officer's round for an event: the backend names it on the event view
+// (safetyReviewId, null when none is in their scope), and the panel loads it.
+// A round that leaves their scope answers 404 and shows "not available".
+export function useSafetyReview(reviewId: number | null) {
   const [state, setState] = useState<SafetyReviewState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const { reviews } = await getEventSafetyReviews<SafetyRound>(eventId);
-      const round = pickOfficerRound(reviews, officerId);
-      if (!round) return null;
-      return getSafetyPanel(round.reviewId);
-    })()
+    (reviewId === null ? Promise.resolve(null) : getSafetyPanel(reviewId))
       .then((panel) => {
         if (alive) setState(panel ? { status: "ready", panel, refreshing: false } : { status: "not-found" });
       })
@@ -36,7 +31,7 @@ export function useSafetyReview(eventId: number, officerId: number) {
     return () => {
       alive = false;
     };
-  }, [eventId, officerId, attempt]);
+  }, [reviewId, attempt]);
 
   // Retry after a failure: shows the loading state again.
   const reload = useCallback(() => {
