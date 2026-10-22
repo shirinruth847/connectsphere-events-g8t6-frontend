@@ -8,7 +8,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { useNavigationGuard } from "@/components/shared/navigation-guard";
 import { SESSION_EXPIRED } from "@/lib/session";
-import { ACCESSIBILITY_OPTIONS, validateEventStep, fieldStep, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, eventStatusLabel, toPayload } from "@/lib/events";
+import { ACCESSIBILITY_OPTIONS, validateEventStep, fieldStep, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, eventStatusLabel, isDraftEvent, toPayload } from "@/lib/events";
 
 const steps = [
   "Event Identity & Core Purpose",
@@ -90,7 +90,7 @@ export function EventRequestWizard() {
         if (!initialId) { setLocked(true); setError("This draft could not be found."); return; }
         const result = await apiRequest<{ event: EventRequest }>(`/events/${initialId}`);
         if (!alive) return;
-        if (result.event.status !== "DRAFT" || result.event.isOwner === false) {
+        if (!isDraftEvent(result.event) || result.event.isOwner === false) {
           setLocked(true); setError("This request is not an editable draft. Open its event details instead."); return;
         }
         replaceValues(formValuesFromEvent(result.event));
@@ -213,7 +213,7 @@ export function EventRequestWizard() {
     submissionInFlight.current = true; setSubmitting(true); setError("");
     if (timer.current) clearTimeout(timer.current);
     const complete = (result: EventRequest, recovered = false) => {
-      if (!result?.eventId || result.status === "DRAFT") throw new Error("The server did not confirm submission. Please try again.");
+      if (!result?.eventId || isDraftEvent(result)) throw new Error("The server did not confirm submission. Please try again.");
       idRef.current = result.eventId; submitAttempt.current = null;
       changedRef.current = false; setDirty(false); allowNavigation(); sessionStorage.removeItem(recoveryKey);
       const status = eventStatusLabel(result);
@@ -243,7 +243,7 @@ export function EventRequestWizard() {
         submitAttempt.current ??= { key: crypto.randomUUID(), payload };
         sessionStorage.setItem(recoveryKey, JSON.stringify({ values: valuesRef.current, submitAttempt: submitAttempt.current, at: Date.now() }));
         result = await apiRequest("/events", { method: "POST", headers: { "Idempotency-Key": submitAttempt.current.key }, body: JSON.stringify(submitAttempt.current.payload) });
-        if (!result.event?.eventId || result.event.status === "DRAFT") throw new Error("The server did not confirm submission. Please try again.");
+        if (!result.event?.eventId || isDraftEvent(result.event)) throw new Error("The server did not confirm submission. Please try again.");
         // Save the confirmed ID before a follow-up read can fail or expire the session.
         idRef.current = result.event.eventId;
         submitAttempt.current.eventId = result.event.eventId;
@@ -258,7 +258,7 @@ export function EventRequestWizard() {
       if (idRef.current && !submitAttempt.current && (ambiguous || (caught instanceof ApiError && caught.code === "EVENT_NOT_DRAFT"))) {
         try {
           const current = await apiRequest<{ event: EventRequest }>(`/events/${idRef.current}`);
-          if (current.event.status !== "DRAFT") { complete(current.event, true); return; }
+          if (!isDraftEvent(current.event)) { complete(current.event, true); return; }
         } catch { /* Keep values when the authoritative state cannot be read. */ }
       }
       if (submitAttempt.current && (retryingCreate || ambiguous || (caught instanceof ApiError && caught.status === 401))) {

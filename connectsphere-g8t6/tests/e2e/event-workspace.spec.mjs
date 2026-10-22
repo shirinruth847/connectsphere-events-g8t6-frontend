@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { installConnectSphereMocks } from "./support.mjs";
+import { installConnectSphereMocks, organiserView } from "./support.mjs";
 
 // SPM-33 event workspace inside the shared dashboard shell. The backend decides
 // the viewer's relationship; these mocks return the shapes it sends.
@@ -67,6 +67,16 @@ test("[SPM-33 AC1 / Master 3.5] owner sees organiser labels in the shared shell"
   await expect(page.getByText("Approved & Planning", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Planning", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "My Requests", exact: true })).toHaveAttribute("aria-current", "page");
+});
+
+test("[SPM-173 AC6] an owner's view without a stored status uses the organiser label", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "ORGANISER" });
+  await routeEvent(page, organiserView(eventView({ status: "SAFETY_REVIEW", statusLabel: "Approved & Planning", viewerRelationship: "OWNER", isOwner: true, permissions: { canEdit: false, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false } })));
+  await page.goto("/events/42");
+  await expect(page.getByRole("heading", { name: "Workspace review event", exact: true })).toBeVisible();
+  await expect(page.getByText("Approved & Planning", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Owner • Changes by request")).toBeVisible();
+  await expect(page.getByText("Only you can see this draft")).toHaveCount(0);
 });
 
 test("[SPM-33 AC5 / TC-14] an event outside the viewer's scope is not found, inside the shell", async ({ page }) => {
