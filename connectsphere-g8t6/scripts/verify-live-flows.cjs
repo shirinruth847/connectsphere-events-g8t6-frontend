@@ -31,6 +31,85 @@ async function login(page,user) {
  await page.waitForURL(url=>['/dashboard','/my-registrations'].includes(url.pathname));
  await page.getByRole('button',{name:'Logout',exact:true}).waitFor();
 }
+// SPM-44 attendee discovery. Read-only: no event data is created. The backend
+// decides visibility, so the cards are compared with its responses, not with a
+// lifecycle rule repeated here.
+const SAFE_DISCOVERY_FIELDS='description,endDatetime,eventId,location,organisationName,registrationAvailability,startDatetime,title';
+let visibleDiscoveryEventId=null;
+const workspaceReads=(requests)=>requests.filter(url=>/^\/api\/events\/\d+(\/|$)/.test(url));
+async function verifyAttendeeDiscovery(page,requests) {
+ const firstResponse=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/api/events/discovery'&&!u.searchParams.has('cursor');});
+ await page.getByRole('link',{name:'Event Discovery',exact:true}).click();
+ const first=await firstResponse;assert(first.status()===200,'Discovery list returned '+first.status());
+ const page1=await first.json();
+ await page.getByRole('heading',{name:'Event Discovery',exact:true,level:1}).waitFor();
+ if(page1.events.length===0) {
+  await page.getByRole('heading',{name:'No events are available at the moment.',exact:true}).waitFor();
+  record('SPM-44 live discovery empty state',{events:0});return;
+ }
+ for(const event of page1.events) assert(Object.keys(event).sort().join(',')===SAFE_DISCOVERY_FIELDS,'Discovery returned non attendee-safe fields: '+Object.keys(event).join(','));
+ const cards=page.getByRole('article');await cards.first().waitFor();
+ assert(await cards.count()===page1.events.length,'Card count does not match the discovery response');
+ const titles=await page.locator('article h3').allInnerTexts();
+ assert(JSON.stringify(titles)===JSON.stringify(page1.events.map(e=>e.title)),'Cards are not the backend events in backend order');
+ let loaded=[...page1.events];
+ if(page1.nextCursor) {
+  const moreResponse=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/api/events/discovery'&&u.searchParams.get('cursor')===page1.nextCursor;});
+  await page.getByRole('button',{name:'Load more events',exact:true}).click();
+  const more=await moreResponse;assert(more.status()===200,'Load more returned '+more.status());
+  const page2=await more.json();loaded=loaded.concat(page2.events.filter(e=>!loaded.some(x=>x.eventId===e.eventId)));
+  await page.waitForFunction(count=>document.querySelectorAll('main article').length===count,loaded.length);
+  const ids=await page.locator('article h3').evaluateAll(els=>els.map(e=>e.id));
+  assert(new Set(ids).size===ids.length,'Duplicate cards after Load more');
+  record('SPM-44 live load more uses nextCursor',{firstPage:page1.events.length,total:loaded.length});
+ }
+ record('SPM-44 live discovery cards match backend',{cards:loaded.length,availability:[...new Set(loaded.map(e=>e.registrationAvailability))].sort()});
+ const target=loaded[0];visibleDiscoveryEventId=target.eventId;
+ const detailResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/events/discovery/'+target.eventId);
+ await page.getByRole('button',{name:'View event details for '+target.title,exact:true}).click();
+ assert((await detailResponse).status()===200,'Discovery detail failed');
+ await page.getByRole('dialog',{name:target.title,exact:true}).getByText('Date',{exact:true}).waitFor();
+ await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+ await page.goto(base+'/events/'+target.eventId);
+ await page.getByRole('heading',{name:target.title,exact:true,level:1}).waitFor();
+ record('SPM-44 live details via discovery/:id',{eventId:target.eventId});
+ // Hidden events: one unpublished and one published but not CONFIRMED, chosen from the data.
+ const hidden=[
+  check(await supabase.from('event').select('event_id').eq('is_published',false).neq('status','DRAFT').limit(1)),
+  check(await supabase.from('event').select('event_id').eq('is_published',true).neq('status','CONFIRMED').limit(1)),
+ ].flat().map(row=>row.event_id);
+ for(const id of hidden) {
+  const res=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/events/discovery/'+id);
+  await page.goto(base+'/events/'+id);assert((await res).status()===404,'Hidden event '+id+' was not 404');
+  await page.getByRole('heading',{name:'This event is not available',exact:true}).waitFor();
+ }
+ record('SPM-44 live hidden events show not available',{checked:hidden.length});
+ assert(workspaceReads(requests).length===0,'Attendee UI called GET /api/events/:id: '+workspaceReads(requests).join(', '));
+ record('SPM-44 live attendee never reads the staff event endpoint',{discoveryRequests:requests.filter(u=>u.startsWith('/api/events/discovery')).length});
+}
+async function verifyDiscoveryDenied(page,role,requests,token) {
+ const res=await fetch(api+'/api/events/discovery',{headers:{Authorization:'Bearer '+token}});
+ assert(res.status===403,role+' discovery API returned '+res.status);
+ if(role!=='COORDINATOR_LEAD') {
+  await page.goto(base+'/events');
+  await page.getByText('This page is not available for your role.',{exact:false}).waitFor();
+ }
+ assert(!requests.some(u=>u.startsWith('/api/events/discovery')),role+' UI called attendee discovery');
+ record('SPM-44 live wrong role denied discovery',{role,api:res.status});
+}
+async function verifySignedOutRedirectBack(user) {
+ if(!visibleDiscoveryEventId)return;
+ const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();
+ try {
+  const target='/events/'+visibleDiscoveryEventId;
+  await page.goto(base+target);await page.waitForURL(url=>url.pathname==='/login');
+  assert(new URL(page.url()).searchParams.get('next')===target,'Login lost the event return path');
+  await page.locator('#email').fill(user.email);await page.locator('#password').fill(process.env.SEED_ACCOUNT_PASSWORD);await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await page.waitForURL(url=>url.pathname===target);
+  await page.getByRole('heading',{name:'Event information',exact:true}).waitFor();
+  record('SPM-44 live signed-out event URL returns after login',{path:target});
+ } finally {await context.close();}
+}
 async function next(page){await page.getByRole('button',{name:'Next',exact:true}).click();}
 async function complete(page,title) {
  await page.locator('#title').fill(title);await page.locator('#purpose').fill('Completed-ticket baseline acceptance');await page.locator('#description').fill('Synthetic live verification; removed after this run.');await next(page);
@@ -52,6 +131,8 @@ async function main() {
   const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   const tracked=[];
+  const apiReads=[];
+  page.on('request',request=>{if(request.url().startsWith(api+'/api/events')&&request.method()==='GET'){const u=new URL(request.url());apiReads.push(u.pathname+u.search);}});
   page.on('response',response=>{
    if(response.url().startsWith(api+'/api/events')&&['POST','PUT'].includes(response.request().method())) {
     tracked.push((async()=>{const body=await response.json().catch(()=>({}));if(body.event?.eventId && body.event.title?.startsWith(runId)){ids.add(body.event.eventId);fs.writeFileSync(output,JSON.stringify({runId,createdEventIds:[...ids],checks},null,2));}})());
@@ -96,12 +177,16 @@ async function main() {
     record('SPM-37 real autosave POST then PUT without audit noise',{eventId:autoId});
 
    }
+   if(role==='ATTENDEE')await verifyAttendeeDiscovery(page,apiReads);
    // A revoked access token must also be rejected by the server.
    const token=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>/^sb-.*-auth-token$/.test(key));return key?JSON.parse(localStorage.getItem(key)).access_token:null;});
+   if(role!=='ATTENDEE')await verifyDiscoveryDenied(page,role,apiReads,token);
    await page.getByRole('button',{name:'Logout',exact:true}).click();await page.waitForURL(url=>url.pathname==='/login');
    const revoked=await fetch(api+'/api/auth/me',{headers:{Authorization:'Bearer '+token}});assert(revoked.status===401,'Logout did not revoke token');
    assert(errors.length===0,'Browser runtime error: '+errors.join('; '));record('real logout and token revocation',{role});
   } finally {await Promise.allSettled(tracked);await context.close();}
  }
+ const attendee=users.find(user=>user.role==='ATTENDEE');
+ if(attendee)await verifySignedOutRedirectBack(attendee);
 }
 (async()=>{try{await main();}catch(e){record('failure',{message:e.message});process.exitCode=1;}finally{try{await cleanup();}catch(e){record('cleanup failure',{message:e.message});process.exitCode=1;}if(browser)await browser.close();fs.writeFileSync(output,JSON.stringify({runId,createdEventIds:[...ids],checks},null,2));}})();
