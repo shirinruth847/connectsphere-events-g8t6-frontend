@@ -7,6 +7,7 @@ import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton } from "@/comp
 import { Icon } from "@/components/shared/icon";
 import { homeForRole, ROUTES } from "@/lib/auth";
 import { SafetyReviewView } from "@/components/safety-officer/review-view";
+import { VenueStaffEventView } from "@/components/venue-staff/booking-requests/venue-staff-event-view";
 import { CoordinatorEventView } from "./coordinator-event-view";
 import { useEventView } from "./use-event-view";
 
@@ -69,5 +70,8 @@ export function EventWorkspace({ eventId: rawEventId }: { eventId: string }) {
   const eventId = parseEventId(rawEventId);
   const home = user ? homeForRole(user.role) : ROUTES.dashboard;
   const reason = (user && UNAVAILABLE_REASONS[user.role]) || DEFAULT_UNAVAILABLE_REASON;
-  return eventId === null ? <EventUnavailable home={home} reason={reason} /> : <LoadedWorkspace key={eventId} eventId={eventId} home={home} reason={reason} />;
+  if (eventId === null) return <EventUnavailable home={home} reason={reason} />;
+  // Venue Staff reach events only through their venue bookings (SPM-181).
+  if (user?.role === "VENUE_STAFF") return <VenueStaffEventView key={eventId} eventId={eventId} />;
+  return <LoadedWorkspace key={eventId} eventId={eventId} home={home} reason={reason} />;
 }
