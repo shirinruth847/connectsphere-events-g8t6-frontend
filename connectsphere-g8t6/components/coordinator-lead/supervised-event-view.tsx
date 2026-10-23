@@ -6,7 +6,7 @@ import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
-import { equipmentItems, RequirementList, scheduleRows, venueRows } from "@/components/events/workspace/event-detail-rows";
+import { equipmentItems, RequirementList, scheduleRows, layoutRows } from "@/components/events/workspace/event-detail-rows";
 import { EventVenueSection } from "@/components/venues/event-venue-options/event-venue-section";
 import { eventDisplayStatus } from "@/lib/events";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
@@ -42,8 +42,8 @@ export function SupervisedEventView({ event }: { event: EventView }) {
             <KeyValuePanel rows={scheduleRows(event)} />
           </SectionCard>
           <SectionCard className="grid gap-4">
-            <SectionHeading step={2} title="Venue & layout" description="The organiser's ranked preferences, then every available venue for this event." />
-            <KeyValuePanel rows={venueRows(event)} />
+            <SectionHeading step={2} title="Venue & layout" description="The organiser's venue choices and the coordinator's suggestion. Find another venue to search and compare." />
+            <KeyValuePanel rows={layoutRows(event)} />
             <EventVenueSection key={event.venueSuggestion?.version ?? 0} event={event} />
           </SectionCard>
           <div className="grid gap-5 md:grid-cols-2">

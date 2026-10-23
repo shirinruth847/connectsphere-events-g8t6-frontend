@@ -8,7 +8,16 @@ const REQUIREMENT_STYLES: Record<RequirementStatus, string> = {
   UNMET: "border-outline-variant bg-surface-container-low text-on-surface-variant",
   NOT_CHECKED: "border-outline-variant bg-surface-container-low text-on-surface-variant",
 };
-const STATUS_WORDS: Record<RequirementStatus, string> = { MET: "Met", UNMET: "Not met", NOT_CHECKED: "Not checked" };
+// Availability says itself why it is unchecked ("Error checking availability",
+// "Enter the event date"); the detail-based requirements read "Error loading
+// details" when the detail service is down (SPM-72 AC11).
+export const requirementStatusWord = (requirement: VenueRequirement) => {
+  if (requirement.status === "MET") return "Met";
+  if (requirement.status === "UNMET") return "Not met";
+  return requirement.key === "availability" ? "Not checked" : "Error loading details";
+};
+const chipText = (requirement: VenueRequirement) =>
+  requirement.status === "NOT_CHECKED" && requirement.key !== "availability" ? requirementStatusWord(requirement) : requirement.detail;
 
 export function RequirementChip({ requirement }: { requirement: VenueRequirement }) {
   const met = requirement.status === "MET";
@@ -18,8 +27,8 @@ export function RequirementChip({ requirement }: { requirement: VenueRequirement
       title={requirement.detail}
     >
       <Icon name={met ? "check" : requirement.status === "NOT_CHECKED" ? "info" : "close"} size={16} />
-      <span className="truncate">{requirement.label}: {requirement.detail}</span>
-      <span className="sr-only">({STATUS_WORDS[requirement.status]})</span>
+      <span className="truncate">{requirement.label}: {chipText(requirement)}</span>
+      <span className="sr-only">({requirementStatusWord(requirement)})</span>
     </li>
   );
 }
@@ -31,7 +40,7 @@ export function RequirementRow({ requirement }: { requirement: VenueRequirement 
         <span className="font-semibold">{requirement.label}</span>
         <span className="block [overflow-wrap:anywhere]">{requirement.detail}</span>
       </span>
-      <span className="shrink-0 text-xs font-semibold uppercase tracking-label">{STATUS_WORDS[requirement.status]}</span>
+      <span className="shrink-0 text-xs font-semibold uppercase tracking-label">{requirementStatusWord(requirement)}</span>
     </li>
   );
 }
@@ -42,6 +51,7 @@ const AVAILABILITY_STYLES: Record<string, string> = {
   AVAILABLE: "bg-[#DCFCE7] text-[#166534]",
   AVAILABLE_WITH_WARNING: "bg-[#FEF3C7] text-[#92400E]",
   NOT_CHECKED: "bg-surface-container-high text-on-surface-variant",
+  NO_DATES: "bg-surface-container-high text-on-surface-variant",
   NOT_BOOKABLE: "bg-surface-container-high text-on-surface-variant",
 };
 

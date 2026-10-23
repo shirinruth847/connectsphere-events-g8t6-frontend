@@ -19,6 +19,7 @@ export const FIELD_LABELS: Record<string, string> = {
   accessibilityNeeds: "Accessibility needs",
   isRegistrationEnabled: "Registration",
   registrationCapacity: "Registration capacity",
+  suggestedVenue: "Suggested venue",
 };
 
 export const fieldLabel = (field: string) => FIELD_LABELS[field] ?? field;
@@ -46,10 +47,14 @@ export function scheduleRows(event: EventView): KeyValueRow[] {
   ];
 }
 
+export function layoutRows(event: EventView): KeyValueRow[] {
+  return [{ icon: "layout", label: "Layout", value: layoutLabel(event.preferredLayoutType) }];
+}
+
 export function venueRows(event: EventView): KeyValueRow[] {
   return [
     { icon: "venue", label: "Venue preferences", value: venuePreferenceLabel(event.venuePreferences) },
-    { icon: "layout", label: "Layout", value: layoutLabel(event.preferredLayoutType) },
+    ...layoutRows(event),
   ];
 }
 

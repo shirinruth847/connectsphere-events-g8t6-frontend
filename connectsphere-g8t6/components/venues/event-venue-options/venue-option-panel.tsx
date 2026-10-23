@@ -1,12 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button, FormLabel, ReferenceIdTag, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import type { EventVenueOption } from "@/lib/api/event-venues";
 import { AvailabilityChip, RequirementRow } from "./venue-requirement-chips";
 import { VenuePhotoCarousel } from "./venue-photo-carousel";
-import { suggestionBlocker } from "./venue-option-model";
 
 const listText = (value: string[] | null | undefined, venue: EventVenueOption) => {
   if (value == null) return venue.detailStatus === "NOT_CHECKED" ? "Not checked" : "Not listed";
@@ -18,22 +18,20 @@ const minutes = (value: number | null | undefined, venue: EventVenueOption) =>
   value == null ? (venue.detailStatus === "NOT_CHECKED" ? "Not checked" : "Not recorded") : `${value} min`;
 
 interface VenueOptionPanelProps {
-  eventId: number;
   label: string;
   venue: EventVenueOption | null;
   venues: EventVenueOption[];
   onChoose: (venueId: number | null) => void;
   onClose?: () => void;
-  canSuggest: boolean;
-  suggestedVenueId: number | null;
-  onSuggest: (venue: EventVenueOption) => void;
+  badge?: ReactNode;
+  // The caller's action for this venue (Select, Add as preference…).
+  action?: ReactNode;
 }
 
-// One venue's details for the event, read-only (SPM-72 AC4). Two of these sit
-// side by side when the coordinator compares venues (AC6).
-export function VenueOptionPanel({ eventId, label, venue, venues, onChoose, onClose, canSuggest, suggestedVenueId, onSuggest }: VenueOptionPanelProps) {
+// One venue's details, read-only (SPM-72 AC4, SPM-76 AC4). Two of these sit
+// side by side when venues are compared (SPM-72 AC7).
+export function VenueOptionPanel({ label, venue, venues, onChoose, onClose, badge, action }: VenueOptionPanelProps) {
   const selectId = `venue-panel-${label.replace(/\W+/g, "-").toLowerCase()}`;
-  const blocker = venue ? suggestionBlocker(venue) : null;
 
   return (
     <section aria-label={label} className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 rounded-panel border border-outline-variant bg-surface-container-lowest p-4">
@@ -45,33 +43,25 @@ export function VenueOptionPanel({ eventId, label, venue, venues, onChoose, onCl
             {venues.map((item) => <option key={item.venueId} value={item.venueId}>{item.name}</option>)}
           </select>
         </div>
-        {onClose ? <Button variant="quiet" aria-label={`Close ${label.toLowerCase()}`} onClick={onClose}><Icon name="close" size={16} /></Button> : null}
+        {onClose ? <Button type="button" variant="quiet" aria-label={`Close ${label.toLowerCase()}`} onClick={onClose}><Icon name="close" size={16} /></Button> : null}
       </div>
 
       {!venue ? (
         <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">Choose a venue from the list or the menu above to see its details.</p>
       ) : (
         <>
-          <VenuePhotoCarousel key={venue.venueId} eventId={eventId} venueId={venue.venueId} venueName={venue.name} />
-
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="text-lg font-semibold text-on-surface [overflow-wrap:anywhere]">{venue.name}</h3>
-              <p className="text-sm text-on-surface-variant">{venue.address}</p>
-            </div>
-            <div className="shrink-0"><ReferenceIdTag value={`VENUE-${venue.venueId}`} /></div>
-          </div>
+          <VenuePhotoCarousel key={venue.venueId} venueId={venue.venueId} venueName={venue.name} />
 
           <div className="grid gap-2">
-            <h4 className="text-xs font-semibold uppercase tracking-label text-on-surface-variant">Availability for the event date</h4>
-            <div className="flex flex-wrap items-center gap-2">
-              <AvailabilityChip availability={venue.availability} />
-              {venue.availability.occupiedStart && venue.availability.occupiedEnd ? (
-                <span className="text-sm text-on-surface-variant">
-                  Occupied {formatEventWindow(venue.availability.occupiedStart, venue.availability.occupiedEnd)} including setup and turnaround
-                </span>
-              ) : null}
+            {badge ? <div className="flex flex-wrap gap-1.5">{badge}</div> : null}
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-on-surface [overflow-wrap:anywhere]">{venue.name}</h3>
+                <p className="text-sm text-on-surface-variant">{venue.address}</p>
+              </div>
+              <div className="shrink-0"><ReferenceIdTag value={`VENUE-${venue.venueId}`} /></div>
             </div>
+            <div><AvailabilityChip availability={venue.availability} /></div>
             {venue.availability.conflicts.length ? (
               <ul className="grid gap-1 text-sm text-on-surface" aria-label="Conflicts">
                 {venue.availability.conflicts.map((conflict, index) => (
@@ -116,14 +106,7 @@ export function VenueOptionPanel({ eventId, label, venue, venues, onChoose, onCl
             </div>
           </dl>
 
-          {venue.venueId === suggestedVenueId ? (
-            <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#166534]"><Icon name="check" size={16} />Suggested to the organiser</p>
-          ) : canSuggest ? (
-            <div className="grid gap-1">
-              <Button onClick={() => onSuggest(venue)} disabled={Boolean(blocker)}><Icon name="check" size={16} />Select this venue</Button>
-              {blocker ? <p className="text-xs text-on-surface-variant">{blocker}</p> : null}
-            </div>
-          ) : null}
+          {action}
         </>
       )}
     </section>

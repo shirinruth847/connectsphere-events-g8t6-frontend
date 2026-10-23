@@ -17,7 +17,7 @@ import {
   registrationRows,
   RequirementList,
   scheduleRows,
-  venueRows,
+  layoutRows,
 } from "./event-detail-rows";
 import { EventHistoryPanel } from "./event-history-panel";
 import { EventIdentityEditor } from "./event-identity-editor";
@@ -129,8 +129,8 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             ) : null}
           </ReviewSection>
 
-          <ReviewSection step={3} title="Venue & layout" description="The organiser's ranked preferences, then every available venue for this event to compare and select." action={significantPill}>
-            <KeyValuePanel rows={venueRows(event)} />
+          <ReviewSection step={3} title="Venue & layout" description="The organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
+            <KeyValuePanel rows={layoutRows(event)} />
             <EventVenueSection
               key={event.venueSuggestion?.version ?? 0}
               event={event}

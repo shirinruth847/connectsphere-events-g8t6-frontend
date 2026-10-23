@@ -1,6 +1,7 @@
-// SPM-72/74: the venue section of an event. Field names, codes and statuses
-// are the backend's (GET /api/events/:id/venue-options, the event-scoped photo
-// routes and PUT /api/events/:id/venue-suggestion); do not rename them here.
+// SPM-72/74/76: choosing a venue. Field names, codes and statuses are the
+// backend's (GET /api/events/:id/venue-options, GET /api/venues/options, the
+// photo routes under /api/venues/options and PUT /api/events/:id/venue-suggestion);
+// do not rename them here.
 import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
 import { venueOptionsQuery, type VenueOptionsQuery } from "@/components/venues/venue-queries";
@@ -10,7 +11,8 @@ import type { VenueSuggestion } from "@/lib/api/event-workspace";
 export type { VenueOptionsQuery };
 
 // MET is shown light green and anything else light grey; NOT_CHECKED means the
-// detail service could not be read, never that the venue fails.
+// detail service could not be read (or, for availability, no date yet), never
+// that the venue fails.
 export type RequirementStatus = "MET" | "UNMET" | "NOT_CHECKED";
 
 export interface VenueRequirement {
@@ -30,11 +32,12 @@ export interface VenueConflict {
 }
 
 export interface VenueOptionAvailability {
-  // The backend's code and label; NOT_CHECKED is never shown as available.
+  // The backend's code and label; NOT_CHECKED and NO_DATES are never shown as available.
   status: string;
   label: string;
   occupiedStart: string | null;
   occupiedEnd: string | null;
+  // Always empty for organisers: other events' bookings stay private.
   conflicts: VenueConflict[];
   operatingHoursWarning: { message: string } | null;
 }
@@ -47,7 +50,23 @@ export type EventVenueOption = Omit<Venue, "setupTurnaroundMinutes"> & {
   allRequirementsMet: boolean;
 };
 
-export interface EventVenueOptions {
+export interface VenueOptionsResult {
+  venues: EventVenueOption[];
+  detailsAvailable: boolean;
+  availabilityChecked: boolean;
+  filtersNotChecked: string[];
+}
+
+// One of the organiser's ranked venue choices; option is null when the venue
+// is no longer available.
+export interface PreferredVenue {
+  rank: number;
+  venueId: number;
+  name: string | null;
+  option: EventVenueOption | null;
+}
+
+export interface EventVenueOptions extends VenueOptionsResult {
   event: {
     eventId: number;
     requestId: string;
@@ -57,24 +76,48 @@ export interface EventVenueOptions {
     preferredLayoutType: string | null;
     accessibilityNeeds: string[];
   };
-  venues: EventVenueOption[];
-  detailsAvailable: boolean;
-  availabilityChecked: boolean;
-  filtersNotChecked: string[];
+  preferredVenues: PreferredVenue[];
   canSuggestVenue: boolean;
 }
 
 export const getEventVenueOptions = (eventId: number, query: VenueOptionsQuery = {}) =>
   apiRequest<EventVenueOptions>(`/events/${eventId}/venue-options${venueOptionsQuery(query)}`);
 
-export const listEventVenuePhotos = (eventId: number, venueId: number) =>
-  apiRequest<{ photos: VenuePhoto[] }>(`/events/${eventId}/venue-options/${venueId}/photos`);
+// What an organiser's unsaved request asks for (SPM-76). Values the form does
+// not hold yet are left out, and the venues are not checked against them.
+export interface RequestVenueNeeds {
+  startDatetime?: string | null;
+  endDatetime?: string | null;
+  expectedAttendance?: number | null;
+  preferredLayoutType?: string | null;
+  accessibilityNeeds?: string[];
+}
+
+export const requestVenueOptionsQuery = (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}) => {
+  const params = new URLSearchParams(venueOptionsQuery(query).replace(/^\?/, ""));
+  if (needs.startDatetime && needs.endDatetime) {
+    params.set("startDatetime", needs.startDatetime);
+    params.set("endDatetime", needs.endDatetime);
+  }
+  if (needs.expectedAttendance) params.set("expectedAttendance", String(needs.expectedAttendance));
+  if (needs.preferredLayoutType) params.set("preferredLayoutType", needs.preferredLayoutType);
+  for (const need of needs.accessibilityNeeds ?? []) params.append("accessibilityNeeds", need);
+  const text = params.toString();
+  return text ? `?${text}` : "";
+};
+
+export const getRequestVenueOptions = (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}) =>
+  apiRequest<VenueOptionsResult>(`/venues/options${requestVenueOptionsQuery(needs, query)}`);
+
+// Read-only photos of an available venue, for organisers, coordinators and Leads.
+export const listSelectableVenuePhotos = (venueId: number) =>
+  apiRequest<{ photos: VenuePhoto[] }>(`/venues/options/${venueId}/photos`);
 
 // Image bytes need the bearer token, so they are fetched and shown as a blob URL.
-export const fetchEventVenuePhotoBlob = async (eventId: number, venueId: number, photoId: string, signal?: AbortSignal): Promise<Blob> => {
+export const fetchSelectableVenuePhotoBlob = async (venueId: number, photoId: string, signal?: AbortSignal): Promise<Blob> => {
   const token = await getAccessToken();
   if (!token) throw new ApiError("Your session has expired. Sign in again to continue.", 401, "UNAUTHENTICATED");
-  const response = await fetch(`${getBackendBaseUrl()}/api/events/${eventId}/venue-options/${venueId}/photos/${photoId}`, {
+  const response = await fetch(`${getBackendBaseUrl()}/api/venues/options/${venueId}/photos/${photoId}`, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${token}` },
     signal,

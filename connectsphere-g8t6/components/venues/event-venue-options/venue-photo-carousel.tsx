@@ -4,19 +4,18 @@ import { useEffect, useState } from "react";
 import { Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { useVenuePhoto } from "@/components/venues/use-venue-photo";
-import { listEventVenuePhotos } from "@/lib/api/event-venues";
+import { listSelectableVenuePhotos } from "@/lib/api/event-venues";
 import type { VenuePhoto } from "@/lib/api/venues";
 
 type PhotoList = { status: "loading" } | { status: "ready"; photos: VenuePhoto[] } | { status: "error" };
 
-export function EventVenuePhoto({ eventId, venueId, photoId, alt, className }: {
-  eventId: number;
+export function EventVenuePhoto({ venueId, photoId, alt, className }: {
   venueId: number;
   photoId: string | null;
   alt: string;
   className: string;
 }) {
-  const source = useVenuePhoto(venueId, photoId, 0, eventId);
+  const source = useVenuePhoto(venueId, photoId, 0, true);
   if (!source || source.status === "error") {
     return (
       <div className={`flex items-center justify-center bg-surface-container-low text-xs text-on-surface-variant ${className}`}>
@@ -32,17 +31,17 @@ export function EventVenuePhoto({ eventId, venueId, photoId, alt, className }: {
 }
 
 // The venue's gallery, read-only (Venue Staff maintain it, T28).
-export function VenuePhotoCarousel({ eventId, venueId, venueName }: { eventId: number; venueId: number; venueName: string }) {
+export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; venueName: string }) {
   const [list, setList] = useState<PhotoList>({ status: "loading" });
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    listEventVenuePhotos(eventId, venueId)
+    listSelectableVenuePhotos(venueId)
       .then((result) => { if (alive) setList({ status: "ready", photos: result.photos }); })
       .catch(() => { if (alive) setList({ status: "error" }); });
     return () => { alive = false; };
-  }, [eventId, venueId]);
+  }, [venueId]);
 
   if (list.status === "loading") return <Skeleton className="aspect-video w-full rounded-control" />;
   if (list.status === "error") {
@@ -57,7 +56,6 @@ export function VenuePhotoCarousel({ eventId, venueId, venueName }: { eventId: n
   return (
     <figure className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2" aria-roledescription="carousel" aria-label={`${venueName} photos`}>
       <EventVenuePhoto
-        eventId={eventId}
         venueId={venueId}
         photoId={current.photoId}
         alt={current.caption || `${venueName} photo ${index + 1}`}
@@ -67,9 +65,9 @@ export function VenuePhotoCarousel({ eventId, venueId, venueName }: { eventId: n
         <span className="min-w-0 truncate">{current.caption || `Photo ${index + 1}`}</span>
         {count > 1 ? (
           <span className="flex shrink-0 items-center gap-1">
-            <Button variant="quiet" aria-label="Previous photo" onClick={() => setIndex((value) => (value - 1 + count) % count)}><Icon name="arrow-back" size={16} /></Button>
+            <Button type="button" variant="quiet" aria-label="Previous photo" onClick={() => setIndex((value) => (value - 1 + count) % count)}><Icon name="arrow-back" size={16} /></Button>
             <span aria-live="polite">{index + 1} / {count}</span>
-            <Button variant="quiet" aria-label="Next photo" onClick={() => setIndex((value) => (value + 1) % count)}><Icon name="arrow-forward" size={16} /></Button>
+            <Button type="button" variant="quiet" aria-label="Next photo" onClick={() => setIndex((value) => (value + 1) % count)}><Icon name="arrow-forward" size={16} /></Button>
           </span>
         ) : null}
       </figcaption>
