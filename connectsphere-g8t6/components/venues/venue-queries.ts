@@ -58,6 +58,40 @@ export const catalogueQuery = (filters: CatalogueFilters) =>
     ["accessibility", filters.accessibility],
   ]);
 
+// The venue section of an event (SPM-72/74). Required facilities rank and
+// highlight venues; they never filter them out.
+export type VenueOptionSort = "match" | "name" | "capacity" | "setup" | "turnaround";
+
+export const VENUE_OPTION_SORT_OPTIONS: { value: VenueOptionSort; label: string }[] = [
+  { value: "match", label: "Best match" },
+  { value: "name", label: "Name" },
+  { value: "capacity", label: "Capacity" },
+  { value: "setup", label: "Setup time" },
+  { value: "turnaround", label: "Turnaround time" },
+];
+
+export interface VenueOptionsQuery extends CatalogueFilters {
+  requiredFacilities?: string;
+  sort?: VenueOptionSort;
+  order?: "asc" | "desc";
+}
+
+// "Projector, stage ,, Projector" → "Projector,stage"
+const facilityList = (text: string | undefined) =>
+  [...new Set((text ?? "").split(",").map((item) => item.trim()).filter(Boolean))].join(",");
+
+export const venueOptionsQuery = (query: VenueOptionsQuery) =>
+  build([
+    ["search", query.search],
+    ["minCapacity", query.minCapacity],
+    ["layout", query.layout],
+    ["facility", query.facility],
+    ["accessibility", query.accessibility],
+    ["requiredFacilities", facilityList(query.requiredFacilities)],
+    ["sort", query.sort && query.sort !== "match" ? query.sort : undefined],
+    ["order", query.order === "desc" ? "desc" : undefined],
+  ]);
+
 export const managedVenueQuery = (filters: ManagedVenueFilters, offset = 0) =>
   build([
     ["search", filters.search],
