@@ -174,7 +174,9 @@ of the five latest notifications; **See more** and the attendee sidebar's
   placing `NotificationsBell` on their pages (SPM-192/193).
 - Read state and the unread count change only after the backend confirms them.
   The count refreshes on window focus, on tab visibility and after each read
-  action; nothing promises instant delivery.
+  action; nothing promises instant delivery. After an action that writes a
+  notification (e.g. a future registration), call
+  `announceNotificationsChanged()` without a count and the badge fetches it again.
 - **Go to Event** marks the notification read, then opens
   `/my-registrations?eventId=<id>&from=notification` (attendees) or
   `/events/<id>`. On My Events that URL opens the event details dialog (frame
@@ -184,15 +186,19 @@ of the five latest notifications; **See more** and the attendee sidebar's
   backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
   navigating, and a background refresh drops any it no longer returns.
 - Event Discovery and My Events share that dialog
-  (`components/attendee/discovery/event-details-dialog.tsx`). It reads
-  `GET /api/events/discovery/:id`, which also returns events the attendee is
-  registered or waitlisted for in any status, with `attendeeStatus`,
-  `myRegistration` and `detailsWithheld`. While SPM-173 is not merged, a
+  (`components/attendee/discovery/event-details-dialog.tsx`), and each reads
+  its own endpoint through `useAttendeeEvent`. From Event Discovery it reads
+  `GET /api/events/discovery/:id`, unchanged from SPM-34. From My Events, a
+  notification or Go to Event it reads `GET /api/registrations/mine/:eventId`
+  (`lib/api/my-events.ts`), which returns events the attendee is registered or
+  waitlisted for in any status, with `attendeeStatus`, `detailsWithheld` and
+  `myRegistration`. Until it reads SPM-173's confirmation snapshot, a
   cancelled event, or one being reconfirmed or not published, shows only its
   title, status and a short notice that states only what is known ("This
   event has been cancelled" or "This event's details are being confirmed"),
   without promising a notification (`TODO(SPM-163)`/`TODO(SPM-173)` mark the
-  follow-ups).
+  follow-ups). The attendee's own place reads "On the waitlist", since
+  "Waitlisted" is Event Discovery's word for a full event.
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
   notification shows the offer expiry, and the dialog keeps a footer slot.
 
@@ -209,7 +215,10 @@ The dialog is a summary; its **View Event Details** link opens the full page at
 - The Back link follows `from` (`discovery` or `my-events` only; anything else,
   a direct link or a login return goes to My Events), so it cannot redirect
   elsewhere.
-- Same data and rules as the dialog: no new backend field. Withheld events
+- Same data and rules as the dialog: `from=discovery` reads the discovery
+  endpoint, `from=my-events` the registration endpoint, and a direct link or
+  login return tries the registration endpoint first, then discovery if the
+  attendee holds no place (`eventDetailsSource`). Withheld events
   (cancelled or being reconfirmed) show only title, status, explanation and
   your place; sign-up actions stay disabled; times are in SGT.
 - **Design-system deviation (product decision):** every section of the frame
