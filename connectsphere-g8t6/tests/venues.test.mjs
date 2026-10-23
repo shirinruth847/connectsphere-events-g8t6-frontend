@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { availabilityQuery, catalogueQuery, managedVenueQuery, venueOptionsQuery } from '../components/venues/venue-queries.ts';
-import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, requestVenueNeeds, showMoreCount, suggestionBlocker } from '../components/venues/event-venue-options/venue-option-model.ts';
+import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, showMoreCount, suggestionBlocker } from '../components/venues/event-venue-options/venue-option-model.ts';
 import { EMPTY_VENUE_FORM, parseList, validateVenueForm } from '../components/venue-staff/venue-management/venue-form-rules.ts';
 import { canViewPath } from '../lib/auth.ts';
 
@@ -90,10 +90,16 @@ test('[SPM-72 AC3][AC5] venue option queries trim filters, de-duplicate required
   );
 });
 
-test('[SPM-74 TC3] the calendar opens on the event window in Singapore time', () => {
-  assert.deepEqual(eventCalendarCheck('2027-03-10T02:00:00Z', '2027-03-10T04:00:00Z'), { date: '2027-03-10', startTime: '10:00', endTime: '12:00' });
+test('[SPM-74 TC3][TC16] the calendar opens on the event window in Singapore time, across every day of a multi-day event', () => {
+  assert.deepEqual(eventCalendarCheck('2027-03-10T02:00:00Z', '2027-03-10T04:00:00Z'), { date: '2027-03-10', startTime: '10:00', endDate: '2027-03-10', endTime: '12:00' });
   // 23:30 SGT on 9 March is still the 9th in Singapore.
-  assert.deepEqual(eventCalendarCheck('2027-03-09T15:30:00Z', '2027-03-09T17:00:00Z'), { date: '2027-03-09', startTime: '23:30', endTime: '01:00' });
+  assert.deepEqual(eventCalendarCheck('2027-03-09T15:30:00Z', '2027-03-09T17:00:00Z'), { date: '2027-03-09', startTime: '23:30', endDate: '2027-03-10', endTime: '01:00' });
+  // A three-day event is checked from its first start to its last end.
+  const multiDay = eventCalendarCheck('2027-03-10T01:00:00Z', '2027-03-12T09:00:00Z');
+  assert.deepEqual(multiDay, { date: '2027-03-10', startTime: '09:00', endDate: '2027-03-12', endTime: '17:00' });
+  const params = new URLSearchParams(availabilityQuery({ date: '2027-03-08', days: 7, venueIds: [45], check: multiDay }));
+  assert.equal(params.get('checkStart'), '2027-03-10T09:00:00+08:00');
+  assert.equal(params.get('checkEnd'), '2027-03-12T17:00:00+08:00');
   assert.equal(eventCalendarCheck(null, '2027-03-10T04:00:00Z'), null);
 });
 
@@ -104,32 +110,10 @@ test('[SPM-72 AC8] a venue too small for the attendance cannot be selected', () 
   assert.equal(suggestionBlocker({ requirements: [] }), null);
 });
 
-test('[SPM-72 AC3][SPM-76 AC2] the list shows 10 venues by default and "Show more" adds a page or what is left', () => {
+test('[SPM-72 AC3][SPM-75 AC2] the list shows 10 venues by default and "Show more" adds a page or what is left', () => {
   assert.equal(DEFAULT_VENUE_PAGE_SIZE, 10);
   assert.equal(showMoreCount(10, 256, 10), 10);
   assert.equal(showMoreCount(50, 256, 50), 50);
   assert.equal(showMoreCount(250, 256, 10), 6);
   assert.equal(showMoreCount(256, 256, 10), 0);
-});
-
-test('[SPM-76 AC3] the organiser form sends only complete, valid requirements', () => {
-  const form = {
-    startDatetime: '2026-12-01T02:00:00.000Z',
-    endDatetime: '2026-12-01T04:00:00.000Z',
-    expectedAttendance: ' 150 ',
-    preferredLayoutType: 'THEATRE',
-    accessibilityNeeds: ['Hearing loop', ' ', 'x'.repeat(201)],
-  };
-  assert.deepEqual(requestVenueNeeds(form), {
-    startDatetime: form.startDatetime,
-    endDatetime: form.endDatetime,
-    expectedAttendance: 150,
-    preferredLayoutType: 'THEATRE',
-    accessibilityNeeds: ['Hearing loop'],
-  });
-  const incomplete = requestVenueNeeds({ ...form, endDatetime: '2026-12-01T01:00:00.000Z', expectedAttendance: '0', preferredLayoutType: 'NO_PREFERENCE' });
-  assert.equal(incomplete.startDatetime, null);
-  assert.equal(incomplete.endDatetime, null);
-  assert.equal(incomplete.expectedAttendance, null);
-  assert.equal(incomplete.preferredLayoutType, null);
 });

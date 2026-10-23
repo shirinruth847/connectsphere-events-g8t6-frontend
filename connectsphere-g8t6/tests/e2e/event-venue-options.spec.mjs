@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { installConnectSphereMocks, attachScreenshot, requirement, routeVenuePhotos, venueOption as venue } from "./support.mjs";
 
-// SPM-72/74: the venue section inside an event request. It opens on the
+// SPM-72/74/75: the venue section inside an event request. It opens on the
 // organiser's choices; "Find another venue" opens the search. Requirement
 // matching, availability and permissions come from the backend; these mocks
 // return the shapes GET /api/events/:id/venue-options and the suggestion route send.
@@ -134,7 +134,7 @@ test("[SPM-72 TC-VC-001][AC1] the section opens on the organiser's choices with 
   const first = choices(page).getByRole("article", { name: "Synthetic Grand Hall", exact: true });
   await expect(first.getByText("Organiser's choice 1")).toBeVisible();
   await expect(first.locator("img")).toBeVisible();
-  await expect(first.getByText("Capacity 300 · 30 min setup · 45 min turnaround")).toBeVisible();
+  await expect(first.getByText("Setup 30 · Turnaround 45 min")).toBeVisible();
   await expect(first.getByText("Available", { exact: true })).toBeVisible();
   const closed = choices(page).getByRole("article", { name: "Synthetic Closed Hall" });
   await expect(closed).toContainText("Organiser's choice 2");
@@ -194,7 +194,7 @@ test("[SPM-72 TC-VC-002][TC-VC-004][AC3][AC11] filters, required facilities and 
   await expect.poll(() => sent.options.at(-1)?.minCapacity).toBe("0");
 });
 
-test("[SPM-72 TC-VC-004][AC3] the list shows 10 venues, then pages by the chosen number", async ({ page }) => {
+test("[SPM-75 TC-VS-006][SPM-72 TC-VC-004][AC3] the list shows 10 venues, then pages by the chosen number", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const many = Array.from({ length: 23 }, (_, index) => venue({ venueId: 100 + index, name: `Synthetic Venue ${String(index + 1).padStart(2, "0")}`, coverPhotoId: null }));
   await routeVenueSection(page, { venueOptions: options({ venues: many }) });
@@ -324,7 +324,7 @@ test("[SPM-74 TC16][AC1] the calendar toggle sits right above the calendar, whic
   // Order: details panel, calendar toggle, calendar, then the venue list.
   const toggleBox = await page.getByRole("button", { name: "Hide availability calendar" }).boundingBox();
   const calendarBox = await calendar.boundingBox();
-  const listBox = await search(page).getByText("3 venues available").boundingBox();
+  const listBox = await page.getByRole("region", { name: "Venue list" }).boundingBox();
   expect(calendarBox.y).toBeGreaterThan(toggleBox.y + toggleBox.height - 1);
   expect(listBox.y).toBeGreaterThan(calendarBox.y + calendarBox.height - 1);
   await expect(page.getByLabel("Find a venue")).toHaveCount(0);
@@ -420,7 +420,7 @@ test("[SPM-72 TC-VC-014][AC11] a failed load offers a retry; unchecked details a
   await openSearch(page);
   await expect(page.getByText("Error loading venue details")).toBeVisible();
   await expect(card(page, "Synthetic Grand Hall").getByText("Layout: Error loading details")).toBeVisible();
-  await expect(card(page, "Synthetic Grand Hall").getByText("Error checking availability", { exact: true })).toBeVisible();
+  await expect(card(page, "Synthetic Grand Hall").getByText("Error checking availability", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Available", { exact: true })).toHaveCount(0);
 });
 
@@ -435,4 +435,59 @@ test("[SPM-72] the venue section works at mobile width", async ({ page }, testIn
   await expect(page.getByRole("region", { name: "Compare with" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await attachScreenshot(testInfo, page, "venue-section-mobile");
+});
+
+test("[SPM-75 TC-VS-005][SPM-72 AC3] six cards fit the list window at a glance and the rest scroll inside it", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const many = Array.from({ length: 12 }, (_, index) => venue({ venueId: 100 + index, name: `Synthetic Venue ${String(index + 1).padStart(2, "0")}`, coverPhotoId: null }));
+  await routeVenueSection(page, { venueOptions: options({ venues: many }) });
+  await page.goto("/events/42");
+  await openSearch(page);
+
+  const list = page.getByRole("region", { name: "Venue list" });
+  await expect(list.getByRole("article")).toHaveCount(10);
+  const box = await list.boundingBox();
+  expect(box.height).toBeLessThanOrEqual(832 + 1);
+  const cards = await list.getByRole("article").evaluateAll((items) => items.map((item) => item.getBoundingClientRect()).map(({ top, bottom }) => ({ top, bottom })));
+  for (const card of cards.slice(0, 6)) expect(card.bottom).toBeLessThanOrEqual(box.y + box.height + 1);
+  expect(cards[6].top).toBeGreaterThan(cards[0].top);
+  expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await list.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const more = await page.getByRole("button", { name: "Show more venues (2 more)" }).boundingBox();
+  expect(more.y + more.height).toBeLessThanOrEqual(box.y + box.height + 1);
+  await attachScreenshot(testInfo, page, "venue-list-window");
+});
+
+test("[SPM-75 TC-VS-001][AC1] the search and filter box is compact: search and capacity on one line, detail filters on the next", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeVenueSection(page);
+  await page.goto("/events/42");
+  await openSearch(page);
+
+  const box = await page.getByRole("search", { name: "Search and filter venues" }).boundingBox();
+  expect(box.height).toBeLessThan(140);
+  const searchBox = await page.getByLabel("Search", { exact: true }).boundingBox();
+  const capacityBox = await page.getByLabel("Minimum capacity").boundingBox();
+  expect(Math.abs(searchBox.y - capacityBox.y)).toBeLessThan(2);
+  await expect(page.getByLabel("Search", { exact: true })).toHaveAttribute("placeholder", "Search by venue name or location");
+});
+
+test("[SPM-74 TC16][SPM-72 AC6] the calendar checks every day of a multi-day event", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-03T10:00:00+08:00"));
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const sent = await routeVenueSection(page, { event: eventView({ startDatetime: "2026-11-20T01:00:00.000Z", endDatetime: "2026-11-22T09:00:00.000Z" }) });
+  await page.goto("/events/42");
+  await openSearch(page);
+
+  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "View details" }).click();
+  await page.getByRole("button", { name: "Show availability calendar" }).click();
+  await expect(page.getByRole("region", { name: "Venue availability calendar" })).toBeVisible();
+  await expect.poll(() => sent.availability.at(-1)).toEqual(expect.objectContaining({
+    checkStart: "2026-11-20T09:00:00+08:00",
+    checkEnd: "2026-11-22T17:00:00+08:00",
+  }));
+  await expect(page.getByLabel("End date")).toHaveValue("2026-11-22");
 });

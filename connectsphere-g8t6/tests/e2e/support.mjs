@@ -123,8 +123,6 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
     if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
-    // SPM-76: the venue step of the request form lists venue options.
-    if (pathname === "/api/venues/options") return json(state.requestVenueOptions ?? { venues: [], detailsAvailable: true, availabilityChecked: true, filtersNotChecked: [] });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 
     if (pathname === "/api/events/mine" && method === "GET") {
@@ -238,7 +236,7 @@ export async function installLoginMock(page, { role = "ORGANISER", invalid = fal
 }
 export { expect };
 
-// SPM-72/74/76: one venue option as the venue-options routes return it.
+// SPM-72/74: one venue option as the venue-options routes return it.
 export const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005050201a5d9ad9c0000000049454e44ae426082", "hex");
 
 export const requirement = (key, label, status, detail) => ({ key, label, status, detail });
