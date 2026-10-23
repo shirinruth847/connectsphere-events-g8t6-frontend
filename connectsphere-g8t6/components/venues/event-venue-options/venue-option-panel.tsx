@@ -28,7 +28,7 @@ interface VenueOptionPanelProps {
   action?: ReactNode;
 }
 
-// One venue's details, read-only (SPM-72 AC4, SPM-76 AC4). Two of these sit
+// One venue's details, read-only (SPM-72 AC4). Two of these sit
 // side by side when venues are compared (SPM-72 AC7).
 export function VenueOptionPanel({ label, venue, venues, onChoose, onClose, badge, action }: VenueOptionPanelProps) {
   const selectId = `venue-panel-${label.replace(/\W+/g, "-").toLowerCase()}`;

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { AlertBanner, Button, EmptyState, FormLabel, Skeleton, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, EmptyState, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { VenueAvailabilityCalendar } from "@/components/venues/venue-availability";
-import { VENUE_OPTION_SORT_OPTIONS, type VenueOptionSort } from "@/components/venues/venue-queries";
+import { VENUE_OPTION_SORT_OPTIONS, type AvailabilityParams, type VenueOptionSort } from "@/components/venues/venue-queries";
 import { ApiError } from "@/lib/api";
 import type { EventVenueOption, VenueOptionsQuery, VenueOptionsResult } from "@/lib/api/event-venues";
 import { VenueOptionCard } from "./venue-option-card";
@@ -18,25 +18,28 @@ type OptionsState<T> =
   | { status: "error"; message: string; fields?: Record<string, string> };
 
 type Filters = Required<Pick<VenueOptionsQuery, "search" | "minCapacity" | "layout" | "facility" | "accessibility" | "requiredFacilities">>;
+type FilterField = { key: keyof Filters; label: string; placeholder: string; inputMode?: "numeric" };
 
 const EMPTY_FILTERS: Filters = { search: "", minCapacity: "", layout: "", facility: "", accessibility: "", requiredFacilities: "" };
-const FILTER_FIELDS: { key: keyof Filters; label: string; placeholder: string; inputMode?: "numeric" }[] = [
-  { key: "search", label: "Search", placeholder: "Venue name or location" },
-  { key: "minCapacity", label: "Minimum capacity", placeholder: "e.g. 100", inputMode: "numeric" },
-  { key: "layout", label: "Layout", placeholder: "e.g. Theater" },
-  { key: "facility", label: "Facility", placeholder: "e.g. Projector" },
-  { key: "accessibility", label: "Accessibility", placeholder: "e.g. Step-free" },
-  { key: "requiredFacilities", label: "Required facilities", placeholder: "e.g. Projector, Stage" },
+// Search and capacity share the first line; the detail filters the second.
+const SEARCH_FIELD: FilterField = { key: "search", label: "Search", placeholder: "Search by venue name or location" };
+const CAPACITY_FIELD: FilterField = { key: "minCapacity", label: "Minimum capacity", placeholder: "Min. capacity", inputMode: "numeric" };
+const DETAIL_FIELDS: FilterField[] = [
+  { key: "layout", label: "Layout", placeholder: "Layout" },
+  { key: "facility", label: "Facility", placeholder: "Has facility" },
+  { key: "accessibility", label: "Accessibility", placeholder: "Accessibility" },
+  { key: "requiredFacilities", label: "Required facilities", placeholder: "Rank by facilities" },
 ];
+// The shared field style without its full width, for the toolbar selects.
+const compactSelect = `${fieldClasses.replace("w-full", "w-auto")} py-2`;
 
 export interface VenueCalendarWindow {
   date: Date;
-  check: { date: string; startTime: string; endTime: string } | null;
+  check: AvailabilityParams["check"];
 }
 
 interface VenueBrowserProps<T extends VenueOptionsResult> {
-  // Loads the venues for the applied filters. Called again when reloadKey
-  // changes, e.g. when the organiser edits the date or attendance.
+  // Loads the venues for the applied filters; called again when reloadKey changes.
   load: (query: VenueOptionsQuery) => Promise<T>;
   reloadKey: string;
   // Every load's result, e.g. for the coordinator's "can select" permission.
@@ -48,9 +51,9 @@ interface VenueBrowserProps<T extends VenueOptionsResult> {
 }
 
 // Search, filter, sort, view, compare and (coordinator) check the calendar
-// for the available venues (SPM-72/74/76). Requirement matching comes from the
-// backend. No <form>: it sits inside the organiser's request form, so Enter
-// in a filter applies the filters instead of submitting the request.
+// for the available venues (SPM-72/74/75). Requirement matching comes from
+// the backend. The cards scroll inside a window two rows of three tall, so the
+// page stays short (developer request of 23 October 2026).
 export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, onLoaded, calendar, badge, action }: VenueBrowserProps<T>) {
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
@@ -116,67 +119,87 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
   const comparing = venueById(venues, compareId);
   const calendarVenueIds = [viewing?.venueId, compareOpen ? comparing?.venueId : undefined].filter((id): id is number => id !== undefined);
   const more = showMoreCount(shown, venues.length, pageSize);
+  const fieldErrors = state.status === "error" ? state.fields : undefined;
   const scrollToPanels = () => panelsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // Labels are visually hidden (each placeholder says what its box is for) so
+  // the box stays two lines tall.
+  const input = (field: FilterField, className: string) => (
+    <div key={field.key} className={className}>
+      <label htmlFor={`venue-option-${field.key}`} className="sr-only">{field.label}</label>
+      <input
+        id={`venue-option-${field.key}`}
+        className={`${fieldClasses} py-2`}
+        value={draft[field.key]}
+        placeholder={field.placeholder}
+        title={field.label}
+        inputMode={field.inputMode}
+        aria-invalid={Boolean(fieldErrors?.[field.key])}
+        onKeyDown={applyOnEnter}
+        onChange={(changeEvent) => setDraft((current) => ({ ...current, [field.key]: changeEvent.target.value }))}
+      />
+    </div>
+  );
 
   // minmax(0, 1fr) tracks keep long venue names from widening the page; the
   // container queries fit three cards per row wherever the browser is placed.
   return (
-    <section aria-label="Venue search" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-      <div role="search" aria-label="Search and filter venues" className="grid gap-3 rounded-panel bg-surface-container-low p-4 @lg:grid-cols-2 @2xl:grid-cols-3">
-        {FILTER_FIELDS.map((field) => (
-          <div key={field.key} className="min-w-0">
-            <FormLabel htmlFor={`venue-option-${field.key}`}>{field.label}</FormLabel>
-            <input
-              id={`venue-option-${field.key}`}
-              className={fieldClasses}
-              value={draft[field.key]}
-              placeholder={field.placeholder}
-              inputMode={field.inputMode}
-              onKeyDown={applyOnEnter}
-              onChange={(changeEvent) => setDraft((current) => ({ ...current, [field.key]: changeEvent.target.value }))}
-            />
-            {state.status === "error" && state.fields?.[field.key] ? <p className="mt-1 text-xs text-error">{state.fields[field.key]}</p> : null}
-          </div>
-        ))}
-        <div className="flex flex-wrap items-end gap-2 @lg:col-span-2 @2xl:col-span-3">
-          <Button type="button" onClick={apply}><Icon name="check" size={16} />Apply filters</Button>
-          <Button type="button" variant="quiet" onClick={clear} disabled={!filtered && !Object.values(draft).some((value) => value.trim())}>Clear filters</Button>
-          <div className="ml-auto flex flex-wrap items-end gap-2">
-            <div>
-              <FormLabel htmlFor="venue-option-sort">Sort by</FormLabel>
-              <select id="venue-option-sort" className={fieldClasses} value={sort} onChange={(changeEvent) => reload({ sort: changeEvent.target.value as VenueOptionSort })}>
-                {VENUE_OPTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </div>
-            <SortOrderToggle order={order} onChange={(next) => reload({ order: next })} />
-            <div>
-              <FormLabel htmlFor="venue-option-page-size">Show</FormLabel>
-              <select
-                id="venue-option-page-size"
-                className={fieldClasses}
-                value={pageSize}
-                onChange={(changeEvent) => {
-                  const size = Number(changeEvent.target.value) as VenuePageSize;
-                  setPageSize(size);
-                  setShown(size);
-                }}
-              >
-                {VENUE_PAGE_SIZES.map((size) => <option key={size} value={size}>{size} venues</option>)}
-              </select>
-            </div>
+    <section aria-label="Venue search" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
+      <div role="search" aria-label="Search and filter venues" className="grid gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-3">
+        <div className="flex flex-wrap gap-2">
+          {input(SEARCH_FIELD, "min-w-0 flex-[3_1_14rem]")}
+          {input(CAPACITY_FIELD, "min-w-0 flex-[1_1_8rem]")}
+          <div className="flex gap-2">
+            <Button type="button" onClick={apply}><Icon name="check" size={16} />Apply filters</Button>
+            <Button type="button" variant="quiet" onClick={clear} disabled={!filtered && !Object.values(draft).some((value) => value.trim())}>Clear filters</Button>
           </div>
         </div>
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-2 @md:grid-cols-2 @xl:grid-cols-4">
+          {DETAIL_FIELDS.map((field) => input(field, "min-w-0"))}
+        </div>
+        {fieldErrors ? <p className="text-xs text-error" role="alert">{Object.values(fieldErrors).join(" ")}</p> : null}
       </div>
 
-      {state.status === "ready" && venues.length ? (
-        <div className="grid min-w-0 scroll-mt-4 grid-cols-[minmax(0,1fr)] gap-4" ref={panelsRef}>
-          <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-on-surface-variant" aria-live="polite">
+          {state.status === "ready" && venues.length ? (
+            <>
+              {venues.length} {venues.length === 1 ? "venue" : "venues"}{filtered ? " match your filters" : " available"}
+              {((met) => ` · ${met} ${met === 1 ? "meets" : "meet"} every requirement`)(venues.filter((venue) => venue.allRequirementsMet).length)}
+            </>
+          ) : null}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="venue-option-sort" className="text-xs font-semibold text-on-surface-variant">Sort by</label>
+          <select id="venue-option-sort" className={compactSelect} value={sort} onChange={(changeEvent) => reload({ sort: changeEvent.target.value as VenueOptionSort })}>
+            {VENUE_OPTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <SortOrderToggle order={order} onChange={(next) => reload({ order: next })} />
+          <label htmlFor="venue-option-page-size" className="text-xs font-semibold text-on-surface-variant">Show</label>
+          <select
+            id="venue-option-page-size"
+            className={compactSelect}
+            value={pageSize}
+            onChange={(changeEvent) => {
+              const size = Number(changeEvent.target.value) as VenuePageSize;
+              setPageSize(size);
+              setShown(size);
+            }}
+          >
+            {VENUE_PAGE_SIZES.map((size) => <option key={size} value={size}>{size} venues</option>)}
+          </select>
+          {state.status === "ready" && venues.length ? (
             <Button type="button" variant="secondary" aria-pressed={compareOpen} onClick={() => { setCompareOpen((open) => !open); if (compareOpen) setCompareId(null); }}>
               <Icon name="layout" size={16} />{compareOpen ? "Hide comparison view" : "Show comparison view"}
             </Button>
-          </div>
+          ) : null}
+        </div>
+      </div>
+
+      {state.status === "ready" && venues.length && (viewing || compareOpen) ? (
+        <div className="grid min-w-0 scroll-mt-4 grid-cols-[minmax(0,1fr)] gap-3" ref={panelsRef}>
           {viewing || compareOpen ? (
-            <div className={`grid items-start gap-4 grid-cols-[minmax(0,1fr)] ${compareOpen ? "@2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" : ""}`}>
+            <div className={`grid items-start gap-3 grid-cols-[minmax(0,1fr)] ${compareOpen ? "@2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" : ""}`}>
               <VenueOptionPanel
                 label="Venue details"
                 venue={viewing}
@@ -199,14 +222,14 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
               ) : null}
             </div>
           ) : null}
-          {calendar ? (
+          {calendar && calendarVenueIds.length ? (
             <div className="grid min-w-0 gap-3">
               <div>
-                <Button type="button" variant="secondary" aria-pressed={calendarOpen} disabled={!calendarVenueIds.length} onClick={() => setCalendarOpen((open) => !open)}>
+                <Button type="button" variant="secondary" aria-pressed={calendarOpen} onClick={() => setCalendarOpen((open) => !open)}>
                   <Icon name="calendar" size={16} />{calendarOpen ? "Hide availability calendar" : "Show availability calendar"}
                 </Button>
               </div>
-              {calendarOpen && calendarVenueIds.length ? (
+              {calendarOpen ? (
                 <div className="min-w-0 overflow-x-auto">
                   <VenueAvailabilityCalendar key={calendarVenueIds.join(",")} fixed={{ venueIds: calendarVenueIds, date: calendar.date, check: calendar.check }} />
                 </div>
@@ -217,10 +240,10 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
       ) : null}
 
       {state.status === "loading" ? (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @lg:grid-cols-2 @2xl:grid-cols-3" aria-busy="true" aria-label="Loading venues">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-64 w-full" />
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 @lg:grid-cols-2 @2xl:grid-cols-3" aria-busy="true" aria-label="Loading venues">
+          <Skeleton className="h-72 w-full" />
+          <Skeleton className="h-72 w-full" />
+          <Skeleton className="h-72 w-full" />
         </div>
       ) : null}
 
@@ -248,15 +271,17 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
             filtered ? (
               <EmptyState title="No venues match these filters" description="Try a different search or clear the filters to see every available venue." action={<Button type="button" variant="secondary" onClick={clear}>Clear filters</Button>} />
             ) : (
-              <EmptyState title="No venues are currently available" description="There are no available venues to consider at this time." />
+              <EmptyState title="No venues are currently available" description="There are no available venues to consider for this event at this time." />
             )
           ) : (
-            <>
-              <p className="text-sm text-on-surface-variant" aria-live="polite">
-                {venues.length} {venues.length === 1 ? "venue" : "venues"}{filtered ? " match your filters" : " available"}
-                {((met) => ` · ${met} ${met === 1 ? "meets" : "meet"} every requirement`)(venues.filter((venue) => venue.allRequirementsMet).length)}
-              </p>
-              <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @lg:grid-cols-2 @2xl:grid-cols-3">
+            // A fixed window two rows of three cards tall; the cards scroll inside it.
+            <div
+              role="region"
+              aria-label="Venue list"
+              tabIndex={0}
+              className="max-h-[min(52rem,85vh)] overflow-y-auto overscroll-contain rounded-panel border border-outline-variant bg-surface-container-low p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 @lg:grid-cols-2 @2xl:grid-cols-3">
                 {venues.slice(0, shown).map((venue) => (
                   <VenueOptionCard
                     key={venue.venueId}
@@ -272,11 +297,11 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                 ))}
               </div>
               {more ? (
-                <div className="flex justify-center">
+                <div className="mt-3 flex justify-center">
                   <Button type="button" variant="secondary" onClick={() => setShown((value) => value + pageSize)}>Show more venues ({more} more)</Button>
                 </div>
               ) : null}
-            </>
+            </div>
           )}
         </>
       ) : null}

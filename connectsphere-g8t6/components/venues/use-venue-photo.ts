@@ -11,8 +11,7 @@ type Loaded = { key: string; url: string | null };
 // A blob URL for one gallery photo, revoked when the photo changes or the
 // component unmounts. `version` refetches after the image is replaced; null
 // means there is no photo to show. `selectable` reads the photo through the
-// read-only route for people choosing a venue (organisers, coordinators and
-// Leads, SPM-72/74/76) instead of the Venue Staff gallery route.
+// read-only route for coordinators and Leads choosing a venue (SPM-72/74) instead of the Venue Staff gallery route.
 export function useVenuePhoto(venueId: number, photoId: string | null | undefined, version = 0, selectable = false): PhotoSource | null {
   const key = photoId ? `${selectable ? "options" : "staff"}:${venueId}:${photoId}:${version}` : null;
   const [loaded, setLoaded] = useState<Loaded | null>(null);

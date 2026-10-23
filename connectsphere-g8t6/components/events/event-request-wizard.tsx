@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertBanner, Button, FormLabel, SectionCard, fieldClasses } from "@/components/shared/primitives";
@@ -8,7 +8,6 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { useNavigationGuard } from "@/components/shared/navigation-guard";
 import { SESSION_EXPIRED } from "@/lib/session";
-import { VenuePreferencePicker } from "@/components/venues/event-venue-options/venue-preference-picker";
 import { ACCESSIBILITY_OPTIONS, validateEventStep, fieldStep, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, eventStatusLabel, isDraftEvent, toPayload } from "@/lib/events";
 
 const steps = [
@@ -30,7 +29,7 @@ const stepDescriptions = [
 const guidance = [
   { title: "Event identity & purpose", body: "A clear title and concise event scope help your coordinator understand the request. The title is the only field required to save a draft." },
   { title: "Attendance & scheduling", body: "Submit at least 48 hours before the proposed start. Your end time must follow the start time; attendance is used during coordinator review." },
-  { title: "Venue coordination", body: "Browse, filter and compare the available venues, then choose your ideal venue and any alternatives in order. Choices do not reserve or hold a venue." },
+  { title: "Venue coordination", body: "Choose venue preferences and a supported layout. Preferences do not reserve or hold a venue." },
   { title: "Accessibility planning", body: "Share the access arrangements your attendees need. The event team can follow up if more detail is required." },
   { title: "Equipment planning", body: "Equipment requests are managed separately. Any requirements already saved with this draft are preserved." },
   { title: "Registration", body: "You can enable registration and set a capacity. Access controls and waitlists are not supported by this request API." },
@@ -53,7 +52,6 @@ export function EventRequestWizard() {
   const [notice, setNotice] = useState("");
   const [options, setOptions] = useState<{ venues: Array<{venueId: number; name: string}>; layouts: string[] }>({ venues: [], layouts: ["NO_PREFERENCE"] });
   const [optionsError, setOptionsError] = useState("");
-  const venueNames = useMemo(() => new Map(options.venues.map((venue) => [venue.venueId, venue.name])), [options.venues]);
   const valuesRef = useRef(values); const idRef = useRef<number | null>(initialId);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const changedRef = useRef(false); const revision = useRef(0);
@@ -330,9 +328,11 @@ export function EventRequestWizard() {
             </div>}
             {step === 2 && <div className="space-y-4">
               {optionsError && <AlertBanner tone="warning">{optionsError}</AlertBanner>}
-              <div><FormLabel htmlFor="layout" required>Preferred Seating &amp; Room Geometry</FormLabel><select id="layout" {...errorProps("preferredLayoutType")} value={values.preferredLayoutType} onChange={e => update("preferredLayoutType", e.target.value)} className={fieldClasses}>{[...new Set([...options.layouts, values.preferredLayoutType])].map(layout => <option key={layout} value={layout}>{layout === "NO_PREFERENCE" ? "No preference" : layout.replaceAll("_", " ")}</option>)}</select>{field("preferredLayoutType")}</div>
+              <p className="text-sm text-on-surface-variant">Choose up to 20 venues in order of preference. This does not make a booking or hold.</p>
+              {options.venues.map(venue => <label key={venue.venueId} className="flex items-center gap-3 rounded-control border p-3"><input type="checkbox" checked={values.venuePreferences.includes(venue.venueId)} disabled={!values.venuePreferences.includes(venue.venueId) && values.venuePreferences.length >= 20} onChange={e => update("venuePreferences", e.target.checked ? [...values.venuePreferences, venue.venueId] : values.venuePreferences.filter(id => id !== venue.venueId))} />{venue.name}{values.venuePreferences.includes(venue.venueId) && <span>Preference {values.venuePreferences.indexOf(venue.venueId) + 1}</span>}</label>)}
+              {!options.venues.length && !optionsError && <p>No venues are currently listed. You may submit with no venue preference.</p>}
               {field("venuePreferences")}
-              <VenuePreferencePicker values={values} knownNames={venueNames} onChange={ids => update("venuePreferences", ids)} />
+              <div><FormLabel htmlFor="layout" required>Preferred Seating &amp; Room Geometry</FormLabel><select id="layout" {...errorProps("preferredLayoutType")} value={values.preferredLayoutType} onChange={e => update("preferredLayoutType", e.target.value)} className={fieldClasses}>{[...new Set([...options.layouts, values.preferredLayoutType])].map(layout => <option key={layout} value={layout}>{layout === "NO_PREFERENCE" ? "No preference" : layout.replaceAll("_", " ")}</option>)}</select>{field("preferredLayoutType")}</div>
             </div>}
             {step === 3 && <div className="space-y-5">{field("accessibilityNeeds")}<div><p className="mb-3 text-[13px] font-semibold text-on-surface">Access and accommodation requirements</p><div className="grid gap-2 sm:grid-cols-2">{ACCESSIBILITY_OPTIONS.map((option) => <label key={option} className="flex min-h-12 items-start gap-3 rounded-control border border-[#e2e5f1] bg-white p-3 text-[13px] leading-5 text-on-surface"><input type="checkbox" className="mt-1 size-4 accent-primary" checked={values.accessibilityNeeds.includes(option)} onChange={(e) => update("accessibilityNeeds", e.target.checked ? [...values.accessibilityNeeds, option] : values.accessibilityNeeds.filter((item) => item !== option))} />{option}</label>)}</div></div><div><FormLabel htmlFor="accessibilityNotes">Other accessibility notes</FormLabel><textarea id="accessibilityNotes" {...errorProps("accessibilityNotes")} maxLength={4000} rows={4} value={values.accessibilityNotes} onChange={(e) => update("accessibilityNotes", e.target.value)} className={`${fieldClasses} resize-y`} placeholder="Describe other access requirements." />{field("accessibilityNotes")}<p className="mt-1 text-xs text-on-surface-variant">Up to 200 characters per note.</p></div></div>}
             {step === 4 && <div className="space-y-4">{field("equipmentRequirements")}<AlertBanner tone="info" title="Equipment requests">Equipment requests are handled separately. Existing saved equipment requirements will be preserved.</AlertBanner><div className="rounded-control border border-[#e2e5f1] bg-surface-container-low p-4"><p className="text-sm font-semibold text-on-surface">Technical requirements</p><p className="mt-1 text-sm leading-relaxed text-on-surface-variant">Your event coordinator can follow up about AV, staging, and other equipment needs once the request is under review.</p></div></div>}

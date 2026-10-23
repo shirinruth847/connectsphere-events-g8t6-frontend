@@ -161,7 +161,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
   const [viewMode, setViewMode] = useState<CalendarViewMode>(fixed ? "week" : "month");
   const [currentDate, setCurrentDate] = useState(() => fixed?.date ?? calendarDate(new Date()));
   const [checkOn, setCheckOn] = useState(Boolean(fixed?.check));
-  const [checkDraft, setCheckDraft] = useState(() => fixed?.check ?? { date: civilDate(calendarDate(new Date())), startTime: "10:00", endTime: "12:00" });
+  const [checkDraft, setCheckDraft] = useState(() => fixed?.check ?? { date: civilDate(calendarDate(new Date())), startTime: "10:00", endDate: "", endTime: "12:00" });
   const [check, setCheck] = useState<AvailabilityParams["check"]>(fixed?.check ?? null);
   const [state, setState] = useState<CalendarState>({ status: "idle" });
   const [attempt, setAttempt] = useState(0);
@@ -238,7 +238,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
           </label>
           {checkOn ? (
             <>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div>
                   <FormLabel htmlFor="check-date">Date</FormLabel>
                   <input id="check-date" type="date" className={fieldClasses} value={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, date: event.target.value })} />
@@ -246,6 +246,10 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
                 <div>
                   <FormLabel htmlFor="check-start">Start</FormLabel>
                   <input id="check-start" type="time" className={fieldClasses} value={checkDraft.startTime} onChange={(event) => setCheckDraft({ ...checkDraft, startTime: event.target.value })} />
+                </div>
+                <div>
+                  <FormLabel htmlFor="check-end-date">End date</FormLabel>
+                  <input id="check-end-date" type="date" className={fieldClasses} value={checkDraft.endDate ?? ""} min={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, endDate: event.target.value })} />
                 </div>
                 <div>
                   <FormLabel htmlFor="check-end">End</FormLabel>

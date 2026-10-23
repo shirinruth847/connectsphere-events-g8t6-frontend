@@ -16,19 +16,27 @@ export const requirementStatusWord = (requirement: VenueRequirement) => {
   if (requirement.status === "UNMET") return "Not met";
   return requirement.key === "availability" ? "Not checked" : "Error loading details";
 };
-const chipText = (requirement: VenueRequirement) =>
-  requirement.status === "NOT_CHECKED" && requirement.key !== "availability" ? requirementStatusWord(requirement) : requirement.detail;
+// Short chip text so a card stays compact: "Capacity" and "Availability"
+// say themselves; a layout, accessibility or facility shows the need itself.
+// The full "label: detail (status)" is the tooltip and what screen readers hear.
+const chipText = (requirement: VenueRequirement) => {
+  if (requirement.status === "NOT_CHECKED") {
+    return requirement.key === "availability" ? requirement.detail : `${requirement.label}: ${requirementStatusWord(requirement)}`;
+  }
+  return requirement.key === "capacity" || requirement.key === "availability" ? requirement.label : requirement.detail;
+};
 
 export function RequirementChip({ requirement }: { requirement: VenueRequirement }) {
   const met = requirement.status === "MET";
+  const full = `${requirement.label}: ${requirement.detail} (${requirementStatusWord(requirement)})`;
   return (
     <li
-      className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-chip border px-2 py-1 text-xs font-medium ${REQUIREMENT_STYLES[requirement.status]}`}
-      title={requirement.detail}
+      className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-chip border px-1.5 py-0.5 text-[11px] font-medium ${REQUIREMENT_STYLES[requirement.status]}`}
+      title={full}
     >
       <Icon name={met ? "check" : requirement.status === "NOT_CHECKED" ? "info" : "close"} size={16} />
-      <span className="truncate">{requirement.label}: {chipText(requirement)}</span>
-      <span className="sr-only">({requirementStatusWord(requirement)})</span>
+      <span aria-hidden="true" className="truncate">{chipText(requirement)}</span>
+      <span className="sr-only">{full}</span>
     </li>
   );
 }

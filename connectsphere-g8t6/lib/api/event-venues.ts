@@ -1,6 +1,6 @@
-// SPM-72/74/76: choosing a venue. Field names, codes and statuses are the
-// backend's (GET /api/events/:id/venue-options, GET /api/venues/options, the
-// photo routes under /api/venues/options and PUT /api/events/:id/venue-suggestion);
+// SPM-72/74/75: choosing a venue. Field names, codes and statuses are the
+// backend's (GET /api/events/:id/venue-options, the photo routes under
+// /api/venues/options and PUT /api/events/:id/venue-suggestion);
 // do not rename them here.
 import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
@@ -11,7 +11,7 @@ import type { VenueSuggestion } from "@/lib/api/event-workspace";
 export type { VenueOptionsQuery };
 
 // MET is shown light green and anything else light grey; NOT_CHECKED means the
-// detail service could not be read (or, for availability, no date yet), never
+// detail service could not be read (or, for availability, the event has no dates), never
 // that the venue fails.
 export type RequirementStatus = "MET" | "UNMET" | "NOT_CHECKED";
 
@@ -37,7 +37,6 @@ export interface VenueOptionAvailability {
   label: string;
   occupiedStart: string | null;
   occupiedEnd: string | null;
-  // Always empty for organisers: other events' bookings stay private.
   conflicts: VenueConflict[];
   operatingHoursWarning: { message: string } | null;
 }
@@ -83,33 +82,7 @@ export interface EventVenueOptions extends VenueOptionsResult {
 export const getEventVenueOptions = (eventId: number, query: VenueOptionsQuery = {}) =>
   apiRequest<EventVenueOptions>(`/events/${eventId}/venue-options${venueOptionsQuery(query)}`);
 
-// What an organiser's unsaved request asks for (SPM-76). Values the form does
-// not hold yet are left out, and the venues are not checked against them.
-export interface RequestVenueNeeds {
-  startDatetime?: string | null;
-  endDatetime?: string | null;
-  expectedAttendance?: number | null;
-  preferredLayoutType?: string | null;
-  accessibilityNeeds?: string[];
-}
-
-export const requestVenueOptionsQuery = (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}) => {
-  const params = new URLSearchParams(venueOptionsQuery(query).replace(/^\?/, ""));
-  if (needs.startDatetime && needs.endDatetime) {
-    params.set("startDatetime", needs.startDatetime);
-    params.set("endDatetime", needs.endDatetime);
-  }
-  if (needs.expectedAttendance) params.set("expectedAttendance", String(needs.expectedAttendance));
-  if (needs.preferredLayoutType) params.set("preferredLayoutType", needs.preferredLayoutType);
-  for (const need of needs.accessibilityNeeds ?? []) params.append("accessibilityNeeds", need);
-  const text = params.toString();
-  return text ? `?${text}` : "";
-};
-
-export const getRequestVenueOptions = (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}) =>
-  apiRequest<VenueOptionsResult>(`/venues/options${requestVenueOptionsQuery(needs, query)}`);
-
-// Read-only photos of an available venue, for organisers, coordinators and Leads.
+// Read-only photos of an available venue, for coordinators and Leads.
 export const listSelectableVenuePhotos = (venueId: number) =>
   apiRequest<{ photos: VenuePhoto[] }>(`/venues/options/${venueId}/photos`);
 

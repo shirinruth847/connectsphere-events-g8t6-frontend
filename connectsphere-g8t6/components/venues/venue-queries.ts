@@ -32,7 +32,9 @@ export interface AvailabilityParams {
   days: number;
   venueIds: number[];
   // An optional period to check, in the same day/time inputs the form uses.
-  check?: { date: string; startTime: string; endTime: string } | null;
+  // endDate (optional) lets the period span several days: a multi-day event
+  // occupies the venue as one block, nights included (Master 5.4.1).
+  check?: { date: string; startTime: string; endTime: string; endDate?: string } | null;
 }
 
 const SGT_OFFSET = "+08:00";
@@ -119,8 +121,11 @@ export const availabilityQuery = ({ date, days, venueIds, check }: AvailabilityP
   if (venueIds.length) params.set("venueId", venueIds.join(","));
   if (check && DATE.test(check.date) && TIME.test(check.startTime) && TIME.test(check.endTime)) {
     params.set("checkStart", sgtInstant(check.date, check.startTime));
-    // An end time at or before the start time ends on the next day.
-    const endDate = check.endTime <= check.startTime ? addDays(check.date, 1) : check.date;
+    // A later end date ends the period that day; otherwise an end time at or
+    // before the start time ends on the next day.
+    const endDate = check.endDate && DATE.test(check.endDate) && check.endDate > check.date
+      ? check.endDate
+      : check.endTime <= check.startTime ? addDays(check.date, 1) : check.date;
     params.set("checkEnd", sgtInstant(endDate, check.endTime));
   }
   return `?${params.toString()}`;

@@ -147,7 +147,7 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
       <section aria-label="Organiser's venue choices" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
         <h3 className="text-sm font-semibold text-on-surface">Organiser&apos;s venue choices</h3>
         {choices.status === "loading" ? (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @lg:grid-cols-2 @2xl:grid-cols-3" aria-busy="true" aria-label="Loading venues">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 @lg:grid-cols-2 @2xl:grid-cols-3" aria-busy="true" aria-label="Loading venues">
             <Skeleton className="h-64 w-full" />
             <Skeleton className="h-64 w-full" />
             <Skeleton className="h-64 w-full" />
@@ -174,7 +174,7 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
                 action={action(viewing, "panel")}
               />
             ) : null}
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @lg:grid-cols-2 @2xl:grid-cols-3">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 @lg:grid-cols-2 @2xl:grid-cols-3">
               {preferred.map((choice) => choice.option ? (
                 <VenueOptionCard
                   key={choice.venueId}
