@@ -191,14 +191,17 @@ of the five latest notifications; **See more** and the attendee sidebar's
   `GET /api/events/discovery/:id`, unchanged from SPM-34. From My Events, a
   notification or Go to Event it reads `GET /api/registrations/mine/:eventId`
   (`lib/api/my-events.ts`), which returns events the attendee is registered or
-  waitlisted for in any status, with `attendeeStatus`, `detailsWithheld` and
-  `myRegistration`. Until it reads SPM-173's confirmation snapshot, a
-  cancelled event, or one being reconfirmed or not published, shows only its
-  title, status and a short notice that states only what is known ("This
-  event has been cancelled" or "This event's details are being confirmed"),
-  without promising a notification (`TODO(SPM-163)`/`TODO(SPM-173)` mark the
-  follow-ups). The attendee's own place reads "On the waitlist", since
-  "Waitlisted" is Event Discovery's word for a full event.
+  waitlisted for in any status, with `attendeeStatus`, `detailsWithheld`,
+  `lastConfirmedAt` and `myRegistration`. An event being reconfirmed or
+  cancelled after a confirmation shows its last confirmed details (SPM-173's
+  confirmation snapshot, Master 5.7) under a notice saying when they were
+  confirmed (`LastConfirmedNotice`). Without such a confirmation, or when not
+  published, it shows only its title, status and a short notice. Both notices
+  state only what is known ("This event has been cancelled" or "This event's
+  details are being confirmed"), without promising a notification
+  (`TODO(SPM-163)` marks the offer follow-up). The attendee's own place reads
+  "On the waitlist", since "Waitlisted" is Event Discovery's word for a full
+  event.
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
   notification shows the offer expiry, and the dialog keeps a footer slot.
 
@@ -218,9 +221,11 @@ The dialog is a summary; its **View Event Details** link opens the full page at
 - Same data and rules as the dialog: `from=discovery` reads the discovery
   endpoint, `from=my-events` the registration endpoint, and a direct link or
   login return tries the registration endpoint first, then discovery if the
-  attendee holds no place (`eventDetailsSource`). Withheld events
-  (cancelled or being reconfirmed) show only title, status, explanation and
-  your place; sign-up actions stay disabled; times are in SGT.
+  attendee holds no place (`eventDetailsSource`). Events shown as last
+  confirmed have the notice, your place, description, schedule and venue,
+  without the "Not available yet" sections; withheld events show only title,
+  status, explanation and your place; sign-up actions stay disabled; times
+  are in SGT.
 - **Design-system deviation (product decision):** every section of the frame
   is shown even without data: event photo, track, seat numbers, speakers,
   session agenda and on-site amenities each show a neutral "Not available
