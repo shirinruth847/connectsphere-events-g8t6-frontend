@@ -10,10 +10,12 @@ export async function currentUser(): Promise<SessionUser | null> {
   if (error) throw error;
   if (!data.session) return null;
   const response = await fetch(`${getBackendBaseUrl()}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${data.session.access_token}`, Accept: "application/json" }, cache: "no-store",
+    headers: { Authorization: `Bearer ${data.session.access_token}`, Accept: "application/json" },
+    cache: "no-store",
   });
   if (response.status === 401 || response.status === 403) {
-    await client.auth.signOut({ scope: "local" }); return null;
+    await client.auth.signOut({ scope: "local" });
+    return null;
   }
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || "Could not verify your account.");
@@ -28,10 +30,13 @@ export async function signOut() {
     if (data.session) {
       try {
         const response = await fetch(`${getBackendBaseUrl()}/api/auth/logout`, {
-          method: "POST", headers: { Authorization: `Bearer ${data.session.access_token}` },
+          method: "POST",
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
         });
         revoked = response.ok;
-      } catch { /* Use Supabase revocation if Express is unavailable. */ }
+      } catch {
+        // Use Supabase revocation if Express is unavailable.
+      }
     }
     if (!revoked) {
       const result = await client.auth.signOut({ scope: "global" });
