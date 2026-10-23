@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { availabilityQuery, catalogueQuery, managedVenueQuery } from '../components/venues/venue-queries.ts';
+import { availabilityQuery, catalogueQuery, managedVenueQuery, venueOptionsQuery } from '../components/venues/venue-queries.ts';
+import { eventCalendarCheck, suggestionBlocker } from '../components/venues/event-venue-options/venue-option-model.ts';
 import { EMPTY_VENUE_FORM, parseList, validateVenueForm } from '../components/venue-staff/venue-management/venue-form-rules.ts';
 import { canViewPath } from '../lib/auth.ts';
 
@@ -73,4 +74,32 @@ test('detail lists split on commas and new lines', () => {
 test('[SPM-73 TC9] only Venue Staff may open venue management pages', () => {
   assert.equal(canViewPath('VENUE_STAFF', '/venues/12'), true);
   for (const role of ['COORDINATOR', 'COORDINATOR_LEAD', 'ORGANISER', 'TECH_SUPPORT', 'ATTENDEE']) assert.equal(canViewPath(role, '/venues/12'), false, role);
+});
+
+test('[SPM-72 AC1] /venues is Venue Staff only; coordinators and Leads use the event venue section', () => {
+  assert.equal(canViewPath('VENUE_STAFF', '/venues'), true);
+  for (const role of ['COORDINATOR', 'COORDINATOR_LEAD', 'ORGANISER', 'TECH_SUPPORT', 'ATTENDEE']) assert.equal(canViewPath(role, '/venues'), false, role);
+});
+
+test('[SPM-72 AC3][AC5] venue option queries trim filters, de-duplicate required facilities and omit defaults', () => {
+  assert.equal(venueOptionsQuery({}), '');
+  assert.equal(venueOptionsQuery({ sort: 'match', order: 'asc' }), '');
+  assert.equal(
+    venueOptionsQuery({ search: ' Hall ', minCapacity: '200', requiredFacilities: 'Projector, Stage ,, Projector', sort: 'capacity', order: 'desc' }),
+    '?search=Hall&minCapacity=200&requiredFacilities=Projector%2CStage&sort=capacity&order=desc',
+  );
+});
+
+test('[SPM-74 TC3] the calendar opens on the event window in Singapore time', () => {
+  assert.deepEqual(eventCalendarCheck('2027-03-10T02:00:00Z', '2027-03-10T04:00:00Z'), { date: '2027-03-10', startTime: '10:00', endTime: '12:00' });
+  // 23:30 SGT on 9 March is still the 9th in Singapore.
+  assert.deepEqual(eventCalendarCheck('2027-03-09T15:30:00Z', '2027-03-09T17:00:00Z'), { date: '2027-03-09', startTime: '23:30', endTime: '01:00' });
+  assert.equal(eventCalendarCheck(null, '2027-03-10T04:00:00Z'), null);
+});
+
+test('[SPM-72 AC8] a venue too small for the attendance cannot be selected', () => {
+  const venue = (status) => ({ requirements: [{ key: 'capacity', label: 'Capacity', status, detail: '' }] });
+  assert.match(suggestionBlocker(venue('UNMET')), /cannot hold/);
+  assert.equal(suggestionBlocker(venue('MET')), null);
+  assert.equal(suggestionBlocker({ requirements: [] }), null);
 });
