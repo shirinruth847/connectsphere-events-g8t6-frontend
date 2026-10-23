@@ -17,8 +17,10 @@ export type AttendeeStatus = "CONFIRMED" | "PENDING_CONFIRMATION" | "CANCELLED" 
 export interface MyRegisteredEvent {
   // The discovery detail fields. detailsWithheld is true when the date, time,
   // venue and description are held back because they may not be the confirmed
-  // ones; those fields are then null.
-  event: AttendeeEventDetail & { attendeeStatus: AttendeeStatus; detailsWithheld: boolean };
+  // ones; those fields are then null. lastConfirmedAt is set when an event
+  // being reconfirmed or cancelled shows its last confirmed details (SPM-173's
+  // confirmation snapshot, Master 5.7) instead of its current ones.
+  event: AttendeeEventDetail & { attendeeStatus: AttendeeStatus; detailsWithheld: boolean; lastConfirmedAt: string | null };
   myRegistration: AttendeeRegistration;
 }
 
@@ -27,6 +29,7 @@ export interface MyRegisteredEvent {
 export interface AttendeeEventView extends AttendeeEventDetail {
   attendeeStatus?: AttendeeStatus;
   detailsWithheld?: boolean;
+  lastConfirmedAt?: string | null;
   myRegistration?: AttendeeRegistration | null;
 }
 

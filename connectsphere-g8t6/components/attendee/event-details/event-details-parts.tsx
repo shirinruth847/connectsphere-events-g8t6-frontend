@@ -65,9 +65,9 @@ export function SectionLabel({ id, children }: { id: string; children: ReactNode
 }
 
 // Shown instead of the date, time and venue while they may not be the
-// confirmed ones (being reconfirmed, or not published). It states only what is
-// known: no promised notification or organiser action.
-// TODO(SPM-173): show the last confirmation snapshot instead.
+// confirmed ones and there is no earlier confirmation to show (never
+// confirmed, or not published). It states only what is known: no promised
+// notification or organiser action.
 const WITHHELD_NOTICES = {
   cancelled: { title: "This event has been cancelled", text: "Its date, time and venue are no longer shown." },
   confirming: { title: "This event's details are being confirmed", text: "Check back here for the latest information." },
@@ -79,6 +79,23 @@ export function WithheldNotice({ attendeeStatus }: { attendeeStatus?: string }) 
   return (
     <AlertBanner tone={cancelled ? "error" : "info"} title={notice.title}>
       {notice.text}
+    </AlertBanner>
+  );
+}
+
+// Shown above the details of an event being reconfirmed or cancelled, which
+// are its last confirmed ones (Master 5.7), saying when they were confirmed.
+// Like WithheldNotice, it states only what is known.
+export function LastConfirmedNotice({ attendeeStatus, lastConfirmedAt }: { attendeeStatus?: string; lastConfirmedAt: string }) {
+  const cancelled = attendeeStatus === "CANCELLED";
+  const confirmedOn = formatTimestamp(lastConfirmedAt);
+  return cancelled ? (
+    <AlertBanner tone="error" title="This event has been cancelled">
+      These are its details as last confirmed{confirmedOn ? ` on ${confirmedOn}` : ""}.
+    </AlertBanner>
+  ) : (
+    <AlertBanner tone="info" title="This event's details are being confirmed">
+      These are the details last confirmed{confirmedOn ? ` on ${confirmedOn}` : ""}. Check back here for the latest information.
     </AlertBanner>
   );
 }

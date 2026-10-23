@@ -21,6 +21,7 @@ import {
   MyPlaceChip,
   PendingDetails,
   SectionLabel,
+  LastConfirmedNotice,
   WithheldNotice,
   placeRows,
   scheduleRows,
@@ -90,6 +91,8 @@ function LoadedEventPage({ eventId, source, backLink }: { eventId: number; sourc
 
 function EventPageBody({ event }: { event: AttendeeEventView }) {
   const withheld = Boolean(event.detailsWithheld);
+  // Being reconfirmed or cancelled: the last confirmed details (Master 5.7).
+  const lastConfirmedAt = !withheld ? event.lastConfirmedAt ?? null : null;
   const myRegistration = event.myRegistration ?? null;
 
   return (
@@ -102,9 +105,11 @@ function EventPageBody({ event }: { event: AttendeeEventView }) {
           {myRegistration ? <MyPlaceChip registration={myRegistration} /> : null}
           {!withheld ? (
             <>
-              <span data-pending="track" className="inline-flex items-center rounded-tag bg-surface-container-high px-2.5 py-1 text-xs font-medium text-on-surface-variant">
-                Track: Not available yet
-              </span>
+              {!lastConfirmedAt ? (
+                <span data-pending="track" className="inline-flex items-center rounded-tag bg-surface-container-high px-2.5 py-1 text-xs font-medium text-on-surface-variant">
+                  Track: Not available yet
+                </span>
+              ) : null}
               <span className="inline-flex items-center rounded-tag bg-primary-fixed px-2.5 py-1 text-xs font-medium text-primary">
                 {event.location ?? LOCATION_PENDING_LABEL}
               </span>
@@ -124,10 +129,43 @@ function EventPageBody({ event }: { event: AttendeeEventView }) {
           <WithheldNotice attendeeStatus={event.attendeeStatus} />
           {myRegistration ? <MyPlaceCard registration={myRegistration} /> : null}
         </>
+      ) : lastConfirmedAt ? (
+        <LastConfirmedSections event={event} lastConfirmedAt={lastConfirmedAt} />
       ) : (
         <ConfirmedEventSections event={event} />
       )}
     </div>
+  );
+}
+
+// An event being reconfirmed or cancelled: its last confirmed description,
+// schedule and venue under a notice saying so. The frame's sections without
+// data are left out; there is nothing more to come for this version.
+function LastConfirmedSections({ event, lastConfirmedAt }: { event: AttendeeEventView; lastConfirmedAt: string }) {
+  const myRegistration = event.myRegistration ?? null;
+  return (
+    <>
+      <LastConfirmedNotice attendeeStatus={event.attendeeStatus} lastConfirmedAt={lastConfirmedAt} />
+      {myRegistration ? <MyPlaceCard registration={myRegistration} /> : null}
+      <section aria-labelledby="event-about-heading" className="flex flex-col gap-3">
+        <SectionLabel id="event-about-heading">About this event</SectionLabel>
+        <div className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
+          <p className="max-w-[70ch] whitespace-pre-line text-sm leading-relaxed text-on-surface-variant [overflow-wrap:anywhere]">
+            {event.description?.trim() || "No description provided."}
+          </p>
+        </div>
+      </section>
+      <div className="grid gap-6 md:grid-cols-12">
+        <section aria-labelledby="event-schedule-heading" className="flex flex-col gap-3 md:col-span-7">
+          <SectionLabel id="event-schedule-heading">Schedule</SectionLabel>
+          <DiscoveryDetailsPanel rows={scheduleRows(event)} />
+        </section>
+        <section aria-labelledby="event-venue-heading" className="flex flex-col gap-3 md:col-span-5">
+          <SectionLabel id="event-venue-heading">Venue and organiser</SectionLabel>
+          <DiscoveryDetailsPanel rows={placeRows(event)} />
+        </section>
+      </div>
+    </>
   );
 }
 

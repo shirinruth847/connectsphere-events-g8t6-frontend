@@ -8,6 +8,7 @@ import {
   MyPlaceCard,
   MyPlaceChip,
   SectionLabel,
+  LastConfirmedNotice,
   WithheldNotice,
   placeRows,
   scheduleRows,
@@ -196,6 +197,7 @@ function EventDetailsContent({
         ) : null}
 
         {event && withheld ? <WithheldNotice attendeeStatus={event.attendeeStatus} /> : null}
+        {event && !withheld && event.lastConfirmedAt ? <LastConfirmedNotice attendeeStatus={event.attendeeStatus} lastConfirmedAt={event.lastConfirmedAt} /> : null}
         {myRegistration ? <MyPlaceCard registration={myRegistration} /> : null}
         {event && !withheld ? <EventSummaryBody event={event} /> : null}
       </div>
