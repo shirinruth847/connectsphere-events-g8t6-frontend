@@ -8,7 +8,7 @@ import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { ApiError } from "@/lib/api";
-import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
+import { formatTimestamp } from "@/lib/datetime";
 import {
   VENUE_STATUS_LABELS,
   changeVenueStatus,
@@ -16,12 +16,12 @@ import {
   updateVenue,
   updateVenueDetails,
   type DetailStatus,
-  type FutureCommitment,
   type ManagedVenue,
   type VenueDetails,
   type VenueStatus,
 } from "@/lib/api/venues";
 import { BufferFields, Field, VenueCoreFields, VenueStatusChip, type FieldErrors } from "./venue-fields";
+import { VenueGallery } from "./venue-gallery";
 import { EMPTY_VENUE_FORM, formatList, parseList, validateVenueForm, type VenueFormValues } from "./venue-form-rules";
 
 type Loaded = { venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus };
@@ -201,7 +201,6 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
   const [values, setValues] = useState(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<Notice>(null);
-  const [commitments, setCommitments] = useState<FutureCommitment[]>([]);
   const [saving, setSaving] = useState(false);
 
   if (detailStatus === "NOT_CHECKED" || !details) {
@@ -213,15 +212,17 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
     );
   }
 
+  // A recorded time (0 included) is final (Master 5.4.1).
+  const locked = { setupMinutes: details.setupMinutes != null, turnaroundMinutes: details.turnaroundMinutes != null };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setMessage(null);
-    setCommitments([]);
     const found: FieldErrors = {};
     const payload: Record<string, unknown> = { version: details.version };
     for (const key of ["setupMinutes", "turnaroundMinutes"] as const) {
       const text = values[key].trim();
-      if (!text) continue;
+      if (!text || locked[key]) continue;
       if (!/^\d+$/.test(text) || Number(text) > 1440) found[key] = "Enter whole minutes from 0 to 1440";
       else if (Number(text) !== details[key]) payload[key] = Number(text);
     }
@@ -243,9 +244,6 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
       const result = await updateVenueDetails(venueId, payload as { version: number });
       onSaved(result.details, result.message);
     } catch (caught) {
-      if (caught instanceof ApiError && caught.code === "VENUE_HAS_FUTURE_COMMITMENTS") {
-        setCommitments((caught.details.commitments as FutureCommitment[]) ?? []);
-      }
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
       setMessage({ tone: "error", text: caught instanceof Error ? caught.message : "The details could not be saved." });
     } finally {
@@ -263,23 +261,14 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
       <SectionHeading
         step={3}
         title="Details, setup & turnaround"
-        description="Descriptive details and the setup/turnaround minutes used for every booking's occupied time. Times cannot change while future bookings or holds use the venue."
+        description="Descriptive details and the setup/turnaround minutes used for every booking's occupied time. Each time can be set only once."
       />
       <form noValidate onSubmit={submit} className="grid gap-4">
         {message ? <AlertBanner tone={message.tone}>{message.text}</AlertBanner> : null}
-        {commitments.length ? (
-          <ul className="grid gap-1 rounded-control bg-error-container p-3 text-sm text-on-error-container" aria-label="Bookings and holds preventing the change">
-            {commitments.map((item, index) => (
-              <li key={`${item.type}-${item.bookingReference ?? item.requestId}-${index}`}>
-                {item.type === "HOLD" ? "Hold" : `Booking ${item.bookingReference}`}{item.requestId ? ` · ${item.requestId}` : ""} · {formatEventWindow(item.start, item.end)}
-              </li>
-            ))}
-          </ul>
-        ) : null}
         {detailStatus === "NOT_AVAILABLE" ? (
           <AlertBanner tone="info" live={false}>No details are recorded for this venue yet. Setup and turnaround times are needed before it can receive holds or bookings.</AlertBanner>
         ) : null}
-        <BufferFields idPrefix="details" values={values} errors={errors} onChange={change} disabled={saving} />
+        <BufferFields idPrefix="details" values={values} errors={errors} onChange={change} disabled={saving} locked={locked} />
         <Field id="details-description" label="Description" error={errors.description}>
           <textarea id="details-description" rows={3} className={fieldClasses} value={values.description} onChange={(event) => change("description", event.target.value)} disabled={saving} />
         </Field>
@@ -295,7 +284,7 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
         </Field>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save details"}</Button>
-          <Button type="button" variant="quiet" disabled={saving} onClick={() => { setValues(initial()); setErrors({}); setMessage(null); setCommitments([]); }}>Reset</Button>
+          <Button type="button" variant="quiet" disabled={saving} onClick={() => { setValues(initial()); setErrors({}); setMessage(null); }}>Reset</Button>
         </div>
       </form>
     </SectionCard>
@@ -360,6 +349,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
       <Link href="/venues" className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
         <Icon name="arrow-back" size={16} />My Venues
       </Link>
+      <VenueGallery venueId={venue.venueId} venueName={venue.name} />
       <PageHeader
         eyebrow="Venue management"
         title={venue.name}

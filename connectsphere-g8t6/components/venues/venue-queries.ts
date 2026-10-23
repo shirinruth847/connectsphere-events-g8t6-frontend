@@ -8,10 +8,22 @@ export interface CatalogueFilters {
   accessibility?: string;
 }
 
+export type ManagedVenueSort = "name" | "capacity" | "updatedAt" | "setupMinutes" | "turnaroundMinutes";
+
+export const MANAGED_VENUE_SORT_OPTIONS: { value: ManagedVenueSort; label: string }[] = [
+  { value: "name", label: "Alphabetical" },
+  { value: "capacity", label: "Capacity" },
+  { value: "updatedAt", label: "Last updated" },
+  { value: "setupMinutes", label: "Setup time" },
+  { value: "turnaroundMinutes", label: "Turnaround time" },
+];
+
 export interface ManagedVenueFilters {
   search?: string;
   location?: string;
   status?: string;
+  sort?: ManagedVenueSort;
+  order?: "asc" | "desc";
 }
 
 export interface AvailabilityParams {
@@ -51,6 +63,8 @@ export const managedVenueQuery = (filters: ManagedVenueFilters, offset = 0) =>
     ["search", filters.search],
     ["location", filters.location],
     ["status", filters.status],
+    ["sort", filters.sort && filters.sort !== "name" ? filters.sort : undefined],
+    ["order", filters.order === "desc" ? "desc" : undefined],
     ["offset", offset > 0 ? offset : undefined],
   ]);
 

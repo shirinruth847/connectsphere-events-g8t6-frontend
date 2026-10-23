@@ -6,8 +6,10 @@ test('[SPM-32 TC-012] normalised redirect destinations stay on-site', () => {
   assert.equal(safeNextPath('/events/new?draft=42'), '/events/new?draft=42');
 });
 test('[SPM-32 TC-001–005] each role reaches its permitted home', () => {
-  // Every staff role lands on /dashboard (Master section 3.4).
-  for (const role of ['ORGANISER','COORDINATOR','COORDINATOR_LEAD','TECH_SUPPORT','VENUE_STAFF']) assert.equal(postLoginPath({role}, null), '/dashboard');
+  // Staff land on /dashboard (Master section 3.4); the Lead lands on the SPM-174
+  // assignment queue at /events.
+  for (const role of ['ORGANISER','COORDINATOR','TECH_SUPPORT','VENUE_STAFF']) assert.equal(postLoginPath({role}, null), '/dashboard');
+  assert.equal(postLoginPath({role:'COORDINATOR_LEAD'}, null), '/events');
   assert.equal(postLoginPath({role:'ATTENDEE'}, null), '/my-registrations');
 });
 test('[SPM-32 TC-004/011/012] return paths respect role permissions', () => {

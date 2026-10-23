@@ -2,23 +2,26 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
+import { useSessionUser } from "@/components/auth/auth-gate";
+import { CalendarView, type CalendarViewMode } from "@/components/calendar/calendar-view";
+import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, EmptyState, FormLabel, ReferenceIdTag, SectionCard, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { ApiError } from "@/lib/api";
+import { calendarDate } from "@/lib/coordinator-calendar";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import {
   getVenueAvailability,
   getVenueCatalogue,
   type AvailabilityParams,
   type CalendarEntry,
-  type Venue,
   type VenueAvailability,
   type VenueCalendar,
 } from "@/lib/api/venues";
+import { calendarRange, civilDate, toCalendarLanes, type CalendarEntryRef } from "./availability-calendar-model";
+import { useVenueOptions } from "./use-venue-options";
 
 const MAX_VENUES = 20;
-const DAY_OPTIONS = [1, 3, 7, 14];
-const todayInSingapore = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore" }).format(new Date());
 
 type CalendarState =
   | { status: "idle" }
@@ -61,7 +64,7 @@ function EntryRow({ entry }: { entry: CalendarEntry }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-on-surface">{entry.label}</span>
         <span className="flex flex-wrap gap-1">
-          {entry.bookingReference ? <ReferenceIdTag value={entry.bookingReference} /> : null}
+          {entry.bookingId ? <ReferenceIdTag value={`Booking #${entry.bookingId}`} /> : null}
           {entry.requestId ? <ReferenceIdTag value={entry.requestId} /> : null}
         </span>
       </div>
@@ -88,14 +91,14 @@ function EntryRow({ entry }: { entry: CalendarEntry }) {
   );
 }
 
-function VenueCalendarCard({ venue }: { venue: VenueCalendar }) {
+function VenueSummaryCard({ venue }: { venue: VenueCalendar }) {
   const entriesById = new Map(venue.entries.map((entry) => [entry.entryId, entry]));
   const describe = (entryId: string) => entriesById.get(entryId)?.label ?? entryId;
   return (
-    <SectionCard className="grid gap-4">
+    <SectionCard className="grid gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-on-surface">{venue.name}</h3>
+          <h3 className="text-base font-semibold text-on-surface">{venue.name}</h3>
           <p className="text-sm text-on-surface-variant">
             {venue.operatingHours ? `Open ${venue.operatingHours}` : "Operating hours not listed"}
             {" · "}
@@ -125,59 +128,72 @@ function VenueCalendarCard({ venue }: { venue: VenueCalendar }) {
         </AlertBanner>
       ) : null}
 
-      {venue.entries.length ? (
-        <ul className="grid gap-2" aria-label={`Calendar entries for ${venue.name}`}>
-          {venue.entries.map((entry) => <EntryRow key={entry.entryId} entry={entry} />)}
-        </ul>
-      ) : (
+      {!venue.entries.length ? (
         <p className="rounded-control bg-[#F0FDF4] p-3 text-sm font-semibold text-[#166534]">
           No bookings, holds or blocks in this period. The venue is available for the whole range.
         </p>
-      )}
-
-      {venue.entries.length && venue.freePeriods.length ? (
-        <div>
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-label text-on-surface-variant">Available</h4>
-          <ul className="flex flex-wrap gap-2 text-xs">
-            {venue.freePeriods.map((period) => (
-              <li key={period.start} className="rounded-chip bg-[#DCFCE7] px-2 py-1 text-[#166534]">{formatEventWindow(period.start, period.end)}</li>
-            ))}
-          </ul>
-        </div>
       ) : null}
     </SectionCard>
   );
 }
 
-// The venue availability calendar (SPM-74) for Event Coordinators and Venue
-// Staff. Availability is computed by the backend from PostgreSQL bookings and
-// MongoDB holds and blocks; if it cannot be loaded, nothing is shown as available.
+type PickerVenue = { venueId: number; name: string };
+
+// The venues a role may pick: Venue Staff get every non-deleted venue (live, so
+// added or removed venues show up); coordinators get the active catalogue.
+function usePickerVenues(): { venues: PickerVenue[] | null; error: string } {
+  const user = useSessionUser();
+  const isStaff = user?.role === "VENUE_STAFF";
+  const options = useVenueOptions(isStaff);
+  const [catalogue, setCatalogue] = useState<PickerVenue[] | null>(null);
+  const [catalogueError, setCatalogueError] = useState("");
+
+  useEffect(() => {
+    if (!user || isStaff) return;
+    let alive = true;
+    getVenueCatalogue()
+      .then((result) => { if (alive) setCatalogue(result.venues.map(({ venueId, name }) => ({ venueId, name }))); })
+      .catch((caught: unknown) => { if (alive) setCatalogueError(caught instanceof Error ? caught.message : "Venues could not be loaded."); });
+    return () => { alive = false; };
+  }, [user, isStaff]);
+
+  return isStaff ? { venues: options.venues, error: options.error } : { venues: catalogue, error: catalogueError };
+}
+
+// The venue availability calendar (SPM-74, SPM-181) for Event Coordinators and
+// Venue Staff, in the shared calendar's year/month/week/day timeline. The
+// backend computes availability from PostgreSQL bookings and MongoDB holds and
+// blocks; if it cannot be loaded, no calendar is shown, so nothing looks free.
 export function VenueAvailabilityCalendar() {
   const searchParams = useSearchParams();
   const initialVenue = Number(searchParams.get("venueId"));
-  const [venues, setVenues] = useState<Venue[] | null>(null);
-  const [venueError, setVenueError] = useState("");
+  const picker = usePickerVenues();
   const [venueSearch, setVenueSearch] = useState("");
   const [selected, setSelected] = useState<number[]>(Number.isInteger(initialVenue) && initialVenue > 0 ? [initialVenue] : []);
-  const [date, setDate] = useState(todayInSingapore);
-  const [days, setDays] = useState(7);
+  const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
+  const [currentDate, setCurrentDate] = useState(() => calendarDate(new Date()));
   const [checkOn, setCheckOn] = useState(false);
-  const [check, setCheck] = useState({ date: todayInSingapore(), startTime: "10:00", endTime: "12:00" });
-  const [params, setParams] = useState<AvailabilityParams | null>(null);
+  const [checkDraft, setCheckDraft] = useState({ date: civilDate(calendarDate(new Date())), startTime: "10:00", endTime: "12:00" });
+  const [check, setCheck] = useState<AvailabilityParams["check"]>(null);
   const [state, setState] = useState<CalendarState>({ status: "idle" });
   const [attempt, setAttempt] = useState(0);
+  const [openEntry, setOpenEntry] = useState<CalendarEntryRef | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    getVenueCatalogue()
-      .then((result) => { if (alive) setVenues(result.venues); })
-      .catch((caught: unknown) => { if (alive) setVenueError(caught instanceof Error ? caught.message : "Venues could not be loaded."); });
-    return () => { alive = false; };
-  }, []);
+  const range = calendarRange(viewMode, currentDate);
+  const params: AvailabilityParams | null = useMemo(
+    () => (selected.length ? { date: range.date, days: range.days, venueIds: selected, check } : null),
+    [selected, range.date, range.days, check],
+  );
 
+  // Loads whenever the venues, the visible range or the checked period change.
   useEffect(() => {
-    if (!params) return;
+    if (!params) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setState({ status: "idle" });
+      return;
+    }
     let alive = true;
+    setState((current) => (current.status === "ready" ? current : { status: "loading" }));
     getVenueAvailability(params)
       .then((data) => { if (alive) setState({ status: "ready", data }); })
       .catch((caught: unknown) => {
@@ -190,28 +206,27 @@ export function VenueAvailabilityCalendar() {
 
   const visibleVenues = useMemo(() => {
     const text = venueSearch.trim().toLowerCase();
-    return (venues ?? []).filter((venue) => !text || `${venue.name} ${venue.address}`.toLowerCase().includes(text));
-  }, [venues, venueSearch]);
+    return (picker.venues ?? []).filter((venue) => !text || venue.name.toLowerCase().includes(text));
+  }, [picker.venues, venueSearch]);
+  const calendar = useMemo(() => (state.status === "ready" ? toCalendarLanes(state.data) : null), [state]);
 
   const toggle = (venueId: number) =>
     setSelected((current) => (current.includes(venueId) ? current.filter((id) => id !== venueId) : current.length >= MAX_VENUES ? current : [...current, venueId]));
 
-  const submit = (event: FormEvent) => {
+  const applyCheck = (event: FormEvent) => {
     event.preventDefault();
-    if (!selected.length) return;
-    setState({ status: "loading" });
-    setParams({ date, days, venueIds: selected, check: checkOn ? check : null });
+    setCheck(checkOn ? { ...checkDraft } : null);
   };
 
   return (
     <div className="grid gap-4">
-      <form onSubmit={submit} aria-label="Choose venues and dates" className="grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <fieldset className="grid content-start gap-2">
           <legend className="mb-1 text-xs font-semibold text-on-surface">Venues ({selected.length}/{MAX_VENUES} selected)</legend>
-          <input aria-label="Find a venue" className={fieldClasses} placeholder="Find a venue" value={venueSearch} onChange={(event) => setVenueSearch(event.target.value)} />
-          {venueError ? <AlertBanner tone="error">{venueError}</AlertBanner> : null}
-          {venues === null && !venueError ? <Skeleton className="h-24 w-full" /> : null}
-          {venues ? (
+          <input aria-label="Find a venue" type="search" className={fieldClasses} placeholder="Find a venue" value={venueSearch} onChange={(event) => setVenueSearch(event.target.value)} />
+          {picker.error ? <AlertBanner tone="error">{picker.error}</AlertBanner> : null}
+          {picker.venues === null && !picker.error ? <Skeleton className="h-24 w-full" /> : null}
+          {picker.venues ? (
             <div className="max-h-56 overflow-y-auto rounded-control border border-outline-variant p-2">
               {visibleVenues.length ? visibleVenues.map((venue) => (
                 <label key={venue.venueId} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-control px-2 text-sm hover:bg-surface-container-low">
@@ -223,52 +238,42 @@ export function VenueAvailabilityCalendar() {
           ) : null}
         </fieldset>
 
-        <div className="grid content-start gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <FormLabel htmlFor="availability-date">From (SGT)</FormLabel>
-              <input id="availability-date" type="date" className={fieldClasses} value={date} onChange={(event) => setDate(event.target.value)} required />
-            </div>
-            <div>
-              <FormLabel htmlFor="availability-days">Days</FormLabel>
-              <select id="availability-days" className={fieldClasses} value={days} onChange={(event) => setDays(Number(event.target.value))}>
-                {DAY_OPTIONS.map((option) => <option key={option} value={option}>{option} {option === 1 ? "day" : "days"}</option>)}
-              </select>
-            </div>
-          </div>
+        <form onSubmit={applyCheck} aria-label="Check a requested period" className="grid content-start gap-3">
           <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-on-surface">
-            <input type="checkbox" checked={checkOn} onChange={(event) => setCheckOn(event.target.checked)} />
+            <input type="checkbox" checked={checkOn} onChange={(event) => { setCheckOn(event.target.checked); if (!event.target.checked) setCheck(null); }} />
             Check a requested period
           </label>
           {checkOn ? (
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <FormLabel htmlFor="check-date">Date</FormLabel>
-                <input id="check-date" type="date" className={fieldClasses} value={check.date} onChange={(event) => setCheck({ ...check, date: event.target.value })} />
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <FormLabel htmlFor="check-date">Date</FormLabel>
+                  <input id="check-date" type="date" className={fieldClasses} value={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, date: event.target.value })} />
+                </div>
+                <div>
+                  <FormLabel htmlFor="check-start">Start</FormLabel>
+                  <input id="check-start" type="time" className={fieldClasses} value={checkDraft.startTime} onChange={(event) => setCheckDraft({ ...checkDraft, startTime: event.target.value })} />
+                </div>
+                <div>
+                  <FormLabel htmlFor="check-end">End</FormLabel>
+                  <input id="check-end" type="time" className={fieldClasses} value={checkDraft.endTime} onChange={(event) => setCheckDraft({ ...checkDraft, endTime: event.target.value })} />
+                </div>
               </div>
-              <div>
-                <FormLabel htmlFor="check-start">Start</FormLabel>
-                <input id="check-start" type="time" className={fieldClasses} value={check.startTime} onChange={(event) => setCheck({ ...check, startTime: event.target.value })} />
-              </div>
-              <div>
-                <FormLabel htmlFor="check-end">End</FormLabel>
-                <input id="check-end" type="time" className={fieldClasses} value={check.endTime} onChange={(event) => setCheck({ ...check, endTime: event.target.value })} />
-              </div>
-            </div>
+              <div><Button type="submit" disabled={!selected.length}><Icon name="check" size={16} />Check period</Button></div>
+            </>
           ) : null}
-          <div>
-            <Button type="submit" disabled={!selected.length}><Icon name="calendar" size={16} />Show availability</Button>
-            {!selected.length ? <p className="mt-2 text-xs text-on-surface-variant">Choose at least one venue.</p> : null}
-          </div>
-        </div>
-      </form>
+          <p className="text-xs text-on-surface-variant">
+            Occupied time includes each venue&apos;s setup and turnaround. Click an entry in the calendar for its details.
+          </p>
+        </form>
+      </div>
 
       <div aria-live="polite">
         {state.status === "idle" ? (
-          <EmptyState title="Choose venues and a date range" description="Bookings, active holds, operational blocks and setup/turnaround time are shown for each venue." />
+          <EmptyState title="Choose venues" description="Bookings, active holds, operational blocks and setup/turnaround time appear on the calendar for each venue you choose." />
         ) : null}
         {state.status === "loading" ? (
-          <div className="grid gap-4" aria-busy="true" aria-label="Loading availability"><Skeleton className="h-40 w-full" /><Skeleton className="h-40 w-full" /></div>
+          <div className="grid gap-4" aria-busy="true" aria-label="Loading availability"><Skeleton className="h-96 w-full" /></div>
         ) : null}
         {state.status === "forbidden" ? (
           <AlertBanner tone="error" title="Access denied">Only Event Coordinators and Venue Staff can view venue availability.</AlertBanner>
@@ -279,20 +284,37 @@ export function VenueAvailabilityCalendar() {
             <div className="mt-3"><Button variant="secondary" onClick={() => { setState({ status: "loading" }); setAttempt((value) => value + 1); }}><Icon name="refresh" size={16} />Try again</Button></div>
           </AlertBanner>
         ) : null}
-        {state.status === "ready" ? (
-          state.data.venues.length ? (
-            <div className="grid gap-4">
-              <p className="text-sm text-on-surface-variant">
-                {formatEventWindow(state.data.from, state.data.to)}
-                {state.data.generatedAt ? ` · as of ${formatTimestamp(state.data.generatedAt)}` : ""}
-              </p>
-              {state.data.venues.map((venue) => <VenueCalendarCard key={venue.venueId} venue={venue} />)}
-            </div>
-          ) : (
-            <EmptyState title="No venues to show" description="The selected venues are not available in the catalogue." />
-          )
-        ) : null}
       </div>
+
+      {state.status === "ready" && calendar ? (
+        state.data.venues.length ? (
+          <>
+            {/* The shared calendar's styles are scoped to the .coordinator-shell
+                class (components/layout/coordinator-shell.css); this wrapper
+                reuses them without the shell's full-page sizing. */}
+            <section aria-label="Venue availability calendar" className="coordinator-shell overflow-hidden rounded-panel shadow-elevation-1" style={{ minHeight: 0, background: "transparent" }}>
+              <CalendarView
+                coordinators={calendar.lanes}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                currentDate={currentDate}
+                onCurrentDateChange={setCurrentDate}
+                entityLabel={{ singular: "venue", plural: "venues" }}
+                onEventClick={(event) => setOpenEntry(calendar.refs.get(event.eventId) ?? null)}
+              />
+            </section>
+            <div className="grid gap-3 lg:grid-cols-2" aria-label="Venue summaries">
+              {state.data.venues.map((venue) => <VenueSummaryCard key={venue.venueId} venue={venue} />)}
+            </div>
+          </>
+        ) : (
+          <EmptyState title="No venues to show" description="The selected venues are not available in the catalogue." />
+        )
+      ) : null}
+
+      <Dialog open={openEntry !== null} onClose={() => setOpenEntry(null)} title={openEntry ? `${openEntry.venueName}` : "Calendar entry"}>
+        {openEntry ? <ul className="grid gap-2"><EntryRow entry={openEntry.entry} /></ul> : null}
+      </Dialog>
     </div>
   );
 }

@@ -12,7 +12,10 @@ import { RequirementList, layoutLabel } from "@/components/events/workspace/even
 import { ApiError } from "@/lib/api";
 import { formatDuration, formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
+import { formatBookingId } from "./booking-filters";
 import { BookingStatusChip } from "./booking-status-chip";
+import { Collapse } from "./collapse";
+import { useOpenedBookings } from "./use-opened-bookings";
 
 type ViewState =
   | { status: "loading" }
@@ -115,19 +118,21 @@ function VenueBookingsSection({ bookings, selectedId, onSelect }: {
                     {booking.venueName}{booking.label ? ` · ${booking.label}` : ""}
                   </span>
                   <span className="text-xs text-on-surface-variant">
-                    <span className="font-mono">{booking.bookingReference}</span> · {formatEventWindow(booking.startDatetime, booking.endDatetime)}
+                    <span className="font-mono">{formatBookingId(booking.bookingId)}</span> · {formatEventWindow(booking.startDatetime, booking.endDatetime)}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
                   <BookingStatusChip status={booking.status} label={booking.statusLabel} />
-                  <Icon name={selected ? "close" : "arrow-forward"} size={16} />
+                  <span className={`inline-flex transition-transform duration-200 ease-out ${selected ? "rotate-90" : ""}`}>
+                    <Icon name="arrow-forward" size={16} />
+                  </span>
                 </span>
               </button>
-              {selected ? (
-                <div id={panelId} className="border-t border-outline-variant p-3 sm:p-4">
+              <Collapse open={selected} id={panelId}>
+                <div className="border-t border-outline-variant p-3 sm:p-4">
                   <BookingRequirements booking={booking} />
                 </div>
-              ) : null}
+              </Collapse>
             </li>
           );
         })}
@@ -161,7 +166,7 @@ function LoadedView({ data, selectedId, onSelect }: {
 
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <ReferenceIdTag value={event.requestId} />
-        {selected ? <ReferenceIdTag value={selected.bookingReference} /> : null}
+        {selected ? <ReferenceIdTag value={formatBookingId(selected.bookingId)} /> : null}
         <span className="text-sm text-on-surface-variant">{formatEventWindow(event.startDatetime, event.endDatetime)}</span>
         <PermissionPill tone="read-only">Venue Staff • Event details read-only</PermissionPill>
       </div>
@@ -230,7 +235,7 @@ function LoadedView({ data, selectedId, onSelect }: {
                     >
                       <span className="grid">
                         <span className="font-semibold text-on-surface">{booking.venueName}</span>
-                        <span className="font-mono text-xs text-on-surface-variant">{booking.bookingReference}</span>
+                        <span className="font-mono text-xs text-on-surface-variant">{formatBookingId(booking.bookingId)}</span>
                       </span>
                       <BookingStatusChip status={booking.status} label={booking.statusLabel} />
                     </button>
@@ -259,6 +264,13 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const [attempt, setAttempt] = useState(0);
   const rawBooking = searchParams.get("booking");
   const selectedId = rawBooking && /^[1-9]\d{0,9}$/.test(rawBooking) ? Number(rawBooking) : null;
+  const { markOpened } = useOpenedBookings();
+
+  // Opening a booking here, from My Requests or the sibling list, counts for
+  // the "Last opened" sort.
+  useEffect(() => {
+    if (selectedId) markOpened(selectedId);
+  }, [selectedId, markOpened]);
 
   useEffect(() => {
     let alive = true;

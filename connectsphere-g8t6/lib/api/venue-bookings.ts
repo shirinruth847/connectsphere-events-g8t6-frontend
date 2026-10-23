@@ -12,7 +12,6 @@ export const VENUE_BOOKING_STATUSES: VenueBookingStatus[] = ["PENDING", "APPROVE
 
 export interface VenueBookingSummary {
   bookingId: number;
-  bookingReference: string;
   label: string | null;
   status: string;
   statusLabel: string;
@@ -22,6 +21,7 @@ export interface VenueBookingSummary {
   endDatetime: string;
   expectedAttendance: number | null;
   submittedAt: string;
+  updatedAt?: string;
 }
 
 export interface VenueBookingListItem extends VenueBookingSummary {
