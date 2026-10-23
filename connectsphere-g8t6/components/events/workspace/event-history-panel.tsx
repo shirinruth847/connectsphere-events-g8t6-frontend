@@ -17,6 +17,10 @@ const ACTION_LABELS: Record<string, string> = {
   EVENT_DETAILS_UPDATED: "Event details updated",
   COORDINATOR_ASSIGNED: "Coordinator assigned",
   COORDINATOR_REASSIGNED: "Coordinator reassigned",
+  SAFETY_REVIEW_SUBMITTED: "Submitted for safety review",
+  EVENT_CONFIRMED: "Event confirmed",
+  PREPARATION_STARTED: "Preparation started",
+  EVENT_COMPLETED: "Event completed",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -26,6 +30,7 @@ const ROLE_LABELS: Record<string, string> = {
   VENUE_STAFF: "Venue Staff",
   TECH_SUPPORT: "Technical Support",
   ATTENDEE: "Attendee",
+  SYSTEM: "System",
 };
 
 const actionLabel = (entry: EventHistoryEntry) =>
