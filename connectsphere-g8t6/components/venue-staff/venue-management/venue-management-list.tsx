@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, EmptyState, FormLabel, Skeleton, buttonClasses, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
@@ -242,6 +242,8 @@ export function VenueManagementList() {
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<{ tone: "success" | "warning"; text: string } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const listRequestId = useRef(0);
+  const loadingMoreRef = useRef(false);
   const filtered = Boolean(filters.search || filters.location || filters.status);
 
   useEffect(() => {
@@ -251,9 +253,15 @@ export function VenueManagementList() {
   }, []);
 
   useEffect(() => {
+    listRequestId.current += 1;
     let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setBusy(true);
+    loadingMoreRef.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadingMore(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setState({ status: "loading" });
     listManagedVenues(filters)
       .then((result) => { if (alive) setState({ status: "ready", venues: result.venues, nextOffset: result.nextOffset, sortNotChecked: Boolean(result.sortNotChecked) }); })
       .catch((caught: unknown) => {
@@ -281,15 +289,26 @@ export function VenueManagementList() {
     setAttempt((value) => value + 1);
   };
   const loadMore = async () => {
-    if (state.status !== "ready" || state.nextOffset === null) return;
+    if (loadingMoreRef.current || state.status !== "ready" || state.nextOffset === null) return;
+    const requestId = listRequestId.current;
+    const offset = state.nextOffset;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const next = await listManagedVenues(filters, state.nextOffset);
-      setState({ ...state, venues: [...state.venues, ...next.venues], nextOffset: next.nextOffset });
+      const next = await listManagedVenues(filters, offset);
+      if (requestId !== listRequestId.current) return;
+      setState((current) => current.status === "ready"
+        ? { ...current, venues: [...current.venues, ...next.venues], nextOffset: next.nextOffset }
+        : current);
     } catch (caught) {
-      setNotice({ tone: "warning", text: caught instanceof Error ? caught.message : "More venues could not be loaded." });
+      if (requestId === listRequestId.current) {
+        setNotice({ tone: "warning", text: caught instanceof Error ? caught.message : "More venues could not be loaded." });
+      }
     } finally {
-      setLoadingMore(false);
+      if (requestId === listRequestId.current) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
     }
   };
 

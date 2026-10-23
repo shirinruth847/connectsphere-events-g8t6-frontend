@@ -193,7 +193,10 @@ export function VenueAvailabilityCalendar() {
       return;
     }
     let alive = true;
-    setState((current) => (current.status === "ready" ? current : { status: "loading" }));
+    // The current calendar describes the previous request. Hide it while the
+    // selected venues, range or checked period is being refreshed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setState({ status: "loading" });
     getVenueAvailability(params)
       .then((data) => { if (alive) setState({ status: "ready", data }); })
       .catch((caught: unknown) => {
