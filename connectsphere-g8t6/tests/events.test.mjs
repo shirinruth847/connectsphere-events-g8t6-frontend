@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EMPTY_EVENT_FORM, toPayload, formValuesFromEvent, validateEventStep, eventStatusLabel, statusPresentation, ORGANISER_LABEL_ORDER } from '../lib/events.ts';
+import { EMPTY_EVENT_FORM, toPayload, formValuesFromEvent, validateEventStep, eventStatusLabel, eventDisplayStatus, isDraftEvent, statusPresentation, ORGANISER_LABEL_ORDER } from '../lib/events.ts';
 test('[SPM-37 Scenario 4] empty draft fields explicitly clear persisted values', () => {
  const payload = toPayload({...EMPTY_EVENT_FORM,title:'Only title'});
  for (const key of ['purpose','description','startDatetime','endDatetime','expectedAttendance','registrationCapacity']) assert.equal(payload[key],null,key);
@@ -30,4 +30,20 @@ test('[Master 3.5] organiser fallbacks use the eight labels, never stored states
  }
  assert.equal(statusPresentation('SAFETY_REVIEW').label,'Safety Review');
  assert.deepEqual(ORGANISER_LABEL_ORDER,['Draft','Submitted','Under Review','Approved & Planning','Confirmed','Completed','Cancelled','Rejected']);
+});
+test('[SPM-173 AC6] organiser responses without a stored status work from the label', () => {
+ const expected={'Draft':'DRAFT','Submitted':'SUBMITTED','Under Review':'UNDER_REVIEW','Approved & Planning':'PLANNING','Confirmed':'CONFIRMED','Completed':'COMPLETED','Cancelled':'CANCELLED','Rejected':'REJECTED'};
+ for (const [statusLabel,status] of Object.entries(expected)) {
+  assert.equal(eventDisplayStatus({statusLabel}),status,statusLabel);
+  assert.equal(eventStatusLabel({statusLabel}),statusLabel);
+  assert.equal(isDraftEvent({statusLabel}),status==='DRAFT',statusLabel);
+ }
+ // Staff responses keep the stored status, which wins over the label.
+ assert.equal(eventDisplayStatus({status:'SAFETY_REVIEW',statusLabel:'Approved & Planning'}),'SAFETY_REVIEW');
+ assert.equal(isDraftEvent({status:'DRAFT',statusLabel:'Draft'}),true);
+ // Neither recognised: shown as unknown, never treated as a draft.
+ assert.equal(eventDisplayStatus({statusLabel:'Unknown status'}),'UNKNOWN');
+ assert.equal(eventDisplayStatus({}),'UNKNOWN');
+ assert.equal(eventStatusLabel({}),'Unknown status');
+ assert.equal(isDraftEvent({}),false);
 });

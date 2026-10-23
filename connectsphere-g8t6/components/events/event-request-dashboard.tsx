@@ -5,14 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertBanner, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { apiRequest } from "@/lib/api";
-import { displayEventStatus, EVENT_STATUS_ORDER, EventListItem, ORGANISER_LABEL_ORDER, ORGANISER_STATUS_LABELS, statusPresentation, eventStatusLabel, formatDateRange } from "@/lib/events";
+import { eventDisplayStatus, EVENT_STATUS_ORDER, EventListItem, EventStatus, isDraftEvent, ORGANISER_LABEL_ORDER, ORGANISER_STATUS_LABELS, statusPresentation, eventStatusLabel, formatDateRange } from "@/lib/events";
 
 type ListResponse = { events?: EventListItem[]; nextCursor?: string | null };
 // Organisers filter by their eight labels (Master section 3.5), not by stored states.
 type StatusSelection = string;
 const DRAFT_LABEL = ORGANISER_STATUS_LABELS.DRAFT;
 
-const actionFor = (status: EventListItem["status"]) => {
+const actionFor = (status: string) => {
   switch (status) {
     case "DRAFT": return "Edit Draft";
     case "SUBMITTED": return "Track submission";
@@ -73,14 +73,11 @@ export function EventRequestDashboard() {
     const needle = query.trim().toLowerCase();
     const filtered = events.filter((event) => {
       const matchesQuery = !needle || `${event.title} ${event.requestId}`.toLowerCase().includes(needle);
-      const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);
-      const matchesStatus = statusSelection === "ALL" || eventStatusLabel({ ...event, status: displayStatus }) === statusSelection;
+      const matchesStatus = statusSelection === "ALL" || eventStatusLabel(event) === statusSelection;
       return matchesQuery && matchesStatus;
     });
     return filtered.sort((left, right) => {
-      const leftStatus = displayEventStatus(left.status, left.isAssignedToCoordinator);
-      const rightStatus = displayEventStatus(right.status, right.isAssignedToCoordinator);
-      const statusDifference = EVENT_STATUS_ORDER.indexOf(leftStatus) - EVENT_STATUS_ORDER.indexOf(rightStatus);
+      const statusDifference = EVENT_STATUS_ORDER.indexOf(eventDisplayStatus(left) as EventStatus) - EVENT_STATUS_ORDER.indexOf(eventDisplayStatus(right) as EventStatus);
       return statusDifference || (right.updatedAt || "").localeCompare(left.updatedAt || "") || right.eventId - left.eventId;
     });
   }, [events, query, statusSelection]);
@@ -125,9 +122,9 @@ export function EventRequestDashboard() {
           <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === DRAFT_LABEL ? "My Drafts" : "Event requests and drafts"}</h2>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visible.map((event) => {
-              const displayStatus = displayEventStatus(event.status, event.isAssignedToCoordinator);
+              const displayStatus = eventDisplayStatus(event);
               const statusStyle = statusPresentation(displayStatus);
-              const isDraft = event.status === "DRAFT";
+              const isDraft = isDraftEvent(event);
               const href = isDraft ? `/events/new?draft=${event.eventId}` : `/events/${event.eventId}`;
               return <article key={event.eventId} className={`flex min-h-[206px] flex-col rounded-[12px] border border-[#E5E7EB] border-t-4 ${statusStyle.border} bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]`}>
                 <div className="flex items-start justify-between gap-3">
