@@ -21,7 +21,7 @@ export async function routeAttendeeEvents(page, { details = {}, registrations = 
     if (typeof body === 'number') return notFound(route, body);
     if (!body?.myRegistration) return notFound(route);
     const { myRegistration, ...event } = body;
-    return json(route, { event: { attendeeStatus: 'CONFIRMED', detailsWithheld: false, ...event }, myRegistration });
+    return json(route, { event: { attendeeStatus: 'CONFIRMED', detailsWithheld: false, lastConfirmedAt: null, ...event }, myRegistration });
   });
 
   await page.route('**/api/events/discovery/*', (route) => {
@@ -33,7 +33,7 @@ export async function routeAttendeeEvents(page, { details = {}, registrations = 
     // Discovery shows only confirmed, published events, and never the attendee's place.
     if (!body || body.detailsWithheld || (body.attendeeStatus && body.attendeeStatus !== 'CONFIRMED')) return notFound(route);
     const event = { ...body };
-    for (const key of ['myRegistration', 'attendeeStatus', 'detailsWithheld']) delete event[key];
+    for (const key of ['myRegistration', 'attendeeStatus', 'detailsWithheld', 'lastConfirmedAt']) delete event[key];
     return json(route, { event });
   });
 

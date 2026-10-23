@@ -153,6 +153,27 @@ test('[SPM-155 AC6] an event the attendee cannot see shows not available', async
   await expect(page.getByRole('link', { name: 'Back to Event Discovery' })).toBeVisible();
 });
 
+test('[SPM-155 AC5 / Master 5.7] an event being reconfirmed shows its last confirmed details on the page', async ({ page }, testInfo) => {
+  const { detailRequests } = await installAttendee(page, {
+    details: { 58: detail(58, 'Moved summit', { registrationAvailability: 'CLOSED', attendeeStatus: 'PENDING_CONFIRMATION', lastConfirmedAt: '2026-10-05T02:00:00.000Z', myRegistration: registered }) },
+  });
+  await page.goto('/events/58?from=my-events');
+  const main = page.locator('main');
+  await expect(page.getByRole('heading', { name: 'Moved summit', level: 1 })).toBeVisible();
+  await expect(main.getByText('Event confirmation pending', { exact: true })).toBeVisible();
+  const notice = main.getByRole('status').filter({ hasText: "This event's details are being confirmed" });
+  await expect(notice).toContainText('These are the details last confirmed on 5 Oct 2026, 10:00 SGT. Check back here for the latest information.');
+  await expect(notice).not.toContainText(/notification|organiser/i);
+  for (const text of ['Moved summit description', 'Wed, 28 Oct 2026', '09:00 – 17:00 SGT', 'SMU Hall A', 'SMU Computing Club', 'Your place']) {
+    await expect(main).toContainText(text);
+  }
+  // Only the confirmed sections: no placeholders and no sign-up.
+  await expect(main.locator('[data-pending]')).toHaveCount(0);
+  await expect(main.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+  expect(detailRequests).toEqual({ myEvents: [58], discovery: [] });
+  await attachScreenshot(testInfo, page, 'event-page-last-confirmed');
+});
+
 test('[SPM-155] an unknown origin cannot redirect the back link; without a place the page falls back to discovery', async ({ page }) => {
   const { detailRequests } = await installAttendee(page, { details: { 52: detail(52, 'Event 2') } });
   await page.goto('/events/52?from=https%3A%2F%2Fevil.example');

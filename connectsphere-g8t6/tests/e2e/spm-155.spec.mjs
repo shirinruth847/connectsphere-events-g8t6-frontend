@@ -267,6 +267,31 @@ test('[SPM-155 AC5] a cancelled event shows its title and status but holds back 
   await attachScreenshot(testInfo, page, 'cancelled-details');
 });
 
+test('[SPM-155 AC5 / Master 5.7] a cancelled event that had been confirmed shows its last confirmed details', async ({ page }, testInfo) => {
+  const { detailRequests } = await installInbox(page, {
+    registrations: [registration(57, 'Called-off summit', 'WAITLISTED')],
+    details: {
+      57: eventDetail(57, 'Called-off summit', {
+        registrationAvailability: 'CLOSED', attendeeStatus: 'CANCELLED', lastConfirmedAt: '2026-10-05T02:00:00.000Z',
+        myRegistration: { status: 'WAITLISTED', registeredAt: '2026-10-01T00:00:00.000Z' },
+      }),
+    },
+  });
+  await page.goto('/my-registrations?eventId=57');
+  const dialog = page.getByRole('dialog', { name: 'Called-off summit', exact: true });
+  await expect(dialog.getByText('Cancelled', { exact: true })).toBeVisible();
+  const notice = dialog.getByRole('alert').filter({ hasText: 'This event has been cancelled' });
+  await expect(notice).toContainText('These are its details as last confirmed on 5 Oct 2026, 10:00 SGT.');
+  // The last confirmed details are shown, not withheld.
+  for (const text of ['Called-off summit description', 'Wed, 28 Oct 2026', '09:00 – 17:00 SGT', 'SMU Hall A', 'Your place']) await expect(dialog).toContainText(text);
+  await expect(dialog).not.toContainText('Its date, time and venue are no longer shown.');
+  // The notice states only what is known: no promised notification or organiser message.
+  await expect(notice).not.toContainText(/notification|organiser/i);
+  await expect(dialog.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+  expect(detailRequests).toEqual({ myEvents: [57], discovery: [] });
+  await attachScreenshot(testInfo, page, 'cancelled-last-confirmed');
+});
+
 test('[SPM-155] View Event Details on a My Events card opens the same details and returns focus', async ({ page }) => {
   await installInbox(page, { registrations: [registration(51, 'Event 1')], details: { 51: eventDetail(51, 'Event 1') } });
   await page.goto('/my-registrations');
