@@ -222,6 +222,8 @@ test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read a
   // Read from the attendee's registration, not from Event Discovery.
   expect(detailRequests.myEvents).toEqual([52]);
   expect(detailRequests.discovery).toEqual([]);
+  // The dialog is the whole view: no link to a separate event page.
+  await expect(dialog.getByRole('link', { name: /View Event Details/i })).toHaveCount(0);
   await attachScreenshot(testInfo, page, 'my-events-details');
 
   // Behind the dialog, the event's card is outlined and says where it came from.
@@ -291,6 +293,35 @@ test('[SPM-155 AC5 / Master 5.7] a cancelled event that had been confirmed shows
   expect(detailRequests).toEqual({ myEvents: [57], discovery: [] });
   await attachScreenshot(testInfo, page, 'cancelled-last-confirmed');
 });
+
+// Being reconfirmed: the last confirmed details when there was a confirmation
+// (Master 5.7), otherwise only that the details are being confirmed.
+for (const [label, overrides, shown] of [
+  ['with a last confirmation', { lastConfirmedAt: '2026-10-05T02:00:00.000Z' }, true],
+  ['without a confirmation', { description: null, startDatetime: null, endDatetime: null, location: null, organisationName: null, registrationOpenAt: null, registrationCloseAt: null, detailsWithheld: true }, false],
+]) {
+  test(`[SPM-155 AC5] an event being reconfirmed ${label} says so in the dialog`, async ({ page }) => {
+    await installInbox(page, {
+      registrations: [registration(58, 'Moved summit')],
+      details: { 58: eventDetail(58, 'Moved summit', { registrationAvailability: 'CLOSED', attendeeStatus: 'PENDING_CONFIRMATION', ...overrides }) },
+    });
+    await page.goto('/my-registrations?eventId=58');
+    const dialog = page.getByRole('dialog', { name: 'Moved summit', exact: true });
+    await expect(dialog.getByText('Event confirmation pending', { exact: true })).toBeVisible();
+    const notice = dialog.getByRole('status').filter({ hasText: "This event's details are being confirmed" });
+    await expect(notice).toContainText(shown
+      ? 'These are the details last confirmed on 5 Oct 2026, 10:00 SGT. Check back here for the latest information.'
+      : 'Check back here for the latest information.');
+    await expect(notice).not.toContainText(/notification|organiser/i);
+    if (shown) {
+      for (const text of ['Moved summit description', 'Wed, 28 Oct 2026', 'SMU Hall A']) await expect(dialog).toContainText(text);
+    } else {
+      await expect(dialog).not.toContainText('About this event');
+      await expect(dialog).not.toContainText('Location');
+    }
+    await expect(dialog.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+  });
+}
 
 test('[SPM-155] View Event Details on a My Events card opens the same details and returns focus', async ({ page }) => {
   await installInbox(page, { registrations: [registration(51, 'Event 1')], details: { 51: eventDetail(51, 'Event 1') } });
