@@ -179,8 +179,8 @@ of the five latest notifications; **See more** and the attendee sidebar's
   `announceNotificationsChanged()` without a count and the badge fetches it again.
 - **Go to Event** marks the notification read, then opens
   `/my-registrations?eventId=<id>&from=notification` (attendees) or
-  `/events/<id>`. On My Events that URL opens the event details dialog (frame
-  `282:1271`) over the outlined card, labelled "Opened from your
+  `/events/<id>` (staff workspace, other roles later). On My Events that URL
+  opens the event details dialog (frame `282:1271`) over the outlined card, labelled "Opened from your
   notification"; **View Event Details** on a card opens the same dialog
   without that label, and closing removes the parameters. A notification the
   backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
@@ -201,40 +201,11 @@ of the five latest notifications; **See more** and the attendee sidebar's
   details are being confirmed"), without promising a notification
   (`TODO(SPM-163)` marks the offer follow-up). The attendee's own place reads
   "On the waitlist", since "Waitlisted" is Event Discovery's word for a full
-  event.
+  event. The dialog is the attendee's whole event view: there is no separate
+  attendee event page (team decision), and `/events/<id>` stays the staff
+  workspace.
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
   notification shows the offer expiry, and the dialog keeps a footer slot.
-
-### Attendee event page
-
-The dialog is a summary; its **View Event Details** link opens the full page at
-`/events/<id>?from=discovery|my-events` (frame `282:1271` at page width).
-
-- `/events/[eventId]` is role-aware (`app/events/[eventId]/event-role-content.tsx`):
-  attendees get `components/attendee/event-details/attendee-event-page.tsx`;
-  organisers, coordinators and other roles keep the SPM-33 workspace unchanged.
-  `canViewPath` lets attendees open it (login return), Event Discovery is the
-  current tab, and the tab title is the neutral "Event | ConnectSphere".
-- The Back link follows `from` (`discovery` or `my-events` only; anything else,
-  a direct link or a login return goes to My Events), so it cannot redirect
-  elsewhere.
-- Same data and rules as the dialog: `from=discovery` reads the discovery
-  endpoint, `from=my-events` the registration endpoint, and a direct link or
-  login return tries the registration endpoint first, then discovery if the
-  attendee holds no place (`eventDetailsSource`). Events shown as last
-  confirmed have the notice, your place, description, schedule and venue,
-  without the "Not available yet" sections; withheld events show only title,
-  status, explanation and your place; sign-up actions stay disabled; times
-  are in SGT.
-- **Design-system deviation (product decision):** every section of the frame
-  is shown even without data: event photo, track, seat numbers, speakers,
-  session agenda and on-site amenities each show a neutral "Not available
-  yet" placeholder (`PendingDetails`) saying the information is not available
-  in ConnectSphere yet, without promising that anyone will provide it. These
-  are display-only; no data model exists for them. Pricing is left out
-  (Master 3.3).
-- For the team: Master 3.4 describes `/events/[eventId]` as the role-aware
-  workspace; it could also mention the attendee event details page there.
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
