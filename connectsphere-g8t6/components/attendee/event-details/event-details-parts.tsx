@@ -41,7 +41,8 @@ export function MyPlaceChip({ registration }: { registration: AttendeeRegistrati
       }`}
     >
       <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-pill ${waitlisted ? "bg-tertiary" : "bg-success"}`} />
-      {waitlisted ? "Waitlisted" : "Registered"}
+      {/* Not "Waitlisted", which Event Discovery uses for a full event (SPM-44 AC3). */}
+      {waitlisted ? "On the waitlist" : "Registered"}
     </span>
   );
 }
@@ -90,7 +91,7 @@ export function MyPlaceCard({ registration }: { registration: AttendeeRegistrati
     <section aria-labelledby={headingId} className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
       <SectionLabel id={headingId}>Your place</SectionLabel>
       <p className="mt-2 text-sm font-semibold text-on-surface">
-        {waitlisted ? "Waitlisted · a place is not yet confirmed" : "Registered"}
+        {waitlisted ? "On the waitlist · a place is not yet confirmed" : "Registered"}
       </p>
       {registration.registeredAt ? (
         <p className="mt-1 text-xs text-on-surface-variant">Since {formatTimestamp(registration.registeredAt)}</p>
