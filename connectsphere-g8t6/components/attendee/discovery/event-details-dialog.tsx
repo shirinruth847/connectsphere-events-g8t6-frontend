@@ -15,12 +15,13 @@ import {
 import { eventDetailsHref, type EventDetailsOrigin } from "@/components/attendee/event-details/event-details-links";
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import type { AttendeeEventDetail, AttendeeEventSummary } from "@/lib/api/discovery";
+import type { AttendeeEventView } from "@/lib/api/my-events";
 import { DiscoveryDetailsPanel } from "./discovery-details-panel";
 import { DiscoveryIcon } from "./discovery-icon";
 import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
 import { formatEventDate, formatEventTime } from "./format-event-time";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
-import { useDiscoveryEvent } from "./use-discovery-event";
+import { useAttendeeEvent } from "@/components/attendee/event-details/use-attendee-event";
 
 export { REGISTRATION_UNAVAILABLE_NOTE } from "@/components/attendee/event-details/event-details-parts";
 
@@ -31,12 +32,12 @@ export type EventDetailsTarget = Pick<AttendeeEventSummary, "eventId" | "title">
 interface EventDetailsDialogProps {
   // The event that was opened; null when the dialog is closed.
   event: EventDetailsTarget | null;
-  // Where the dialog lives, so the full page can link back there.
+  // Where the dialog lives: which endpoint it reads, and where the full page links back to.
   detailsFrom: EventDetailsOrigin;
   onClose: () => void;
   // Runs after the dialog has closed, to put focus back where it belongs.
   onClosed: () => void;
-  onLoaded?: (event: AttendeeEventDetail) => void;
+  onLoaded?: (event: AttendeeEventView) => void;
   onNotFound?: (eventId: number) => void;
   // Explains a 404 in the opener's terms.
   notFoundDescription?: string;
@@ -115,11 +116,12 @@ function EventDetailsContent({
   titleId: string;
   detailsFrom: EventDetailsOrigin;
   onClose: () => void;
-  onLoaded?: (event: AttendeeEventDetail) => void;
+  onLoaded?: (event: AttendeeEventView) => void;
   onNotFound?: (eventId: number) => void;
   notFoundDescription: string;
 }) {
-  const { state, retry } = useDiscoveryEvent(summary.eventId, { onLoaded, onNotFound });
+  // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
+  const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom === "discovery" ? "discovery" : "my-events", { onLoaded, onNotFound });
   const event = state.status === "ready" ? state.event : null;
   const withheld = Boolean(event?.detailsWithheld);
   const myRegistration = event?.myRegistration ?? null;

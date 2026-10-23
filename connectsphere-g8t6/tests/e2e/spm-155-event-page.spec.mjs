@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { attachScreenshot, installConnectSphereMocks, installLoginMock } from './support.mjs';
+import { routeAttendeeEvents } from './spm-155-mocks.mjs';
 
 // The full attendee event page at /events/<id> (SPM-155), opened with View
 // Event Details from the shared dialog. Mocks follow GET /api/events/discovery/:id.
@@ -23,21 +24,13 @@ const detail = (eventId, title, overrides = {}) => ({
 
 const registered = { status: 'REGISTERED', registeredAt: '2026-10-01T00:00:00.000Z' };
 
-// `details` maps an event ID to its detail body, or to a status number.
+// `details` maps an event ID to the attendee's view of it, or to a status
+// number (see routeAttendeeEvents). detailRequests records which endpoint was
+// asked: myEvents (GET /api/registrations/mine/:eventId) or discovery.
 async function installAttendee(page, { details = {}, discovery = [], registrations = [], notifications = [], role = 'ATTENDEE' } = {}) {
   const state = await installConnectSphereMocks(page, { role });
-  const detailRequests = [];
-  await page.route('**/api/events/discovery**', (route) => {
-    const url = new URL(route.request().url());
-    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    const match = url.pathname.match(/^\/api\/events\/discovery\/(\d+)$/);
-    if (!match) return json({ events: discovery, nextCursor: null });
-    detailRequests.push(Number(match[1]));
-    const body = details[match[1]];
-    if (!body || typeof body === 'number') return json({ error: 'Event not found.', code: 'EVENT_NOT_FOUND' }, typeof body === 'number' ? body : 404);
-    return json({ event: body });
-  });
-  await page.route('**/api/registrations/mine**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ registrations, page: { next_offset: null } }) }));
+  await page.route('**/api/events/discovery?*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: discovery, nextCursor: null }) }));
+  const detailRequests = await routeAttendeeEvents(page, { details, registrations });
   await page.route('**/api/notifications**', (route) => {
     const url = new URL(route.request().url());
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -54,7 +47,7 @@ const sidebar = (page) => page.locator('aside');
 
 test('[SPM-155] View Event Details in the Event Discovery dialog opens the full page and leads back', async ({ page }, testInfo) => {
   const summary = { eventId: 101, title: 'SMU Tech Summit', description: 'Talks', startDatetime: '2026-10-28T01:00:00.000Z', endDatetime: '2026-10-28T09:00:00.000Z', organisationName: 'SMU Computing Club', location: 'SMU Hall A', registrationAvailability: 'OPEN' };
-  await installAttendee(page, { discovery: [summary], details: { 101: detail(101, 'SMU Tech Summit') } });
+  const { detailRequests } = await installAttendee(page, { discovery: [summary], details: { 101: detail(101, 'SMU Tech Summit') } });
   await page.goto('/events');
   await page.getByRole('button', { name: 'View event details for SMU Tech Summit' }).click();
   const dialog = page.getByRole('dialog', { name: 'SMU Tech Summit', exact: true });
@@ -64,13 +57,15 @@ test('[SPM-155] View Event Details in the Event Discovery dialog opens the full 
   await expect(page).toHaveURL(/\/events\/101\?from=discovery$/);
   await expect(page.getByRole('heading', { name: 'SMU Tech Summit', level: 1 })).toBeVisible();
   await expect(sidebar(page).getByRole('link', { name: 'Event Discovery', exact: true })).toHaveAttribute('aria-current', 'page');
+  // Event Discovery's dialog and page read only the discovery endpoint.
+  expect(detailRequests).toEqual({ myEvents: [], discovery: [101, 101] });
   await attachScreenshot(testInfo, page, 'event-page-from-discovery');
   await page.getByRole('link', { name: 'Back to Event Discovery' }).click();
   await expect(page).toHaveURL(/\/events$/);
 });
 
 test('[SPM-155] the full page fills known sections and labels every pending one', async ({ page }) => {
-  await installAttendee(page, { details: { 52: detail(52, 'Event 2', { myRegistration: registered }) } });
+  const { detailRequests } = await installAttendee(page, { details: { 52: detail(52, 'Event 2', { myRegistration: registered }) } });
   await page.goto('/events/52?from=my-events');
   const main = page.locator('main');
   await expect(page.getByRole('heading', { name: 'Event 2', level: 1 })).toBeVisible();
@@ -88,6 +83,7 @@ test('[SPM-155] the full page fills known sections and labels every pending one'
   // A registered attendee is not offered sign-up.
   await expect(main.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Back to My Events' })).toHaveAttribute('href', '/my-registrations');
+  expect(detailRequests).toEqual({ myEvents: [52], discovery: [] });
 });
 
 test('[SPM-155] an event open for sign-up keeps the disabled registration action on the page', async ({ page }) => {
@@ -114,7 +110,7 @@ test('[SPM-155 AC4/AC5] Go to Event → My Events dialog → View Event Details 
 });
 
 test('[SPM-155 AC5] a cancelled event shows only its title, status and an explanation', async ({ page }, testInfo) => {
-  await installAttendee(page, {
+  const { detailRequests } = await installAttendee(page, {
     details: { 54: detail(54, 'Cancelled gala', { description: null, startDatetime: null, endDatetime: null, location: null, organisationName: null, registrationOpenAt: null, registrationCloseAt: null, registrationAvailability: 'CLOSED', attendeeStatus: 'CANCELLED', detailsWithheld: true, myRegistration: { status: 'WAITLISTED', registeredAt: null } }) },
   });
   await page.goto('/events/54');
@@ -127,8 +123,9 @@ test('[SPM-155 AC5] a cancelled event shows only its title, status and an explan
   await expect(main.locator('[data-pending]')).toHaveCount(0);
   await expect(main).not.toContainText('About this event');
   await expect(main.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
-  // No ?from= (e.g. a direct link): back to My Events.
+  // No ?from= (e.g. a direct link): back to My Events, read from the registration.
   await expect(page.getByRole('link', { name: 'Back to My Events' })).toBeVisible();
+  expect(detailRequests).toEqual({ myEvents: [54], discovery: [] });
   await attachScreenshot(testInfo, page, 'event-page-cancelled');
 });
 
@@ -156,10 +153,12 @@ test('[SPM-155 AC6] an event the attendee cannot see shows not available', async
   await expect(page.getByRole('link', { name: 'Back to Event Discovery' })).toBeVisible();
 });
 
-test('[SPM-155] an unknown origin cannot redirect the back link', async ({ page }) => {
-  await installAttendee(page, { details: { 52: detail(52, 'Event 2') } });
+test('[SPM-155] an unknown origin cannot redirect the back link; without a place the page falls back to discovery', async ({ page }) => {
+  const { detailRequests } = await installAttendee(page, { details: { 52: detail(52, 'Event 2') } });
   await page.goto('/events/52?from=https%3A%2F%2Fevil.example');
+  await expect(page.getByRole('heading', { name: 'Event 2', level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Back to My Events' })).toHaveAttribute('href', '/my-registrations');
+  expect(detailRequests).toEqual({ myEvents: [52], discovery: [52] });
 });
 
 for (const role of ['ORGANISER', 'COORDINATOR']) {
@@ -174,13 +173,13 @@ for (const role of ['ORGANISER', 'COORDINATOR']) {
     await expect(page.locator(`[data-dashboard-shell="${role}"]`)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Workspace review event', exact: true })).toBeVisible();
     await expect(page.locator('[data-pending]')).toHaveCount(0);
-    expect(detailRequests).toEqual([]);
+    expect(detailRequests).toEqual({ myEvents: [], discovery: [] });
   });
 }
 
 test('[SPM-155 TC-12] signed out, /events/<id> returns there after an attendee logs in', async ({ page }) => {
   await installLoginMock(page, { role: 'ATTENDEE' });
-  await page.route('**/api/events/discovery/42', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ event: detail(42, 'Returned event') }) }));
+  await routeAttendeeEvents(page, { details: { 42: detail(42, 'Returned event', { myRegistration: registered }) } });
   await page.route('**/api/notifications/unread-count', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ unreadCount: 0 }) }));
   await page.goto('/events/42');
   await expect(page).toHaveURL(/\/login\?next=%2Fevents%2F42/);

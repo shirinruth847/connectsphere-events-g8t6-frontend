@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { attachScreenshot, installConnectSphereMocks, installLoginMock } from './support.mjs';
+import { routeAttendeeEvents } from './spm-155-mocks.mjs';
 
 // Mocked journeys for the notifications inbox and Updates panel (SPM-155).
 // The mock follows the backend contract in docs/test-plans/spm-155.md of the
@@ -72,23 +73,12 @@ async function installInbox(page, { notifications = [], role = 'ATTENDEE', gone 
     }
     return route.fallback();
   });
-  await page.route('**/api/registrations/mine**', (route) => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ registrations, page: { next_offset: null } }),
-  }));
-  await page.route('**/api/events/discovery/*', (route) => {
-    const id = new URL(route.request().url()).pathname.split('/').pop();
-    const body = details[id];
-    const json = (payload, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(payload) });
-    if (typeof body === 'number' || !body) return json({ error: 'Event not found.', code: 'EVENT_NOT_FOUND' }, typeof body === 'number' ? body : 404);
-    return json({ event: body });
-  });
-  return { state, inbox };
+  const detailRequests = await routeAttendeeEvents(page, { details, registrations });
+  return { state, inbox, detailRequests };
 }
 
-// The attendee detail (GET /api/events/discovery/:id) for an event the
-// attendee holds a place on.
+// The attendee's view of an event they hold a place on, served by
+// routeAttendeeEvents (GET /api/registrations/mine/:eventId).
 const eventDetail = (eventId, title, overrides = {}) => ({
   eventId,
   title,
@@ -189,7 +179,7 @@ test('[SPM-155 TC-08] the Updates badge on My Events counts down as notification
 });
 
 test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read and opens the event details in My Events', async ({ page }, testInfo) => {
-  const { inbox } = await installInbox(page, {
+  const { inbox, detailRequests } = await installInbox(page, {
     notifications: [
       makeNotification(1),
       makeNotification(2, { type: 'EVENT_CHANGED', title: 'Event details changed', message: 'The date and time for "Event 2" changed.' }),
@@ -214,6 +204,9 @@ test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read a
   await expect(dialog.getByText('Registered', { exact: true }).first()).toBeVisible();
   // Someone already registered is not offered sign-up.
   await expect(dialog.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+  // Read from the attendee's registration, not from Event Discovery.
+  expect(detailRequests.myEvents).toEqual([52]);
+  expect(detailRequests.discovery).toEqual([]);
   await attachScreenshot(testInfo, page, 'my-events-details');
 
   // Behind the dialog, the event's card is outlined and says where it came from.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { eventBackLink, eventDetailsHref } from '../components/attendee/event-details/event-details-links.ts';
+import { eventBackLink, eventDetailsHref, eventDetailsSource } from '../components/attendee/event-details/event-details-links.ts';
 import { canViewPath, postLoginPath } from '../lib/auth.ts';
 
 const attendee = { user_id: 1, name: 'A', email: 'a@example.com', role: 'ATTENDEE' };
@@ -15,6 +15,14 @@ test('[SPM-155] the back link returns to the origin, and to My Events otherwise'
   assert.deepEqual(eventBackLink('my-events'), { href: '/my-registrations', label: 'Back to My Events' });
   for (const from of [null, undefined, '', 'https://evil.example', '//evil.example', '/dashboard']) {
     assert.deepEqual(eventBackLink(from), { href: '/my-registrations', label: 'Back to My Events' }, String(from));
+  }
+});
+
+test('[SPM-155] Event Discovery reads its own endpoint; My Events and direct visits read the registration first', () => {
+  assert.equal(eventDetailsSource('discovery'), 'discovery');
+  assert.equal(eventDetailsSource('my-events'), 'my-events');
+  for (const from of [null, undefined, '', 'notification', 'https://evil.example']) {
+    assert.equal(eventDetailsSource(from), 'either', String(from));
   }
 });
 

@@ -18,3 +18,14 @@ export function eventDetailsHref(eventId: number, from: EventDetailsOrigin) {
 export function eventBackLink(from: string | null | undefined) {
   return from === "discovery" || from === "my-events" ? BACK_LINKS[from] : BACK_LINKS["my-events"];
 }
+
+// Which endpoint answers for the event:
+//   discovery  GET /api/events/discovery/:id (Event Discovery's own rules);
+//   my-events  GET /api/registrations/mine/:eventId (an event the attendee
+//              holds a place on, opened from My Events, a notification or Go to Event);
+//   either     a direct visit: my-events first, then discovery if they hold no place.
+export type EventDetailsSource = "discovery" | "my-events" | "either";
+
+export function eventDetailsSource(from: string | null | undefined): EventDetailsSource {
+  return from === "discovery" || from === "my-events" ? from : "either";
+}

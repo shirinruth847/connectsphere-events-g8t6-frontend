@@ -21,22 +21,9 @@ export interface AttendeeEventSummary {
   registrationAvailability: RegistrationAvailability | (string & {});
 }
 
-// The attendee's own place on an event (SPM-155). SPM-163 adds the offer.
-export interface AttendeeRegistration {
-  status: "REGISTERED" | "WAITLISTED" | (string & {});
-  registeredAt: string | null;
-}
-
 export interface AttendeeEventDetail extends AttendeeEventSummary {
   registrationOpenAt: string | null;
   registrationCloseAt: string | null;
-  // SPM-155: the detail also opens events the attendee is registered or
-  // waitlisted for, in any status. A display status, never the lifecycle state.
-  attendeeStatus?: "CONFIRMED" | "PENDING_CONFIRMATION" | "CANCELLED" | "COMPLETED" | (string & {});
-  // True when the date, time, venue and description are held back because they
-  // may not be the confirmed ones (until SPM-173's confirmation snapshot).
-  detailsWithheld?: boolean;
-  myRegistration?: AttendeeRegistration | null;
 }
 
 export interface DiscoveryPage {

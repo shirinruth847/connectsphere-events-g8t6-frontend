@@ -9,7 +9,8 @@ import { formatEventDate, formatEventTime, formatTimestamp } from "@/components/
 import { getRegistrationAction, isRegistrationEnabled } from "@/components/attendee/discovery/registration-availability";
 import { Icon } from "@/components/shared/icon";
 import { AlertBanner, Button, buttonClasses } from "@/components/shared/primitives";
-import type { AttendeeEventDetail, AttendeeRegistration } from "@/lib/api/discovery";
+import type { AttendeeEventDetail } from "@/lib/api/discovery";
+import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
 
 // Pieces shared by the event details dialog and the full attendee event page
 // (frame 282:1271), so both show an event the same way.
@@ -148,7 +149,7 @@ export const REGISTRATION_UNAVAILABLE_NOTE = "Online sign-up isn't available in 
 // can still reach it and hear why. The shared Button's disabled: style only
 // matches the disabled attribute, so the same classes go through aria-disabled:.
 // Someone who already holds a place is offered no sign-up action.
-export function EventDetailsFooter({ event, detailsHref }: { event: AttendeeEventDetail; detailsHref?: string }) {
+export function EventDetailsFooter({ event, detailsHref }: { event: AttendeeEventView; detailsHref?: string }) {
   const helperId = useId();
   const action = event.detailsWithheld || event.myRegistration ? null : getRegistrationAction(event);
   if (!action && !detailsHref) return null;

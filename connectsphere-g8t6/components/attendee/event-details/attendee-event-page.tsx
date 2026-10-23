@@ -8,12 +8,11 @@ import { DiscoveryIcon } from "@/components/attendee/discovery/discovery-icon";
 import { LOCATION_PENDING_LABEL } from "@/components/attendee/discovery/event-discovery-card";
 import { formatEventDate, formatEventTime } from "@/components/attendee/discovery/format-event-time";
 import { RegistrationAvailabilityChip } from "@/components/attendee/discovery/registration-availability-chip";
-import { useDiscoveryEvent } from "@/components/attendee/discovery/use-discovery-event";
 import { PageContent } from "@/components/layout/page-content";
 import { Icon } from "@/components/shared/icon";
 import { AlertBanner, Button, Skeleton, buttonClasses } from "@/components/shared/primitives";
-import type { AttendeeEventDetail } from "@/lib/api/discovery";
-import { eventBackLink } from "./event-details-links";
+import type { AttendeeEventView } from "@/lib/api/my-events";
+import { eventBackLink, eventDetailsSource, type EventDetailsSource } from "./event-details-links";
 import {
   AttendeeStatusChip,
   EventDetailsFooter,
@@ -26,14 +25,18 @@ import {
   placeRows,
   scheduleRows,
 } from "./event-details-parts";
+import { useAttendeeEvent } from "./use-attendee-event";
 
 // The full attendee event page at /events/<id> (SPM-155), frame 282:1271 at page
-// width. Data comes from GET /api/events/discovery/:id with its attendee rules.
+// width. Data comes from Event Discovery's endpoint when opened from there, and
+// otherwise from the attendee's own registration (eventDetailsSource).
 // Sections the frame shows but ConnectSphere has no data for (photo, track,
 // seats, speakers, agenda, amenities) are labelled "Not available yet" by
 // decision; pricing is left out (Master 3.3). Render inside DashboardWorkspace.
 export function AttendeeEventPage({ eventId: rawEventId }: { eventId: string }) {
-  const back = eventBackLink(useSearchParams().get("from"));
+  const from = useSearchParams().get("from");
+  const back = eventBackLink(from);
+  const source = eventDetailsSource(from);
   const eventId = /^[1-9]\d{0,9}$/.test(rawEventId) ? Number(rawEventId) : null;
   const backLink = (
     <Link href={back.href} className={`${buttonClasses("secondary")} max-lg:min-h-11`}>
@@ -43,7 +46,7 @@ export function AttendeeEventPage({ eventId: rawEventId }: { eventId: string }) 
   );
 
   if (eventId === null) return <NotAvailable backLink={backLink} />;
-  return <LoadedEventPage key={eventId} eventId={eventId} backLink={backLink} />;
+  return <LoadedEventPage key={`${eventId}-${source}`} eventId={eventId} source={source} backLink={backLink} />;
 }
 
 function NotAvailable({ backLink }: { backLink: ReactNode }) {
@@ -56,8 +59,8 @@ function NotAvailable({ backLink }: { backLink: ReactNode }) {
   );
 }
 
-function LoadedEventPage({ eventId, backLink }: { eventId: number; backLink: ReactNode }) {
-  const { state, retry } = useDiscoveryEvent(eventId);
+function LoadedEventPage({ eventId, source, backLink }: { eventId: number; source: EventDetailsSource; backLink: ReactNode }) {
+  const { state, retry } = useAttendeeEvent(eventId, source);
   if (state.status === "not-found") return <NotAvailable backLink={backLink} />;
   const event = state.status === "ready" ? state.event : null;
 
@@ -85,7 +88,7 @@ function LoadedEventPage({ eventId, backLink }: { eventId: number; backLink: Rea
   );
 }
 
-function EventPageBody({ event }: { event: AttendeeEventDetail }) {
+function EventPageBody({ event }: { event: AttendeeEventView }) {
   const withheld = Boolean(event.detailsWithheld);
   const myRegistration = event.myRegistration ?? null;
 
@@ -128,7 +131,7 @@ function EventPageBody({ event }: { event: AttendeeEventDetail }) {
   );
 }
 
-function ConfirmedEventSections({ event }: { event: AttendeeEventDetail }) {
+function ConfirmedEventSections({ event }: { event: AttendeeEventView }) {
   const myRegistration = event.myRegistration ?? null;
   return (
     <>
