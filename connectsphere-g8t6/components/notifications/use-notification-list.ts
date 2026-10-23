@@ -11,7 +11,7 @@ import {
   type NotificationReadState,
 } from "@/lib/api/notifications";
 import {
-  announceUnreadCount,
+  announceNotificationsChanged,
   appendNotifications,
   applyReadState,
   mergeFirstPage,
@@ -162,7 +162,7 @@ export function useNotificationList({ pageSize, refreshOnReturn }: { pageSize: n
         const page = await listNotifications({ limit: pageSize, signal: controller.signal });
         if (controller.signal.aborted) return;
         dispatch({ type: "loaded", items: page.notifications, nextCursor: page.nextCursor, unreadCount: page.unreadCount, background });
-        announceUnreadCount(page.unreadCount);
+        announceNotificationsChanged(page.unreadCount);
       } catch (error) {
         if (!controller.signal.aborted) dispatch({ type: "failed", error: toApiError(error), background });
       }
@@ -208,7 +208,7 @@ export function useNotificationList({ pageSize, refreshOnReturn }: { pageSize: n
       const page = await listNotifications({ limit: pageSize, cursor: state.nextCursor, signal: controller.signal });
       if (controller.signal.aborted) return;
       dispatch({ type: "moreLoaded", items: page.notifications, nextCursor: page.nextCursor, unreadCount: page.unreadCount });
-      announceUnreadCount(page.unreadCount);
+      announceNotificationsChanged(page.unreadCount);
     } catch (error) {
       if (!controller.signal.aborted) dispatch({ type: "moreFailed", error: toApiError(error) });
     }
@@ -222,7 +222,7 @@ export function useNotificationList({ pageSize, refreshOnReturn }: { pageSize: n
     try {
       const result = await markNotificationRead(item.notification_id);
       dispatch({ type: "read", state: result.notification, unreadCount: result.unreadCount });
-      announceUnreadCount(result.unreadCount);
+      announceNotificationsChanged(result.unreadCount);
       return "read";
     } catch (caught) {
       const error = toApiError(caught);
@@ -254,7 +254,7 @@ export function useNotificationList({ pageSize, refreshOnReturn }: { pageSize: n
     try {
       const result = await markAllNotificationsRead();
       dispatch({ type: "allRead", unreadCount: result.unreadCount });
-      announceUnreadCount(result.unreadCount);
+      announceNotificationsChanged(result.unreadCount);
     } catch (error) {
       dispatch({ type: "markAllFailed", error: toApiError(error) });
     }

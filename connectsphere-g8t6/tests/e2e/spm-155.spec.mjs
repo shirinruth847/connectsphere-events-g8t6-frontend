@@ -33,6 +33,7 @@ async function installInbox(page, { notifications = [], role = 'ATTENDEE', gone 
     listRequests: [],
     readRequests: [],
     readAllRequests: 0,
+    countRequests: 0,
   };
   const unread = () => inbox.items.filter((item) => !item.is_read && !inbox.gone.has(item.notification_id)).length;
   await page.route('**/api/notifications**', async (route) => {
@@ -40,7 +41,10 @@ async function installInbox(page, { notifications = [], role = 'ATTENDEE', gone 
     const url = new URL(request.url());
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (request.method() === 'OPTIONS') return route.fallback();
-    if (url.pathname === '/api/notifications/unread-count') return json({ unreadCount: unread() });
+    if (url.pathname === '/api/notifications/unread-count') {
+      inbox.countRequests += 1;
+      return json({ unreadCount: unread() });
+    }
     if (url.pathname === '/api/notifications/read-all' && request.method() === 'POST') {
       inbox.readAllRequests += 1;
       const updated = unread();
@@ -146,7 +150,7 @@ test('[SPM-155 AC8 / TC-08] inbox lists newest first; opening one and Mark all a
 });
 
 test('[SPM-155 TC-08] the Updates badge on My Events counts down as notifications are read', async ({ page }) => {
-  await installInbox(page, {
+  const { inbox } = await installInbox(page, {
     notifications: [makeNotification(1), makeNotification(2), makeNotification(3, { target: null, event: null, title: 'General notice' })],
     registrations: [registration(52, 'Event 2')],
   });
@@ -176,6 +180,17 @@ test('[SPM-155 TC-08] the Updates badge on My Events counts down as notification
   await page.keyboard.press('Escape');
   await expect(panel(page)).toHaveCount(0);
   await expect(updatesButton(page)).toBeFocused();
+
+  // Told that notifications changed without a count (e.g. after a registration
+  // wrote one), the badge fetches the count again; with a count it shows it.
+  inbox.items.push(makeNotification(4));
+  const asked = inbox.countRequests;
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('connectsphere:notifications-changed', { detail: {} })));
+  await expect(updatesButton(page)).toHaveAccessibleName('Updates, 1 unread');
+  expect(inbox.countRequests).toBe(asked + 1);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('connectsphere:notifications-changed', { detail: { unreadCount: 5 } })));
+  await expect(updatesButton(page)).toHaveAccessibleName('Updates, 5 unread');
+  expect(inbox.countRequests).toBe(asked + 1);
 });
 
 test('[SPM-155 AC4/AC5 / TC-05, TC-06] Go to Event marks the notification read and opens the event details in My Events', async ({ page }, testInfo) => {

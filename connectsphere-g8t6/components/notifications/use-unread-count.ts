@@ -5,8 +5,9 @@ import { getUnreadNotificationCount } from "@/lib/api/notifications";
 import { NOTIFICATIONS_CHANGED } from "@/lib/notifications";
 
 // The unread count for the Updates badge. Refreshed when the page regains
-// focus or becomes visible, and set from the count the backend returns after
-// each read action. A failed refresh keeps the last known count.
+// focus or becomes visible, or when told notifications changed without a
+// count, and set from the count the backend returns after each read action.
+// A failed refresh keeps the last known count.
 export function useUnreadCount() {
   const [count, setCount] = useState<number | null>(null);
 
@@ -24,7 +25,7 @@ export function useUnreadCount() {
     const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
     const onChanged = (event: Event) => {
       const next = (event as CustomEvent<{ unreadCount?: unknown }>).detail?.unreadCount;
-      if (typeof next !== "number") return;
+      if (typeof next !== "number") return refresh();
       request?.abort();
       setCount(next);
     };

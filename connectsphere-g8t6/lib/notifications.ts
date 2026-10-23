@@ -118,10 +118,12 @@ export function applyReadState(items: NotificationItem[], state: NotificationRea
   );
 }
 
-// Tells the Updates badge the confirmed unread count after a read action.
+// Tells the Updates badge that notifications changed. With the confirmed count
+// from a read action the badge shows it at once; without one (e.g. after a
+// registration that wrote a notification) the badge fetches the count again.
 export const NOTIFICATIONS_CHANGED = "connectsphere:notifications-changed";
 
-export function announceUnreadCount(unreadCount: number) {
+export function announceNotificationsChanged(unreadCount?: number) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED, { detail: { unreadCount } }));
 }
