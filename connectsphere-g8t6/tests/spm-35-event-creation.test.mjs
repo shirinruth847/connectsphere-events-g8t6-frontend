@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { displayEventStatus, EMPTY_EVENT_FORM, eventStatusLabel, validateEventStep } from "../lib/events.ts";
+import { EMPTY_EVENT_FORM, eventDisplayStatus, eventStatusLabel, validateEventStep } from "../lib/events.ts";
 
 test("[SPM-35 TC-002] creation blocks advancing when required event identity fields are missing", () => {
   const errors = validateEventStep(EMPTY_EVENT_FORM, 0, true);
@@ -22,6 +22,6 @@ test("[SPM-35 AC2] creation requires scheduling fields and rejects an end time b
 });
 
 test("[SPM-35 AC Dashboard] dashboard displays the statusLabel supplied by the API", () => {
-  assert.equal(displayEventStatus("SUBMITTED"), "SUBMITTED");
+  assert.equal(eventDisplayStatus({ status: "SUBMITTED" }), "SUBMITTED");
   assert.equal(eventStatusLabel({ status: "SUBMITTED", statusLabel: "Submitted by API" }), "Submitted by API");
 });

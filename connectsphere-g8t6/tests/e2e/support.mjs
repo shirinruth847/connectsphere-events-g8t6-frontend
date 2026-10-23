@@ -29,6 +29,16 @@ export const makeDraft = (overrides = {}) => ({
   ...overrides,
 });
 
+// Organiser responses carry statusLabel but not the stored status (backend
+// SPM-173 AC6); only the assigned coordinator's event view keeps it. The mock
+// state keeps status so the routes below can decide like the backend does.
+export const organiserView = (event) => {
+  if (!event || event.viewerRelationship === "ASSIGNED_COORDINATOR") return event;
+  const view = { ...event };
+  delete view.status;
+  return view;
+};
+
 export async function installConnectSphereMocks(page, { authenticated = true, draft = null, role = "ORGANISER" } = {}) {
   const state = {
     events: draft ? [draft] : [],
@@ -115,7 +125,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 
     if (pathname === "/api/events/mine" && method === "GET") {
-      return json({ events: state.events, nextCursor: null });
+      return json({ events: state.events.map(organiserView), nextCursor: null });
     }
 
     if (pathname === "/api/events/drafts" && method === "POST") {
@@ -124,14 +134,14 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
       state.draft = makeDraft({ ...payload, eventId: 501, requestId: "REQ-000501" });
       state.events = [state.draft, ...state.events.filter((event) => event.eventId !== state.draft.eventId)];
-      return json({ message: "Draft saved successfully.", event: state.draft, savedAt: FIXED_SAVED_AT }, 201);
+      return json({ message: "Draft saved successfully.", event: organiserView(state.draft), savedAt: FIXED_SAVED_AT }, 201);
     }
 
     if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
       const event = state.events.find(event => event.eventId === Number(eventMatch[1]));
-      if (event) return json({ event });
+      if (event) return json({ event: organiserView(event) });
       return json({ error: "Event not found." }, 404);
     }
 
@@ -145,7 +155,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       delete fields.isAutoSave;
       state.draft = makeDraft({ ...state.draft, ...fields, updatedAt: FIXED_SAVED_AT });
       state.events = state.events.map((event) => event.eventId === state.draft.eventId ? state.draft : event);
-      return json({ message: payload.isAutoSave ? "Draft auto-saved." : "Draft saved successfully.", event: state.draft, savedAt: FIXED_SAVED_AT });
+      return json({ message: payload.isAutoSave ? "Draft auto-saved." : "Draft saved successfully.", event: organiserView(state.draft), savedAt: FIXED_SAVED_AT });
     }
 
     const submitMatch = pathname.match(/^\/api\/events\/(\d+)\/submit$/);
@@ -160,7 +170,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       }
       state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = state.events.map((event) => event.eventId === state.draft.eventId ? state.draft : event);
-      return json({ message: "Your event request has been submitted successfully.", event: state.draft });
+      return json({ message: "Your event request has been submitted successfully.", event: organiserView(state.draft) });
     }
 
     if (pathname === "/api/events" && method === "POST") {
@@ -168,7 +178,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       state.createEventRequests.push({ payload, headers: request.headers() });
       const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = [event, ...state.events];
-      return json({ message: "Your event request has been submitted successfully.", event }, 201);
+      return json({ message: "Your event request has been submitted successfully.", event: organiserView(event) }, 201);
     }
 
     return json({ error: `Unmocked API request: ${method} ${pathname}` }, 501);

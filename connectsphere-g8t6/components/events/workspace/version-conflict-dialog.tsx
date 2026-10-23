@@ -4,6 +4,7 @@ import { Button, StatusChip } from "@/components/shared/primitives";
 import { Dialog } from "@/components/shared/dialog";
 import type { EventView, IdentityField } from "@/lib/api/event-workspace";
 import { formatTimestamp } from "@/lib/datetime";
+import { eventDisplayStatus } from "@/lib/events";
 import { editableIdentityFields } from "@/lib/permissions/event-workspace";
 import { fieldLabel } from "./event-detail-rows";
 
@@ -31,7 +32,7 @@ export function VersionConflictDialog({ latest, original, draft, onKeepMine, onU
       open
       onClose={onKeepMine}
       title="This event changed while you were editing"
-      badge={<StatusChip status={latest.status} />}
+      badge={<StatusChip status={eventDisplayStatus(latest)} />}
       footer={
         <>
           <Button variant="secondary" onClick={onUseLatest}>Discard my edits</Button>
