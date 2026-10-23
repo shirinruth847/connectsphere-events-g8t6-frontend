@@ -88,6 +88,10 @@ Validation used Node.js 24.9.0.
 - `npm run test:e2e` builds a separate test configuration, starts port 3100 and
   runs Chrome with deterministic Auth/API mocks. Install Chrome first. Reports
   and traces are under ignored `playwright-report/` and `test-results/`.
+  Live-account browser checks may use `E2E_COORDINATOR_EMAIL`,
+  `E2E_COORDINATOR_PASSWORD`, `E2E_ATTENDEE_EMAIL`, and
+  `E2E_ATTENDEE_PASSWORD`; the venue catalogue tests do not require these
+  variables because they mock authentication and venue responses.
 - `npm run build` uses Webpack and performs TypeScript checks.
 - `npm run test:live` requires both real applications already running at
   localhost:3000/8000, the sibling backend repository and its existing synthetic

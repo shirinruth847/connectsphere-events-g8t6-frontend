@@ -7,10 +7,7 @@ function expireSession() {
   }
 }
 
-const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000").replace(
-  /\/$/,
-  "",
-);
+const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
 
 interface ApiErrorBody {
   error?: string;
