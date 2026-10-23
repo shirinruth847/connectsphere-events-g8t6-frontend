@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { availabilityQuery, catalogueQuery, managedVenueQuery, venueOptionsQuery } from '../components/venues/venue-queries.ts';
-import { eventCalendarCheck, suggestionBlocker } from '../components/venues/event-venue-options/venue-option-model.ts';
+import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, requestVenueNeeds, showMoreCount, suggestionBlocker } from '../components/venues/event-venue-options/venue-option-model.ts';
 import { EMPTY_VENUE_FORM, parseList, validateVenueForm } from '../components/venue-staff/venue-management/venue-form-rules.ts';
 import { canViewPath } from '../lib/auth.ts';
 
@@ -102,4 +102,34 @@ test('[SPM-72 AC8] a venue too small for the attendance cannot be selected', () 
   assert.match(suggestionBlocker(venue('UNMET')), /cannot hold/);
   assert.equal(suggestionBlocker(venue('MET')), null);
   assert.equal(suggestionBlocker({ requirements: [] }), null);
+});
+
+test('[SPM-72 AC3][SPM-76 AC2] the list shows 10 venues by default and "Show more" adds a page or what is left', () => {
+  assert.equal(DEFAULT_VENUE_PAGE_SIZE, 10);
+  assert.equal(showMoreCount(10, 256, 10), 10);
+  assert.equal(showMoreCount(50, 256, 50), 50);
+  assert.equal(showMoreCount(250, 256, 10), 6);
+  assert.equal(showMoreCount(256, 256, 10), 0);
+});
+
+test('[SPM-76 AC3] the organiser form sends only complete, valid requirements', () => {
+  const form = {
+    startDatetime: '2026-12-01T02:00:00.000Z',
+    endDatetime: '2026-12-01T04:00:00.000Z',
+    expectedAttendance: ' 150 ',
+    preferredLayoutType: 'THEATRE',
+    accessibilityNeeds: ['Hearing loop', ' ', 'x'.repeat(201)],
+  };
+  assert.deepEqual(requestVenueNeeds(form), {
+    startDatetime: form.startDatetime,
+    endDatetime: form.endDatetime,
+    expectedAttendance: 150,
+    preferredLayoutType: 'THEATRE',
+    accessibilityNeeds: ['Hearing loop'],
+  });
+  const incomplete = requestVenueNeeds({ ...form, endDatetime: '2026-12-01T01:00:00.000Z', expectedAttendance: '0', preferredLayoutType: 'NO_PREFERENCE' });
+  assert.equal(incomplete.startDatetime, null);
+  assert.equal(incomplete.endDatetime, null);
+  assert.equal(incomplete.expectedAttendance, null);
+  assert.equal(incomplete.preferredLayoutType, null);
 });

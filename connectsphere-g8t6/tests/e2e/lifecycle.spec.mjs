@@ -57,7 +57,7 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
     if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
     // The venue section on the same page (SPM-72/74); not under test here.
     if (pathname.endsWith("/venue-options")) {
-      return route.fulfill({ json: { event: { eventId: 42 }, venues: [], detailsAvailable: true, availabilityChecked: true, filtersNotChecked: [], canSuggestVenue: false } });
+      return route.fulfill({ json: { event: { eventId: 42 }, venues: [], preferredVenues: [], detailsAvailable: true, availabilityChecked: true, filtersNotChecked: [], canSuggestVenue: false } });
     }
     if (pathname.endsWith("/readiness")) {
       await readinessGate;
