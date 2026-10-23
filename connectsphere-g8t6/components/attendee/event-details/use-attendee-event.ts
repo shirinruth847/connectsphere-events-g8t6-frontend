@@ -5,7 +5,12 @@ import { toApiError } from "@/components/attendee/discovery/use-discovery-events
 import type { ApiError } from "@/lib/api";
 import { getDiscoveryEvent } from "@/lib/api/discovery";
 import { getMyRegisteredEvent, toEventView, type AttendeeEventView } from "@/lib/api/my-events";
-import type { EventDetailsSource } from "./event-details-links";
+
+// Where the event details dialog was opened, which decides the endpoint:
+//   discovery  GET /api/events/discovery/:id (Event Discovery's own rules);
+//   my-events  GET /api/registrations/mine/:eventId (an event the attendee
+//              holds a place on, from My Events, a notification or Go to Event).
+export type EventDetailsSource = "discovery" | "my-events";
 
 type DetailState =
   | { status: "loading" }
@@ -18,20 +23,13 @@ interface DetailCallbacks {
   onNotFound?: (eventId: number) => void;
 }
 
-const loadEvent = async (eventId: number, source: EventDetailsSource, signal: AbortSignal): Promise<AttendeeEventView> => {
-  if (source !== "discovery") {
-    try {
-      return toEventView(await getMyRegisteredEvent(eventId, signal));
-    } catch (caught) {
-      // A direct visit by someone with no place falls back to Event Discovery.
-      if (source === "my-events" || toApiError(caught).status !== 404) throw caught;
-    }
-  }
-  return (await getDiscoveryEvent(eventId, signal)).event;
-};
+const loadEvent = async (eventId: number, source: EventDetailsSource, signal: AbortSignal): Promise<AttendeeEventView> =>
+  source === "my-events"
+    ? toEventView(await getMyRegisteredEvent(eventId, signal))
+    : (await getDiscoveryEvent(eventId, signal)).event;
 
-// The event details dialog's and page's data (SPM-155), fetched every time the
-// event is opened so it is the latest. Mount it with a `key` per event.
+// The event details dialog's data (SPM-155), fetched every time the event is
+// opened so it is the latest. Mount it with a `key` per event.
 export function useAttendeeEvent(eventId: number, source: EventDetailsSource, { onLoaded, onNotFound }: DetailCallbacks = {}) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);

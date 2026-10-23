@@ -13,7 +13,6 @@ import {
   placeRows,
   scheduleRows,
 } from "@/components/attendee/event-details/event-details-parts";
-import { eventDetailsHref, type EventDetailsOrigin } from "@/components/attendee/event-details/event-details-links";
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import type { AttendeeEventDetail, AttendeeEventSummary } from "@/lib/api/discovery";
 import type { AttendeeEventView } from "@/lib/api/my-events";
@@ -22,7 +21,7 @@ import { DiscoveryIcon } from "./discovery-icon";
 import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
 import { formatEventDate, formatEventTime } from "./format-event-time";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
-import { useAttendeeEvent } from "@/components/attendee/event-details/use-attendee-event";
+import { useAttendeeEvent, type EventDetailsSource } from "@/components/attendee/event-details/use-attendee-event";
 
 export { REGISTRATION_UNAVAILABLE_NOTE } from "@/components/attendee/event-details/event-details-parts";
 
@@ -33,8 +32,8 @@ export type EventDetailsTarget = Pick<AttendeeEventSummary, "eventId" | "title">
 interface EventDetailsDialogProps {
   // The event that was opened; null when the dialog is closed.
   event: EventDetailsTarget | null;
-  // Where the dialog lives: which endpoint it reads, and where the full page links back to.
-  detailsFrom: EventDetailsOrigin;
+  // Where the dialog lives, which decides the endpoint it reads.
+  detailsFrom: EventDetailsSource;
   onClose: () => void;
   // Runs after the dialog has closed, to put focus back where it belongs.
   onClosed: () => void;
@@ -47,9 +46,9 @@ interface EventDetailsDialogProps {
 const DISCOVERY_NOT_FOUND = "It may have been unpublished or rescheduled. It has been removed from your list.";
 
 // The event summary shared by Event Discovery (SPM-34) and My Events (SPM-155),
-// laid out from the event details frame (282:1271); View Event Details opens
-// the full page. A native <dialog>: showModal() traps focus and makes the page
-// inert, Escape closes it, and focus is restored on close.
+// laid out from the event details frame (282:1271). A native <dialog>:
+// showModal() traps focus and makes the page inert, Escape closes it, and
+// focus is restored on close.
 export function EventDetailsDialog({
   event,
   detailsFrom,
@@ -115,14 +114,14 @@ function EventDetailsContent({
 }: {
   summary: EventDetailsTarget;
   titleId: string;
-  detailsFrom: EventDetailsOrigin;
+  detailsFrom: EventDetailsSource;
   onClose: () => void;
   onLoaded?: (event: AttendeeEventView) => void;
   onNotFound?: (eventId: number) => void;
   notFoundDescription: string;
 }) {
   // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
-  const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom === "discovery" ? "discovery" : "my-events", { onLoaded, onNotFound });
+  const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom, { onLoaded, onNotFound });
   const event = state.status === "ready" ? state.event : null;
   const withheld = Boolean(event?.detailsWithheld);
   const myRegistration = event?.myRegistration ?? null;
@@ -202,13 +201,12 @@ function EventDetailsContent({
         {event && !withheld ? <EventSummaryBody event={event} /> : null}
       </div>
 
-      {event ? <EventDetailsFooter event={event} detailsHref={eventDetailsHref(event.eventId, detailsFrom)} /> : null}
+      {event ? <EventDetailsFooter event={event} /> : null}
     </>
   );
 }
 
-// The frame's abstract, then schedule and venue side by side. The full page
-// adds the sections that have no data yet.
+// The frame's abstract, then schedule and venue side by side.
 function EventSummaryBody({ event }: { event: AttendeeEventDetail }) {
   return (
     <>

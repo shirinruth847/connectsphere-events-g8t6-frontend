@@ -48,8 +48,7 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     return "home";
   }
   if (role === "ATTENDEE") {
-    // An event's details page sits under /events, with Event Discovery (SPM-155).
-    if (pathname === ROUTES.events || /^\/events\/\d+$/.test(pathname)) return "discovery";
+    if (pathname === ROUTES.events) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
     return "home";
   }
