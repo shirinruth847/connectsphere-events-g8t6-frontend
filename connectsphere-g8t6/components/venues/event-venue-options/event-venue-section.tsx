@@ -16,8 +16,8 @@ import {
 } from "@/lib/api/event-venues";
 import type { EventView, VenueSuggestion } from "@/lib/api/event-workspace";
 import { VenueBrowser } from "./venue-browser";
-import { VenueCalendarToggle } from "./venue-calendar-toggle";
-import { VenueBadge, VenueOptionCard } from "./venue-option-card";
+import { VenueChoiceCard } from "./venue-choice-card";
+import { VenueBadge } from "./venue-option-card";
 import { VenueDetails } from "./venue-details";
 import { eventCalendarCheck, suggestionBlocker, venueById } from "./venue-option-model";
 
@@ -138,14 +138,8 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
     }
   };
 
-  // A choice's card expands in place to these details (developer request of
-  // 24 October 2026); the coordinator also gets the availability calendar.
-  const details = (venue: EventVenueOption) => (
-    <div className="grid min-w-0 gap-3">
-      <VenueDetails venue={venue} badge={badge(venue)} onOpenVenue={setRelatedId} />
-      {calendar ? <VenueCalendarToggle calendar={calendar} venueIds={[venue.venueId]} /> : null}
-    </div>
-  );
+  // A choice's card opens its details in place (developer requests of 24 and
+  // 25 October 2026); one at a time.
   const toggleView = (venueId: number) => setViewId((current) => (current === venueId ? null : venueId));
 
   return (
@@ -170,7 +164,7 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
         <section aria-label="Suggested venue" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <h3 className="text-sm font-semibold text-on-surface">Suggested venue</h3>
           {suggestedOption ? (
-            <VenueOptionCard layout="row" venue={suggestedOption} viewing={suggestedOption.venueId === viewId} badge={badge(suggestedOption)} details={details(suggestedOption)} onView={() => toggleView(suggestedOption.venueId)} />
+            <VenueChoiceCard venue={suggestedOption} expanded={suggestedOption.venueId === viewId} onToggle={() => toggleView(suggestedOption.venueId)} badge={badge(suggestedOption)} onOpenVenue={setRelatedId} calendar={calendar} />
           ) : (
             <article aria-label={suggestedElsewhere.name ?? `Venue ${suggestedElsewhere.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
               <div><VenueBadge tone="success"><Icon name="check" size={16} />Suggested</VenueBadge></div>
@@ -201,15 +195,15 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
         ) : (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
             {preferred.map((choice) => choice.option ? (
-              <VenueOptionCard
+              <VenueChoiceCard
                 key={choice.venueId}
-                layout="row"
                 venue={choice.option}
-                viewing={choice.venueId === viewId}
+                expanded={choice.venueId === viewId}
+                onToggle={() => toggleView(choice.venueId)}
                 badge={badge(choice.option)}
                 action={action(choice.option, "card")}
-                details={details(choice.option)}
-                onView={() => toggleView(choice.venueId)}
+                onOpenVenue={setRelatedId}
+                calendar={calendar}
               />
             ) : (
               <article key={choice.venueId} aria-label={choice.name ?? `Venue ${choice.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
@@ -243,10 +237,7 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
 
       <Dialog open={related !== null} onClose={() => setRelatedId(null)} title="Venue details" size="wide">
         {related ? (
-          <div className="grid min-w-0 gap-3">
-            <VenueDetails venue={related} badge={badge(related)} action={action(related, "panel")} onOpenVenue={setRelatedId} />
-            {calendar ? <VenueCalendarToggle key={related.venueId} calendar={calendar} venueIds={[related.venueId]} /> : null}
-          </div>
+          <VenueDetails key={related.venueId} venue={related} badge={badge(related)} action={action(related, "panel")} onOpenVenue={setRelatedId} calendar={calendar} />
         ) : null}
       </Dialog>
 

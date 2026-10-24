@@ -26,8 +26,9 @@ export function suggestionBlocker(venue: EventVenueOption): string | null {
 }
 
 // "Show x results": the list shows this many at first and adds this many per
-// "Show more venues" (developer requests of 23 and 24 October 2026).
-export const DEFAULT_VENUE_PAGE_SIZE = 10;
+// "Show more venues" (developer requests of 23, 24 and 25 October 2026:
+// twelve, four rows of three).
+export const DEFAULT_VENUE_PAGE_SIZE = 12;
 export const MAX_VENUE_PAGE_SIZE = 100;
 
 // The typed "Show" number, or null while it is not a whole number from 1 to 100.

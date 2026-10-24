@@ -7,7 +7,8 @@ import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { VENUE_OPTION_SORT_OPTIONS, type VenueOptionSort } from "@/components/venues/venue-queries";
 import { ApiError } from "@/lib/api";
 import type { EventVenueOption, VenueOptionsQuery, VenueOptionsResult } from "@/lib/api/event-venues";
-import { VenueCalendarToggle, type VenueCalendarWindow } from "./venue-calendar-toggle";
+import type { VenueCalendarWindow } from "./venue-details";
+import { VenueMultiSelect } from "./venue-multi-select";
 import { VenueOptionCard } from "./venue-option-card";
 import { VenueOptionPanel } from "./venue-option-panel";
 import { DEFAULT_VENUE_PAGE_SIZE, EMPTY_FILTER_CHOICES, MAX_VENUE_PAGE_SIZE, parsePageSize, showMoreCount, venueById, venueFilterChoices } from "./venue-option-model";
@@ -17,22 +18,17 @@ type OptionsState<T> =
   | { status: "ready"; data: T }
   | { status: "error"; message: string; fields?: Record<string, string> };
 
-type Filters = Required<Pick<VenueOptionsQuery, "search" | "minCapacity" | "layout" | "facility" | "accessibility" | "requiredFacilities">>;
-type FilterField = { key: keyof Filters; label: string; placeholder: string; inputMode?: "numeric" };
+// Search and capacity are typed; layout, facility and accessibility are
+// multi-selects of the values the venues carry (developer request of 25
+// October 2026): any of the layouts, all of the facilities and features.
+type Filters = { search: string; minCapacity: string; layout: string[]; facility: string[]; accessibility: string[] };
+type TextField = { key: "search" | "minCapacity"; label: string; placeholder: string; inputMode?: "numeric" };
 
-const EMPTY_FILTERS: Filters = { search: "", minCapacity: "", layout: "", facility: "", accessibility: "", requiredFacilities: "" };
+const EMPTY_FILTERS: Filters = { search: "", minCapacity: "", layout: [], facility: [], accessibility: [] };
+const hasValue = (filters: Filters) => Object.values(filters).some((value) => (Array.isArray(value) ? value.length > 0 : Boolean(value.trim())));
 // Search and capacity share the first line; the detail filters the second.
-const SEARCH_FIELD: FilterField = { key: "search", label: "Search", placeholder: "Search by venue name or location" };
-const CAPACITY_FIELD: FilterField = { key: "minCapacity", label: "Minimum capacity", placeholder: "Min. capacity", inputMode: "numeric" };
-// The detail filters are dropdowns of the values the venues carry; each
-// placeholder is the empty choice.
-const LAYOUT_FIELD: FilterField = { key: "layout", label: "Layout", placeholder: "Layout" };
-const FACILITY_FIELD: FilterField = { key: "facility", label: "Facility", placeholder: "Has facility" };
-const ACCESSIBILITY_FIELD: FilterField = { key: "accessibility", label: "Accessibility", placeholder: "Accessibility" };
-const RANK_FIELD: FilterField = { key: "requiredFacilities", label: "Required facilities", placeholder: "Rank by facilities" };
-// The backend ranks by at most this many facilities.
-const MAX_RANKED_FACILITIES = 10;
-const splitFacilities = (value: string) => value.split(",").map((term) => term.trim()).filter(Boolean);
+const SEARCH_FIELD: TextField = { key: "search", label: "Search", placeholder: "Search by venue name or location" };
+const CAPACITY_FIELD: TextField = { key: "minCapacity", label: "Minimum capacity", placeholder: "Min. capacity", inputMode: "numeric" };
 // The shared field style without its full width, for the toolbar selects.
 const compactSelect = `${fieldClasses.replace("w-full", "w-auto")} py-2`;
 
@@ -49,7 +45,8 @@ interface VenueBrowserProps<T extends VenueOptionsResult> {
 }
 
 // Search, filter, sort, view, compare and (coordinator) check the calendar
-// for the available venues (SPM-72/74/75). Requirement matching comes from
+// for the available venues (SPM-72/74/75); each details panel has its own
+// calendar button (developer request of 25 October 2026). Requirement matching comes from
 // the backend. The cards scroll inside a window two rows of three tall
 // (developer request of 23 October 2026); the event page opens this in a popup.
 export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, onLoaded, calendar, badge, action }: VenueBrowserProps<T>) {
@@ -66,12 +63,10 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareId, setCompareId] = useState<number | null>(null);
   const [choices, setChoices] = useState(EMPTY_FILTER_CHOICES);
-  const [rankOpen, setRankOpen] = useState(false);
-  const rankRef = useRef<HTMLDivElement>(null);
   const panelsRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef(load);
   const loadedRef = useRef(onLoaded);
-  const filtered = Object.values(applied).some((value) => value.trim());
+  const filtered = hasValue(applied);
 
   useEffect(() => {
     loadRef.current = load;
@@ -98,26 +93,6 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
     return () => { alive = false; };
   }, [reloadKey, applied, sort, order, attempt]);
 
-  // The facility checklist closes on an outside click or Escape; that Escape
-  // must not also close a popup around the search.
-  useEffect(() => {
-    if (!rankOpen) return;
-    const closeOutside = (pointer: PointerEvent) => {
-      if (!rankRef.current?.contains(pointer.target as Node)) setRankOpen(false);
-    };
-    const closeOnEscape = (key: globalThis.KeyboardEvent) => {
-      if (key.key !== "Escape") return;
-      key.preventDefault();
-      setRankOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [rankOpen]);
-
   const reload = (next?: Partial<{ applied: Filters; sort: VenueOptionSort; order: "asc" | "desc" }>) => {
     setState({ status: "loading" });
     setShown(pageSize);
@@ -139,7 +114,6 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
   const venues = state.status === "ready" ? state.data.venues : [];
   const viewing = venueById(venues, viewId);
   const comparing = venueById(venues, compareId);
-  const calendarVenueIds = [viewing?.venueId, compareOpen ? comparing?.venueId : undefined].filter((id): id is number => id !== undefined);
   const more = showMoreCount(shown, venues.length, pageSize);
   const fieldErrors = state.status === "error" ? state.fields : undefined;
   const scrollToPanels = () => panelsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -157,7 +131,7 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
 
   // Labels are visually hidden (each placeholder says what its box is for) so
   // the box stays two lines tall.
-  const input = (field: FilterField, className: string) => (
+  const input = (field: TextField, className: string) => (
     <div key={field.key} className={className}>
       <label htmlFor={`venue-option-${field.key}`} className="sr-only">{field.label}</label>
       <input
@@ -173,36 +147,15 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
       />
     </div>
   );
-  // A chosen value stays listed even if no loaded venue still carries it. The
-  // field name is a greyed placeholder, not a choice; the first choice is
-  // blank, to clear the filter.
-  const dropdown = (field: FilterField, values: string[]) => {
-    const current = draft[field.key];
-    const listed = current && !values.some((value) => value.toLowerCase() === current.toLowerCase()) ? [current, ...values] : values;
-    return (
-      <div key={field.key} className="min-w-0">
-        <label htmlFor={`venue-option-${field.key}`} className="sr-only">{field.label}</label>
-        <select
-          id={`venue-option-${field.key}`}
-          className={`${fieldClasses} py-2 ${current ? "" : "text-outline"}`}
-          value={current}
-          title={field.label}
-          aria-invalid={Boolean(fieldErrors?.[field.key])}
-          onChange={(changeEvent) => setDraft((draftNow) => ({ ...draftNow, [field.key]: changeEvent.target.value }))}
-        >
-          <option value="" disabled hidden>{field.placeholder}</option>
-          <option value="" className="text-on-surface" aria-label={`Any ${field.label.toLowerCase()}`}>&nbsp;</option>
-          {listed.map((value) => <option key={value} value={value} className="text-on-surface">{value}</option>)}
-        </select>
-      </div>
-    );
-  };
-  const ranked = splitFacilities(draft.requiredFacilities);
-  const rankChoices = [...ranked.filter((term) => !choices.facilities.some((value) => value.toLowerCase() === term.toLowerCase())), ...choices.facilities];
-  const toggleRanked = (facility: string, checked: boolean) => setDraft((current) => {
-    const terms = splitFacilities(current.requiredFacilities).filter((term) => term.toLowerCase() !== facility.toLowerCase());
-    return { ...current, requiredFacilities: (checked ? [...terms, facility] : terms).join(", ") };
-  });
+  const multiSelect = (key: "layout" | "facility" | "accessibility", label: string, values: string[]) => (
+    <VenueMultiSelect
+      label={label}
+      values={values}
+      selected={draft[key]}
+      invalid={Boolean(fieldErrors?.[key])}
+      onChange={(selected) => setDraft((current) => ({ ...current, [key]: selected }))}
+    />
+  );
 
   // minmax(0, 1fr) tracks keep long venue names from widening the page; the
   // container queries fit three cards per row wherever the browser is placed.
@@ -214,48 +167,13 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
           {input(CAPACITY_FIELD, "min-w-0 flex-[1_1_8rem]")}
           <div className="flex gap-2">
             <Button type="button" onClick={apply}><Icon name="check" size={16} />Apply filters</Button>
-            <Button type="button" variant="quiet" onClick={clear} disabled={!filtered && !Object.values(draft).some((value) => value.trim())}>Clear filters</Button>
+            <Button type="button" variant="quiet" onClick={clear} disabled={!filtered && !hasValue(draft)}>Clear filters</Button>
           </div>
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-2 @md:grid-cols-2 @xl:grid-cols-4">
-          {dropdown(LAYOUT_FIELD, choices.layouts)}
-          {dropdown(FACILITY_FIELD, choices.facilities)}
-          {dropdown(ACCESSIBILITY_FIELD, choices.accessibility)}
-          <div className="relative min-w-0" ref={rankRef}>
-            <button
-              type="button"
-              id={`venue-option-${RANK_FIELD.key}`}
-              className={`${fieldClasses} flex items-center justify-between gap-2 py-2 text-left`}
-              aria-label={RANK_FIELD.label}
-              aria-expanded={rankOpen}
-              aria-controls="venue-option-rank-list"
-              title={RANK_FIELD.label}
-              onClick={() => setRankOpen((open) => !open)}
-            >
-              <span className="truncate">{ranked.length ? `Rank by ${ranked.join(", ")}` : RANK_FIELD.placeholder}</span>
-              <span aria-hidden="true" className="text-xs text-on-surface-variant">▾</span>
-            </button>
-            {rankOpen ? (
-              <fieldset id="venue-option-rank-list" className="absolute right-0 z-20 mt-1 grid max-h-64 w-full min-w-56 gap-1 overflow-y-auto rounded-control border border-outline-variant bg-surface-container-lowest p-2 shadow-elevation-2">
-                <legend className="sr-only">{RANK_FIELD.label}</legend>
-                {rankChoices.length ? rankChoices.map((facility) => {
-                  const checked = ranked.some((term) => term.toLowerCase() === facility.toLowerCase());
-                  return (
-                    <label key={facility} className="flex min-h-9 items-center gap-2 rounded-control px-2 text-sm text-on-surface hover:bg-surface-container-low">
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-primary"
-                        checked={checked}
-                        disabled={!checked && ranked.length >= MAX_RANKED_FACILITIES}
-                        onChange={(changeEvent) => toggleRanked(facility, changeEvent.target.checked)}
-                      />
-                      {facility}
-                    </label>
-                  );
-                }) : <p className="px-2 py-1 text-sm text-on-surface-variant">No facilities recorded</p>}
-              </fieldset>
-            ) : null}
-          </div>
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-2 @md:grid-cols-3">
+          {multiSelect("layout", "Layout", choices.layouts)}
+          {multiSelect("facility", "Facility", choices.facilities)}
+          {multiSelect("accessibility", "Accessibility", choices.accessibility)}
         </div>
         {fieldErrors ? <p className="text-xs text-error" role="alert">{Object.values(fieldErrors).join(" ")}</p> : null}
       </div>
@@ -318,6 +236,7 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                 onClose={compareOpen ? undefined : () => setViewId(null)}
                 excludeId={compareOpen ? compareId : null}
                 onOpenVenue={openVenue}
+                calendar={calendar}
                 badge={viewing ? badge?.(viewing) : undefined}
                 action={viewing ? action?.(viewing, "panel") : undefined}
               />
@@ -330,13 +249,13 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                   onClose={() => { setCompareOpen(false); setCompareId(null); }}
                   excludeId={viewId}
                   onOpenVenue={(venueId) => (venues.some((venue) => venue.venueId === venueId) ? setCompareId(venueId) : openVenue(venueId))}
+                  calendar={calendar}
                   badge={comparing ? badge?.(comparing) : undefined}
                   action={comparing ? action?.(comparing, "panel") : undefined}
                 />
               ) : null}
             </div>
           ) : null}
-          {calendar ? <VenueCalendarToggle calendar={calendar} venueIds={calendarVenueIds} /> : null}
         </div>
       ) : null}
 

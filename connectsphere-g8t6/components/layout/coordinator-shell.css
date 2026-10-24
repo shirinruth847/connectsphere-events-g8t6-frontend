@@ -1815,3 +1815,31 @@
 .coordinator-shell.venue-calendar .cal-day-column { min-width: 0; }
 /* Hover windows of the last days open leftwards, inside the calendar. */
 .coordinator-shell .cal-day-column:nth-last-child(-n+3) .cal-overlay-tip { right: 0; left: auto; }
+
+/* Month bars (developer request of 25 October 2026): an entry is a labelled
+   bar; a multi-day entry continues edge to edge across the week. */
+.coordinator-shell .cal-month-day--bars { min-width: 0; padding: 4px 0; cursor: default; align-items: stretch; gap: 2px; }
+.coordinator-shell .cal-month-day--bars .cal-month-day-number { align-self: center; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.coordinator-shell .cal-month-day--bars .cal-month-day-number:hover { background: var(--surface-container-high); }
+.coordinator-shell .cal-month-bar,
+.coordinator-shell .cal-month-bar-spacer { display: block; height: 20px; min-width: 0; }
+.coordinator-shell .cal-month-bar {
+  overflow: hidden;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.coordinator-shell .cal-month-bar.is-start { margin-left: 4px; border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
+.coordinator-shell .cal-month-bar.is-end { margin-right: 4px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
+.coordinator-shell .cal-month-bar--request { background: rgb(250 204 21 / 35%); color: #713f12; box-shadow: inset 0 0 0 1.5px rgb(202 138 4 / 75%); cursor: default; }
+.coordinator-shell .cal-month-bar--request.has-conflict { background: rgb(220 38 38 / 30%); color: #7f1d1d; }
+.coordinator-shell .cal-month-day--bars .cal-month-dot-more { padding: 0 6px; }
+.coordinator-shell .cal-year-day.is-requested { box-shadow: inset 0 0 0 2px rgb(202 138 4 / 85%); background: rgb(250 204 21 / 35%) !important; }
+.coordinator-shell .cal-year-day.has-conflict { box-shadow: inset 0 0 0 2px rgb(220 38 38 / 85%); background: rgb(220 38 38 / 25%) !important; }

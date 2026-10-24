@@ -355,7 +355,7 @@ async function routeAvailability(page, { status = 200, body } = {}) {
 const pinClock = (page) => page.clock.setFixedTime(new Date("2026-11-03T10:00:00+08:00"));
 const calendarRegion = (page) => page.getByRole("region", { name: "Venue availability calendar" });
 const openDay = async (page, day) => {
-  await calendarRegion(page).locator(".cal-month-day:not(.other-month)").filter({ hasText: new RegExp(`^${day}$`) }).click();
+  await calendarRegion(page).locator(".cal-month-day:not(.other-month) .cal-month-day-number").filter({ hasText: new RegExp(`^${day}$`) }).click();
 };
 
 // Coordinators see the same calendar inside each event's venue section

@@ -1,11 +1,14 @@
 // Query strings for the venue APIs. Pure (no imports), so they are unit tested.
 
+// layout, facility and accessibility take several values (developer request
+// of 25 October 2026), sent as repeated parameters: any of the layouts, all
+// of the facilities and accessibility features.
 export interface CatalogueFilters {
   search?: string;
   minCapacity?: string;
-  layout?: string;
-  facility?: string;
-  accessibility?: string;
+  layout?: string | string[];
+  facility?: string | string[];
+  accessibility?: string | string[];
 }
 
 export type ManagedVenueSort = "name" | "capacity" | "updatedAt" | "setupMinutes" | "turnaroundMinutes";
@@ -41,11 +44,18 @@ const SGT_OFFSET = "+08:00";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-const build = (entries: [string, string | number | undefined | null][]) => {
+const build = (entries: [string, string | string[] | number | undefined | null][]) => {
   const params = new URLSearchParams();
   for (const [key, value] of entries) {
-    const text = value === undefined || value === null ? "" : String(value).trim();
-    if (text) params.set(key, text);
+    const values = Array.isArray(value) ? value : [value];
+    const seen = new Set<string>();
+    for (const item of values) {
+      const text = item === undefined || item === null ? "" : String(item).trim();
+      if (text && !seen.has(text.toLowerCase())) {
+        seen.add(text.toLowerCase());
+        params.append(key, text);
+      }
+    }
   }
   const query = params.toString();
   return query ? `?${query}` : "";

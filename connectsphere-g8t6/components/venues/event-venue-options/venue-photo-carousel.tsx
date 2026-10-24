@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Dialog } from "@/components/shared/dialog";
 import { Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
-import { useVenuePhoto } from "@/components/venues/use-venue-photo";
+import { useVenuePhoto, type PhotoSource } from "@/components/venues/use-venue-photo";
 import { listSelectableVenuePhotos } from "@/lib/api/event-venues";
 import type { VenuePhoto } from "@/lib/api/venues";
 
@@ -16,7 +16,12 @@ export function EventVenuePhoto({ venueId, photoId, alt, className }: {
   alt: string;
   className: string;
 }) {
-  const source = useVenuePhoto(venueId, photoId, 0, true);
+  return <PhotoImage source={useVenuePhoto(venueId, photoId, 0, true)} alt={alt} className={className} />;
+}
+
+// One loaded photo; className must give the box a size, so loading and
+// failure keep the space the photo will take.
+function PhotoImage({ source, alt, className }: { source: PhotoSource | null; alt: string; className: string }) {
   if (!source || source.status === "error") {
     return (
       <div className={`flex items-center justify-center bg-surface-container-low text-xs text-on-surface-variant ${className}`}>
@@ -37,6 +42,11 @@ export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; ve
   const [list, setList] = useState<PhotoList>({ status: "loading" });
   const [index, setIndex] = useState(0);
   const [enlarged, setEnlarged] = useState(false);
+  const photos = list.status === "ready" ? list.photos : [];
+  const shown = photos[Math.min(index, photos.length - 1)];
+  // One fetch per photo, shared by the card and the enlarged view, so the
+  // enlarged photo shows at once.
+  const source = useVenuePhoto(venueId, shown?.photoId ?? null, 0, true);
 
   useEffect(() => {
     let alive = true;
@@ -54,7 +64,7 @@ export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; ve
     return <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">No photos have been added for this venue.</p>;
   }
 
-  const current = list.photos[Math.min(index, list.photos.length - 1)];
+  const current = shown;
   const count = list.photos.length;
   const caption = current.caption || `Photo ${index + 1}`;
   const alt = current.caption || `${venueName} photo ${index + 1}`;
@@ -73,7 +83,7 @@ export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; ve
         aria-label={`Enlarge photo: ${caption}`}
         onClick={() => setEnlarged(true)}
       >
-        <EventVenuePhoto venueId={venueId} photoId={current.photoId} alt={alt} className="aspect-video w-full rounded-control" />
+        <PhotoImage source={source} alt={alt} className="aspect-video w-full rounded-control" />
         <span aria-hidden="true" className="absolute right-2 bottom-2 grid size-8 place-items-center rounded-full bg-on-surface/60 text-white opacity-80 group-hover:opacity-100">
           <Icon name="zoom" size={16} />
         </span>
@@ -85,7 +95,7 @@ export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; ve
       <Dialog open={enlarged} onClose={() => setEnlarged(false)} title={venueName} size="wide">
         {enlarged ? (
           <div className="grid gap-2">
-            <EventVenuePhoto venueId={venueId} photoId={current.photoId} alt={alt} className="max-h-[calc(100dvh-14rem)] w-full rounded-control object-contain!" />
+            <PhotoImage source={source} alt={alt} className="aspect-video max-h-[calc(100dvh-14rem)] w-full rounded-control bg-on-surface/5 object-contain!" />
             <div className="flex items-center justify-between gap-2 text-sm text-on-surface-variant">
               <span className="min-w-0">{caption}</span>
               {stepper}

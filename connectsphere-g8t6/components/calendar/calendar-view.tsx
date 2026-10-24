@@ -62,13 +62,14 @@ const SLOT_HEIGHT = 26;
 const HOURS_IN_DAY = 24;
 const CALENDAR_TIME_ZONE = "Asia/Singapore";
 
+// No red: red marks a requested period that overlaps existing time.
 const COORDINATOR_COLORS = [
   "#4F46E5",
   "#2563EB",
   "#0D9488",
   "#16A34A",
   "#CA8A04",
-  "#DC2626",
+  "#0E7490",
   "#7C3AED",
   "#BE1882",
 ];
@@ -814,16 +815,54 @@ function DayView({
   );
 }
 
+// Month "bars" (developer request of 25 October 2026, after Google Calendar's
+// month view): each entry is a labelled bar across its days, kept in the same
+// lane through a week so a multi-day bar reads as one. The checked request is
+// a yellow bar, red where it overlaps existing time.
+type MonthItem = {
+  key: string;
+  start: string;
+  end: string;
+  label: string;
+  color?: string;
+  event?: CalendarEvent;
+  tone?: "request" | "conflict";
+};
+const MONTH_LANES = 3;
+
+function weekLanes(items: MonthItem[], week: Date[]) {
+  const placed: { item: MonthItem; from: number; to: number; lane: number }[] = [];
+  const spans = items
+    .map((item) => {
+      const days = week.map((day, index) => (overlapsCalendarDay(item.start, item.end, day) ? index : -1)).filter((index) => index >= 0);
+      return days.length ? { item, from: days[0], to: days[days.length - 1] } : null;
+    })
+    .filter((span): span is { item: MonthItem; from: number; to: number } => span !== null)
+    .sort((a, b) => a.from - b.from || b.to - b.from - (a.to - a.from));
+  for (const span of spans) {
+    let lane = 0;
+    while (placed.some((other) => other.lane === lane && other.from <= span.to && span.from <= other.to)) lane += 1;
+    placed.push({ ...span, lane });
+  }
+  return placed;
+}
+
 function MonthView({
   coordinators,
   currentDate,
   colorMap,
   onDayClick,
+  bars = false,
+  overlays = [],
+  onEventClick,
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
   colorMap: Map<number, string>;
   onDayClick?: (date: Date) => void;
+  bars?: boolean;
+  overlays?: CalendarOverlay[];
+  onEventClick?: (event: CalendarEvent) => void;
 }) {
   const monthStart = startOfMonth(currentDate);
   const firstDayOfMonth = monthStart.getDay();
@@ -877,7 +916,63 @@ function MonthView({
         ))}
       </div>
       <div className="cal-month-grid">
-        {weeks.map((week, wi) => (
+        {bars ? weeks.map((week, wi) => {
+          const items: MonthItem[] = [
+            ...overlays.filter((overlay) => overlay.tone === "request").map((overlay) => ({
+              key: overlay.id, start: overlay.start, end: overlay.end, label: overlay.label ?? "Requested period", tone: "request" as const,
+            })),
+            ...coordinators.flatMap((coordinator) => coordinator.events.map((event) => ({
+              key: `event-${event.eventId}`, start: event.startDatetime, end: event.endDatetime,
+              label: `${formatTime(new Date(event.startDatetime))} ${event.title}`, color: colorMap.get(coordinator.coordinatorId), event,
+            }))),
+          ];
+          const conflicts = overlays.filter((overlay) => overlay.tone === "conflict");
+          const lanes = weekLanes(items, week);
+          return (
+            <div key={wi} className="cal-month-week">
+              {week.map((date, dayIndex) => {
+                const here = lanes.filter((entry) => entry.from <= dayIndex && dayIndex <= entry.to);
+                const hidden = here.filter((entry) => entry.lane >= MONTH_LANES).length;
+                return (
+                  <div key={date.getTime()} className={`cal-month-day cal-month-day--bars ${date.getMonth() !== monthStart.getMonth() ? "other-month" : ""} ${isSameDay(date, today) ? "today" : ""}`}>
+                    <button type="button" className="cal-month-day-number" aria-label={`Open ${fullDateFormat.format(calendarLabelInstant(date))}`} onClick={() => onDayClick?.(date)}>
+                      {date.getDate()}
+                    </button>
+                    {Array.from({ length: MONTH_LANES }, (_, lane) => {
+                      const entry = here.find((candidate) => candidate.lane === lane);
+                      if (!entry) return <span key={lane} className="cal-month-bar-spacer" aria-hidden="true" />;
+                      const first = dayIndex === entry.from;
+                      const shape = `${first ? " is-start" : ""}${dayIndex === entry.to ? " is-end" : ""}`;
+                      if (entry.item.tone === "request") {
+                        const clash = conflicts.some((overlay) => overlapsCalendarDay(overlay.start, overlay.end, date));
+                        return (
+                          <span key={lane} className={`cal-month-bar cal-month-bar--request${clash ? " has-conflict" : ""}${shape}`} title={entry.item.label}>
+                            {first ? entry.item.label : <span className="sr-only">{entry.item.label}</span>}
+                          </span>
+                        );
+                      }
+                      const color = entry.item.color ?? "#4F46E5";
+                      return (
+                        <button
+                          key={lane}
+                          type="button"
+                          className={`cal-month-bar${shape}`}
+                          style={{ backgroundColor: color, color: getTextColor(color) }}
+                          title={entry.item.label}
+                          aria-label={entry.item.label}
+                          onClick={() => entry.item.event && onEventClick?.(entry.item.event)}
+                        >
+                          {first ? entry.item.label : null}
+                        </button>
+                      );
+                    })}
+                    {hidden ? <span className="cal-month-dot-more">+{hidden} more</span> : null}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }) : weeks.map((week, wi) => (
           <div key={wi} className="cal-month-week">
             {week.map((date) => {
               const isOtherMonth = date.getMonth() !== monthStart.getMonth();
@@ -929,11 +1024,15 @@ function YearView({
   currentDate,
   colorMap,
   onMonthClick,
+  bars = false,
+  overlays = [],
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
   colorMap: Map<number, string>;
   onMonthClick?: (date: Date) => void;
+  bars?: boolean;
+  overlays?: CalendarOverlay[];
 }) {
   const yearStart = startOfYear(currentDate);
   const months = Array.from({ length: 12 }, (_, i) =>
@@ -977,12 +1076,19 @@ function YearView({
                     colorMap,
                     date,
                   );
+                  // With bars on, a busy day is tinted in its venue's colour and
+                  // the requested days are yellow (red where they clash).
+                  const requested = bars && overlays.some((overlay) => overlay.tone === "request" && overlapsCalendarDay(overlay.start, overlay.end, date));
+                  const clash = requested && overlays.some((overlay) => overlay.tone === "conflict" && overlapsCalendarDay(overlay.start, overlay.end, date));
+                  const tint = bars && dots.length ? { backgroundColor: `color-mix(in srgb, ${dots[0].color} 22%, white)` } : undefined;
                   cells.push(
                     <div
                       key={d}
                       className={`cal-year-day ${
                         dots.length > 0 ? "has-events" : ""
-                      }`}
+                      }${requested ? " is-requested" : ""}${clash ? " has-conflict" : ""}`}
+                      style={tint}
+                      title={bars && dots.length ? dots.map((dot) => dot.name).join(", ") : undefined}
                     >
                       <span className="cal-year-day-number">{d}</span>
                       {dots.length > 0 && (
@@ -1312,6 +1418,8 @@ export type CalendarViewProps = {
   onCurrentDateChange?: (date: Date) => void;
   entityLabel?: CalendarEntityLabel;
   overlays?: CalendarOverlay[];
+  // Month view as labelled bars (and tinted days in the year view) instead of dots.
+  monthBars?: boolean;
 };
 
 export function CalendarView({
@@ -1327,6 +1435,7 @@ export function CalendarView({
   onCurrentDateChange,
   entityLabel = COORDINATOR_LABEL,
   overlays,
+  monthBars = false,
 }: CalendarViewProps) {
   const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
     defaultView,
@@ -1534,6 +1643,8 @@ export function CalendarView({
                 currentDate={effectiveCurrentDate}
                 colorMap={colorMap}
                 onMonthClick={handleMonthClick}
+                bars={monthBars}
+                overlays={overlays}
               />
             )}
             {effectiveViewMode === "month" && (
@@ -1542,6 +1653,9 @@ export function CalendarView({
                 currentDate={effectiveCurrentDate}
                 colorMap={colorMap}
                 onDayClick={handleDayClick}
+                bars={monthBars}
+                overlays={overlays}
+                onEventClick={onEventClick}
               />
             )}
             {effectiveViewMode === "week" && (

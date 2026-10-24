@@ -261,6 +261,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
             <section aria-label="Venue availability calendar" className="coordinator-shell venue-calendar overflow-hidden rounded-panel shadow-elevation-1" style={{ minHeight: 0, background: "transparent" }}>
               <CalendarView
                 overlays={overlays}
+                monthBars
                 coordinators={calendar.lanes}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}

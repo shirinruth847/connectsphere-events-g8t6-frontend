@@ -110,8 +110,8 @@ test('[SPM-72 AC8] a venue too small for the attendance cannot be selected', () 
   assert.equal(suggestionBlocker({ requirements: [] }), null);
 });
 
-test('[SPM-72 AC3][SPM-75 AC2] the list shows 10 venues by default and "Show more" adds a page or what is left', () => {
-  assert.equal(DEFAULT_VENUE_PAGE_SIZE, 10);
+test('[SPM-72 AC3][SPM-75 AC2] the list shows 12 venues by default and "Show more" adds a page or what is left', () => {
+  assert.equal(DEFAULT_VENUE_PAGE_SIZE, 12);
   assert.equal(showMoreCount(10, 256, 10), 10);
   assert.equal(showMoreCount(50, 256, 50), 50);
   assert.equal(showMoreCount(250, 256, 10), 6);
@@ -133,4 +133,12 @@ test('[SPM-75 TC-VS-006] "Show x results" takes whole numbers from 1 to 100', ()
   assert.equal(parsePageSize('7'), 7);
   assert.equal(parsePageSize(' 100 '), 100);
   for (const value of ['', '0', '101', '2.5', '-3', 'ten']) assert.equal(parsePageSize(value), null, value);
+});
+
+test('[SPM-75] several layout, facility or accessibility values go as repeated parameters, once each', () => {
+  assert.equal(
+    venueOptionsQuery({ layout: ['Theater', 'Banquet'], facility: ['Projector', ' projector ', 'Stage'], accessibility: [] }),
+    '?layout=Theater&layout=Banquet&facility=Projector&facility=Stage',
+  );
+  assert.equal(catalogueQuery({ layout: 'Theater' }), '?layout=Theater');
 });

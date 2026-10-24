@@ -100,7 +100,9 @@ async function routeVenueSection(page, { event = eventView(), venueOptions = opt
     if (url.pathname === "/api/events/42") return route.fulfill({ json: { event } });
     if (url.pathname === "/api/events/42/history") return route.fulfill({ json: { history, nextCursor: null } });
     if (url.pathname === "/api/events/42/venue-options") {
-      sent.options.push(Object.fromEntries(url.searchParams));
+      const params = {};
+      for (const [key, value] of url.searchParams) params[key] = key in params ? [].concat(params[key], value) : value;
+      sent.options.push(params);
       return route.fulfill({ status: optionsStatus, json: optionsStatus === 200 ? venueOptions : { error: "Internal Server Error" } });
     }
     if (url.pathname === "/api/events/42/venue-suggestion") {
@@ -141,7 +143,8 @@ test("[SPM-72 TC-VC-001][AC1] the section opens on the organiser's choices with 
   await expect(first.getByText("Setup 30 · Turnaround 45 min")).toBeVisible();
   // Capacity sits in its check; availability is a check, not a separate chip.
   await expect(first.getByText("Capacity 300", { exact: true })).toBeVisible();
-  await expect(first.getByText("Available", { exact: true })).toHaveCount(0);
+  // Its check is only in the closed (inert, zero-height) details.
+  expect(await first.getByText("Available", { exact: true }).evaluate((element) => Boolean(element.closest("[inert]")) && element.closest("[inert]").getBoundingClientRect().height < 1)).toBe(true);
   const closed = choices(page).getByRole("article", { name: "Synthetic Closed Hall" });
   await expect(closed).toContainText("Organiser's choice 2");
   await expect(closed).toContainText("No longer available for new requests.");
@@ -188,41 +191,45 @@ test("[SPM-72 TC-VC-002][TC-VC-004][AC3][AC11] filters, required facilities and 
   await page.getByLabel("Search", { exact: true }).fill("Hall");
   await page.getByLabel("Minimum capacity").fill("200");
   // Layout, facility, accessibility and ranking are dropdowns of the venues' values.
-  // The field name is a hidden placeholder; the first choice is blank.
-  await expect(page.getByRole("combobox", { name: "Layout" })).toHaveValue("");
-  const choicesOf = (name) => page.getByRole("combobox", { name }).locator("option:not([hidden])").evaluateAll((items) => items.map((item) => item.value));
-  expect(await choicesOf("Facility")).toEqual(["", "Projector", "Stage"]);
-  expect(await choicesOf("Accessibility")).toEqual(["", "Wheelchair accessible entrance"]);
-  await expect(page.getByRole("combobox", { name: "Facility" }).locator("option[hidden]")).toHaveText("Has facility");
-  await page.getByRole("combobox", { name: "Layout" }).selectOption("THEATRE");
-  await page.getByRole("button", { name: "Required facilities" }).click();
-  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Projector" }).check();
-  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Stage" }).check();
+  // Layout, Facility and Accessibility are multi-selects of the venues'
+  // values, named by greyed placeholder text; there is no Rank by filter.
+  await expect(page.getByRole("button", { name: /Rank by|Required facilities/ })).toHaveCount(0);
+  const pick = async (name, values) => {
+    await page.getByRole("button", { name, exact: true }).click();
+    const group = page.getByRole("group", { name });
+    for (const value of values) await group.getByRole("checkbox", { name: value }).check();
+    await page.keyboard.press("Escape");
+    // Escape closes only the list, not the search popup.
+    await expect(group).toHaveCount(0);
+    await expect(popup(page)).toBeVisible();
+  };
+  await page.getByRole("button", { name: "Facility", exact: true }).click();
+  expect(await page.getByRole("group", { name: "Facility" }).getByRole("checkbox").evaluateAll((items) => items.map((item) => item.closest("label").textContent))).toEqual(["Projector", "Stage"]);
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Required facilities" })).toHaveText(/Rank by Projector, Stage/);
+  await pick("Layout", ["THEATRE"]);
+  await pick("Facility", ["Projector", "Stage"]);
+  await expect(page.getByRole("button", { name: "Facility: Projector, Stage" })).toBeVisible();
   await page.getByRole("button", { name: "Apply filters" }).click();
-  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", layout: "THEATRE", requiredFacilities: "Projector,Stage" });
+  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", layout: "THEATRE", facility: ["Projector", "Stage"] });
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect.poll(() => sent.options.at(-1)).toEqual({});
 
   await page.getByLabel("Search", { exact: true }).fill("Hall");
   await page.getByLabel("Minimum capacity").fill("200");
-  await page.getByRole("button", { name: "Required facilities" }).click();
-  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Projector" }).check();
-  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Stage" }).check();
+  await pick("Accessibility", ["Wheelchair accessible entrance"]);
   await page.getByRole("button", { name: "Apply filters" }).click();
-  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", requiredFacilities: "Projector,Stage" });
+  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", accessibility: "Wheelchair accessible entrance" });
 
   await page.getByLabel("Sort by").selectOption("capacity");
   await page.getByRole("button", { name: /Ascending order/ }).click();
-  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", requiredFacilities: "Projector,Stage", sort: "capacity", order: "desc" });
+  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", accessibility: "Wheelchair accessible entrance", sort: "capacity", order: "desc" });
 
   await page.getByLabel("Minimum capacity").fill("0");
   await page.getByLabel("Minimum capacity").press("Enter");
   await expect.poll(() => sent.options.at(-1)?.minCapacity).toBe("0");
 });
 
-test("[SPM-75 TC-VS-006][SPM-72 TC-VC-004][AC3] the list shows 10 results, then pages by the typed number", async ({ page }) => {
+test("[SPM-75 TC-VS-006][SPM-72 TC-VC-004][AC3] the list shows 12 results, then pages by the typed number", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const many = Array.from({ length: 23 }, (_, index) => venue({ venueId: 100 + index, name: `Synthetic Venue ${String(index + 1).padStart(2, "0")}`, coverPhotoId: null }));
   await routeVenueSection(page, { venueOptions: options({ venues: many }) });
@@ -230,12 +237,12 @@ test("[SPM-75 TC-VS-006][SPM-72 TC-VC-004][AC3] the list shows 10 results, then 
   await openSearch(page);
 
   const show = page.getByRole("spinbutton", { name: "Show" });
-  await expect(show).toHaveValue("10");
+  await expect(show).toHaveValue("12");
   await expect(page.getByText("results", { exact: true })).toBeVisible();
-  await expect(search(page).getByRole("article")).toHaveCount(10);
-  await page.getByRole("button", { name: "Show more venues (10 more)" }).click();
-  await expect(search(page).getByRole("article")).toHaveCount(20);
-  await expect(page.getByRole("button", { name: "Show more venues (3 more)" })).toBeVisible();
+  await expect(search(page).getByRole("article")).toHaveCount(12);
+  await page.getByRole("button", { name: "Show more venues (11 more)" }).click();
+  await expect(search(page).getByRole("article")).toHaveCount(23);
+  await expect(page.getByRole("button", { name: /Show more venues/ })).toHaveCount(0);
 
   await show.fill("7");
   await expect(search(page).getByRole("article")).toHaveCount(7);
@@ -352,17 +359,19 @@ test("[SPM-74 TC16][AC1] the calendar toggle sits right above the calendar, whic
   await openSearch(page);
 
   await card(page, "Synthetic Grand Hall").getByRole("button", { name: "View details" }).click();
-  const toggle = page.getByRole("button", { name: "Show availability calendar" });
-  const panelBox = await page.getByRole("region", { name: "Venue details" }).boundingBox();
-  expect((await toggle.boundingBox()).y).toBeGreaterThan(panelBox.y + panelBox.height - 1);
+  // The button is in the venue's card, under its photos (developer request of 25 October 2026).
+  const panel = page.getByRole("region", { name: "Venue details" });
+  const toggle = panel.getByRole("button", { name: "Show availability calendar" });
+  const photo = await panel.getByRole("button", { name: /^Enlarge photo/ }).boundingBox();
+  const toggleAt = await toggle.boundingBox();
+  expect(toggleAt.y).toBeGreaterThan(photo.y + photo.height - 1);
+  expect(Math.abs(toggleAt.x - photo.x)).toBeLessThan(2);
   await toggle.click();
-  const calendar = page.getByRole("region", { name: "Venue availability calendar" });
+  const calendar = panel.getByRole("region", { name: "Venue availability calendar" });
   await expect(calendar).toBeVisible();
-  // Order: details panel, calendar toggle, calendar, then the venue list.
-  const toggleBox = await page.getByRole("button", { name: "Hide availability calendar" }).boundingBox();
+  // Order: the panel with its calendar, then the venue list.
   const calendarBox = await calendar.boundingBox();
   const listBox = await page.getByRole("region", { name: "Venue list" }).boundingBox();
-  expect(calendarBox.y).toBeGreaterThan(toggleBox.y + toggleBox.height - 1);
   expect(listBox.y).toBeGreaterThan(calendarBox.y + calendarBox.height - 1);
   await expect(page.getByLabel("Find a venue")).toHaveCount(0);
   await expect.poll(() => sent.availability.at(-1)).toEqual(expect.objectContaining({
@@ -477,13 +486,13 @@ test("[SPM-72] the venue section works at mobile width", async ({ page }, testIn
 test("[SPM-75 TC-VS-005][SPM-72 AC3] six cards fit the list window at a glance and the rest scroll inside it", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
-  const many = Array.from({ length: 12 }, (_, index) => venue({ venueId: 100 + index, name: `Synthetic Venue ${String(index + 1).padStart(2, "0")}`, coverPhotoId: null }));
+  const many = Array.from({ length: 14 }, (_, index) => venue({ venueId: 100 + index, name: `Synthetic Venue ${String(index + 1).padStart(2, "0")}`, coverPhotoId: null }));
   await routeVenueSection(page, { venueOptions: options({ venues: many }) });
   await page.goto("/events/42");
   await openSearch(page);
 
   const list = page.getByRole("region", { name: "Venue list" });
-  await expect(list.getByRole("article")).toHaveCount(10);
+  await expect(list.getByRole("article")).toHaveCount(12);
   const box = await list.boundingBox();
   expect(box.height).toBeLessThanOrEqual(832 + 1);
   const cards = await list.getByRole("article").evaluateAll((items) => items.map((item) => item.getBoundingClientRect()).map(({ top, bottom }) => ({ top, bottom })));
@@ -617,7 +626,7 @@ test("[SPM-72] the venue search popup never stretches the page below the app fra
   expect(documentHeight).toBeLessThanOrEqual(shellHeight + 1);
 });
 
-test("[SPM-72 AC4] View details expands the organiser's choice in place, photo and name left, details right", async ({ page }, testInfo) => {
+test("[SPM-72 AC4] View details opens the organiser's choice in place: name over the photo, status under it, calendar at the foot", async ({ page }, testInfo) => {
   await page.clock.setFixedTime(new Date("2026-11-03T10:00:00+08:00"));
   await page.setViewportSize({ width: 1366, height: 900 });
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
@@ -625,31 +634,45 @@ test("[SPM-72 AC4] View details expands the organiser's choice in place, photo a
   await page.goto("/events/42");
 
   const first = choices(page).getByRole("article", { name: "Synthetic Grand Hall", exact: true });
-  // Collapsed, the photo sits left of the name.
-  const photo = await first.locator("img").boundingBox();
-  const name = await first.getByRole("heading", { name: "Synthetic Grand Hall" }).boundingBox();
-  expect(name.x).toBeGreaterThan(photo.x + photo.width - 1);
+  const top = async (locator) => (await locator.boundingBox()).y;
+  // Name and address above the photo, the status under it, no venue ID.
+  const heading = first.getByRole("heading", { name: "Synthetic Grand Hall" });
+  expect(await top(heading)).toBeLessThan(await top(first.locator("img").first()));
+  expect(await top(first.getByText("Organiser's choice 1"))).toBeGreaterThan(await top(first.locator("img").first()));
+  await expect(first.getByText("VENUE-45")).toHaveCount(0);
 
   const view = first.getByRole("button", { name: "View details" });
   await expect(view).toHaveAttribute("aria-expanded", "false");
+  const details = page.locator(`[id="${await view.getAttribute("aria-controls")}"]`);
+  await expect(details).toHaveAttribute("inert", "");
   await view.click();
-  await expect(first.getByRole("button", { name: "Hide details" })).toHaveAttribute("aria-expanded", "true");
-  // No second card above and no venue menu: the card itself grew.
+  const hide = first.getByRole("button", { name: "Hide details" });
+  await expect(hide).toHaveAttribute("aria-expanded", "true");
+  await expect(details).not.toHaveAttribute("inert", "");
+  // The details open with motion: a 200 ms height transition.
+  expect(await details.evaluate((element) => getComputedStyle(element).transitionDuration)).toMatch(/0\.2s/);
+  await expect(first.getByRole("heading", { name: "Event requirements" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Venue details" })).toHaveCount(0);
   await expect(first.getByRole("combobox")).toHaveCount(0);
+
+  // Hide details sits in the details column, under the checks; the calendar
+  // button at the foot of the photo column.
   const enlarge = await first.getByRole("button", { name: "Enlarge photo: Front entrance" }).boundingBox();
-  const heading = await first.getByRole("heading", { name: "Synthetic Grand Hall" }).boundingBox();
   const requirements = await first.getByRole("heading", { name: "Event requirements" }).boundingBox();
-  expect(heading.y).toBeGreaterThan(enlarge.y + enlarge.height - 1);
-  expect(Math.abs(heading.x - enlarge.x)).toBeLessThan(2);
-  expect(requirements.x).toBeGreaterThan(enlarge.x + enlarge.width - 1);
-  // Everything, the Select button included, fits one screen.
+  const hideAt = await hide.boundingBox();
+  expect(Math.abs(hideAt.x - requirements.x)).toBeLessThan(2);
+  expect(hideAt.y).toBeGreaterThan(requirements.y);
+  const calendarButton = first.getByRole("button", { name: "Show availability calendar" });
+  const calendarAt = await calendarButton.boundingBox();
+  expect(Math.abs(calendarAt.x - enlarge.x)).toBeLessThan(2);
+  expect(calendarAt.y).toBeGreaterThan(enlarge.y + enlarge.height - 1);
   expect((await first.boundingBox()).height).toBeLessThanOrEqual(900);
   await attachScreenshot(testInfo, page, "venue-choice-expanded");
 
-  await first.getByRole("button", { name: "Show availability calendar" }).click();
+  await calendarButton.click();
   await expect(first.getByRole("region", { name: "Venue availability calendar" })).toBeVisible();
-  await first.getByRole("button", { name: "Hide details" }).click();
+  await hide.click();
+  await expect(first.getByRole("button", { name: "View details" })).toHaveAttribute("aria-expanded", "false");
   await expect(first.getByRole("region", { name: "Venue availability calendar" })).toHaveCount(0);
 });
 
@@ -789,4 +812,43 @@ test("[SPM-74 TC16][SPM-72 AC6] the calendar shows the request as a yellow block
   await expect(page.getByLabel("Venue summaries")).toHaveCount(0);
   await expect(page.getByText(/Requested period: /)).toHaveCount(0);
   await attachScreenshot(testInfo, page, "venue-calendar-overlays");
+});
+
+
+test("[SPM-74][SPM-72 AC6] the month view shows entries as labelled bars and the request as a yellow bar; the year view tints those days", async ({ page }, testInfo) => {
+  await page.clock.setFixedTime(new Date("2026-11-03T10:00:00+08:00"));
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeVenueSection(page);
+  const booking = { entryId: "booking-9", type: "BOOKING", status: "APPROVED", label: "Confirmed booking", blocking: true, start: "2026-11-17T01:00:00.000Z", end: "2026-11-19T09:00:00.000Z", occupiedStart: "2026-11-17T00:30:00.000Z", occupiedEnd: "2026-11-19T09:30:00.000Z", bookingId: 9, eventId: 7, requestId: "REQ-000007", eventTitle: "Synthetic summit", holdExpiresAt: null, reason: null, reasonLabel: null, note: null, operatingHoursWarning: null };
+  await page.route((url) => url.pathname === "/api/venues/availability", (route) => route.fulfill({ json: {
+    from: "2026-10-25T16:00:00.000Z", to: "2026-12-08T16:00:00.000Z",
+    venues: [{
+      venueId: 45, name: "Synthetic Grand Hall", address: "1 Harbourfront Walk", status: "ACTIVE", operatingHours: "08:00-22:00", setupMinutes: 30, turnaroundMinutes: 45, buffersRecorded: true,
+      entries: [booking], overlaps: [], freePeriods: [], summary: "AVAILABLE", summaryLabel: "Available",
+      check: { start: "2026-11-20T02:00:00.000Z", end: "2026-11-20T04:00:00.000Z", occupiedStart: "2026-11-20T01:30:00.000Z", occupiedEnd: "2026-11-20T04:45:00.000Z", availability: "AVAILABLE", availabilityLabel: "Available", canRequest: true, conflicts: [], operatingHoursWarning: null },
+    }],
+  } }));
+  await page.goto("/events/42");
+  const first = choices(page).getByRole("article", { name: "Synthetic Grand Hall", exact: true });
+  await first.getByRole("button", { name: "View details" }).click();
+  await first.getByRole("button", { name: "Show availability calendar" }).click();
+  const calendar = first.getByRole("region", { name: "Venue availability calendar" });
+  await calendar.getByRole("button", { name: "Month", exact: true }).click();
+
+  // A three-day booking: one labelled bar, continued on the next two days in the same lane.
+  const bars = calendar.locator(".cal-month-bar:not(.cal-month-bar--request)");
+  await expect(bars).toHaveCount(3);
+  await expect(bars.first()).toHaveText("08:30 Confirmed booking · Booking #9");
+  const tops = await bars.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().top)));
+  expect(new Set(tops).size).toBe(1);
+  await expect(calendar.locator(".cal-month-bar--request")).toHaveText(/^REQ-000042 · 10:00–12:00/);
+  await bars.first().click();
+  await expect(page.getByRole("dialog", { name: "Synthetic Grand Hall" }).getByText("Booking #9")).toBeVisible();
+  await page.getByRole("dialog", { name: "Synthetic Grand Hall" }).getByRole("button", { name: "Close dialog" }).click();
+  await attachScreenshot(testInfo, page, "venue-calendar-month");
+
+  await calendar.getByRole("button", { name: "Year", exact: true }).click();
+  await expect(calendar.locator(".cal-year-day.is-requested")).toHaveCount(1);
+  expect(await calendar.locator(".cal-year-day.has-events").count()).toBeGreaterThanOrEqual(3);
 });
