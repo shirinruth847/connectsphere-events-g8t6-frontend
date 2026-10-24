@@ -1,12 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { installConnectSphereMocks } from "./support.mjs";
 
-// SPM-41 clarification UI against the agreed API contract. GET .../clarifications
-// is live on the backend; the request-clarification and resubmit routes are added
-// with the SPM-173 lifecycle engine, so these journeys use mocked responses.
+// SPM-41 clarification UI against the backend contract (backend README and
+// tests/integration/clarifications.integration.test.js), with mocked responses
+// shaped like the real ones: organiser views carry statusLabel but no stored
+// status, and every view carries both SPM-41 permission flags.
 
-const coordinatorPermissions = { canEdit: true, editableFields: ["title", "purpose", "description"], canViewDraftHistory: false, canViewStaffHistory: true };
-const ownerPermissions = { canEdit: false, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false };
+const noClarificationActions = { canRequestClarification: false, canResubmit: false };
+const coordinatorPermissions = { canEdit: true, editableFields: ["title", "purpose", "description"], canViewDraftHistory: false, canViewStaffHistory: true, ...noClarificationActions };
+const ownerPermissions = { canEdit: false, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false, ...noClarificationActions };
 
 const eventView = (overrides = {}) => ({
   eventId: 42,
@@ -113,7 +115,7 @@ test.describe("clarification panel", () => {
   test("[SPM-41 decision 5] a same-organisation organiser sees the rounds read-only", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
     await routeClarifications(page, {
-      event: eventView({ status: "AWAITING_CLARIFICATION", statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "ORGANISATION_MEMBER", isOwner: false, permissions: { canEdit: false, editableFields: [], canViewDraftHistory: false, canViewStaffHistory: false } }),
+      event: eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "ORGANISATION_MEMBER", isOwner: false, permissions: { canEdit: false, editableFields: [], canViewDraftHistory: false, canViewStaffHistory: false, ...noClarificationActions } }),
       rounds: [openRound],
     });
     await page.goto("/events/42");
@@ -178,7 +180,7 @@ test.describe("coordinator: Request Clarification", () => {
         const round = { ...openRound, clarificationId: 20, round: 1, message: call.body.message };
         current.rounds = [round];
         current.event = eventView({ status: "AWAITING_CLARIFICATION", version: 4, permissions: { ...coordinatorPermissions, canEdit: false, editableFields: [] } });
-        return route.fulfill({ status: 201, json: { event: current.event, clarification: round } });
+        return route.fulfill({ json: { message: "Clarification requested. The organiser has been notified.", event: current.event, clarification: round } });
       },
     });
     await page.goto("/events/42");
@@ -208,7 +210,7 @@ test.describe("coordinator: Request Clarification", () => {
           return route.fulfill({ status: 409, json: { error: "This event changed.", code: "EVENT_VERSION_CONFLICT", event: eventView({ version: 4, title: "Renamed meanwhile", permissions: granted }) } });
         }
         current.event = eventView({ status: "AWAITING_CLARIFICATION", version: 5, permissions: coordinatorPermissions });
-        return route.fulfill({ status: 201, json: { event: current.event, clarification: { ...openRound, message: call.body.message } } });
+        return route.fulfill({ json: { message: "Clarification requested. The organiser has been notified.", event: current.event, clarification: { ...openRound, message: call.body.message } } });
       },
     });
     await page.goto("/events/42");
@@ -230,7 +232,7 @@ test.describe("coordinator: Request Clarification", () => {
 
 test.describe("organiser: respond and resubmit", () => {
   const returnedForOwner = (permissions = { ...ownerPermissions, canResubmit: true }) =>
-    eventView({ status: "AWAITING_CLARIFICATION", statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "OWNER", isOwner: true, permissions });
+    eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "OWNER", isOwner: true, permissions });
 
   test("[SPM-41] without the backend's resubmit permission the form is not offered", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
@@ -262,8 +264,8 @@ test.describe("organiser: respond and resubmit", () => {
       onResubmit: (route, call, current) => {
         const answered = { ...openRound, status: "RESPONDED", response: call.body.response, respondedAt: "2026-10-16T02:00:00.000Z", respondedBy: { userId: 5, name: "Synthetic Organiser" } };
         current.rounds = [answered];
-        current.event = eventView({ status: "UNDER_REVIEW", statusLabel: "Under Review", version: 5, expectedAttendance: 250, viewerRelationship: "OWNER", isOwner: true, permissions: ownerPermissions });
-        return route.fulfill({ json: { event: current.event, clarification: answered } });
+        current.event = eventView({ status: undefined, statusLabel: "Under Review", version: 5, expectedAttendance: 250, viewerRelationship: "OWNER", isOwner: true, permissions: ownerPermissions });
+        return route.fulfill({ json: { message: "Your event request has been resubmitted for review.", event: current.event, clarification: answered } });
       },
     });
     await page.goto("/events/42");
@@ -285,13 +287,50 @@ test.describe("organiser: respond and resubmit", () => {
     await expect(panel.getByText("“Please confirm whether you need a stage.”")).toBeVisible();
     await expect(panel.getByText("“Yes, a 6m stage.”")).toBeVisible();
   });
+
+  test("[SPM-41] a coordinator schedule clash is explained and the owner's changes are kept", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    const clash = "The new dates clash with your coordinator's schedule. Choose different dates or contact your coordinator.";
+    const state = await routeClarifications(page, {
+      event: returnedForOwner(),
+      rounds: [openRound],
+      onResubmit: (route) => route.fulfill({ status: 409, json: { error: clash, code: "COORDINATOR_CONFLICT" } }),
+    });
+    await page.goto("/events/42");
+
+    const form = page.getByRole("region", { name: "Your coordinator needs more information" });
+    await form.getByRole("button", { name: "Respond and resubmit" }).click();
+    await form.getByLabel("Your response").fill("Moved by a day.");
+    await form.getByRole("button", { name: "Resubmit", exact: true }).click();
+
+    await expect(form.getByText(clash)).toBeVisible();
+    await expect(form.getByLabel("Your response")).toHaveValue("Moved by a day.");
+    expect(state.resubmissions).toHaveLength(1);
+  });
+
+  test("[SPM-41] a round answered elsewhere is reported as no longer waiting", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    await routeClarifications(page, {
+      event: returnedForOwner(),
+      rounds: [openRound],
+      onResubmit: (route) => route.fulfill({ status: 409, json: { error: "This request has no open clarification to respond to. Refresh to see its current status.", code: "CLARIFICATION_NOT_OPEN" } }),
+    });
+    await page.goto("/events/42");
+
+    const form = page.getByRole("region", { name: "Your coordinator needs more information" });
+    await form.getByRole("button", { name: "Respond and resubmit" }).click();
+    await form.getByLabel("Your response").fill("Answer.");
+    await form.getByRole("button", { name: "Resubmit", exact: true }).click();
+
+    await expect(page.getByText("This request is no longer waiting for your response")).toBeVisible();
+  });
 });
 
 test("[SPM-41] the dialog and the response form fit a mobile screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installConnectSphereMocks(page, { role: "ORGANISER" });
   await routeClarifications(page, {
-    event: eventView({ status: "AWAITING_CLARIFICATION", statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "OWNER", isOwner: true, permissions: { ...ownerPermissions, canResubmit: true } }),
+    event: eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "OWNER", isOwner: true, permissions: { ...ownerPermissions, canResubmit: true } }),
     rounds: [openRound],
   });
   await page.goto("/events/42");
