@@ -36,6 +36,34 @@ export function showMoreCount(shown: number, total: number, pageSize: number) {
   return Math.max(0, Math.min(pageSize, total - shown));
 }
 
+// The choices in the layout, facility and accessibility dropdowns: every value
+// the loaded venues carry, merged into the earlier choices so a narrowed list
+// keeps them. The backend matches these filters as text (Master 5.4.5).
+export interface VenueFilterChoices {
+  layouts: string[];
+  facilities: string[];
+  accessibility: string[];
+}
+
+export const EMPTY_FILTER_CHOICES: VenueFilterChoices = { layouts: [], facilities: [], accessibility: [] };
+
+const mergeChoices = (current: string[], values: Array<string | null | undefined>) => {
+  const seen = new Map(current.map((value) => [value.toLowerCase(), value]));
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+};
+
+export function venueFilterChoices(venues: EventVenueOption[], previous: VenueFilterChoices = EMPTY_FILTER_CHOICES): VenueFilterChoices {
+  return {
+    layouts: mergeChoices(previous.layouts, venues.flatMap((venue) => [...(venue.supportedLayouts ?? []), ...venue.rooms.map((room) => room.layoutType)])),
+    facilities: mergeChoices(previous.facilities, venues.flatMap((venue) => venue.facilities ?? [])),
+    accessibility: mergeChoices(previous.accessibility, venues.flatMap((venue) => venue.accessibilityFeatures ?? [])),
+  };
+}
+
 export function venueById(venues: EventVenueOption[], venueId: number | null) {
   return venueId === null ? null : venues.find((venue) => venue.venueId === venueId) ?? null;
 }

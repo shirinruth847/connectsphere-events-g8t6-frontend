@@ -8,14 +8,17 @@ import type { EventVenueOption } from "@/lib/api/event-venues";
 import { AvailabilityChip, RequirementRow } from "./venue-requirement-chips";
 import { VenuePhotoCarousel } from "./venue-photo-carousel";
 
+// A detail the venue does not record shows "-"; "Not checked" stays, because
+// then the detail service could not be read (Master 5.4.5, M4).
+const NONE = "-";
 const listText = (value: string[] | null | undefined, venue: EventVenueOption) => {
-  if (value == null) return venue.detailStatus === "NOT_CHECKED" ? "Not checked" : "Not listed";
-  return value.length ? value.join(", ") : "None listed";
+  if (value == null) return venue.detailStatus === "NOT_CHECKED" ? "Not checked" : NONE;
+  return value.length ? value.join(", ") : NONE;
 };
 const text = (value: string | null | undefined, venue: EventVenueOption) =>
-  value || (venue.detailStatus === "NOT_CHECKED" ? "Not checked" : "Not listed");
+  value || (venue.detailStatus === "NOT_CHECKED" ? "Not checked" : NONE);
 const minutes = (value: number | null | undefined, venue: EventVenueOption) =>
-  value == null ? (venue.detailStatus === "NOT_CHECKED" ? "Not checked" : "Not recorded") : `${value} min`;
+  value == null ? (venue.detailStatus === "NOT_CHECKED" ? "Not checked" : NONE) : `${value} min`;
 
 interface VenueOptionPanelProps {
   label: string;
@@ -85,10 +88,10 @@ export function VenueOptionPanel({ label, venue, venues, onChoose, onClose, badg
           <dl className="grid gap-3 sm:grid-cols-2">
             {([
               ["Capacity", `${venue.maxCapacity.toLocaleString()} people`],
-              ["Operating hours", venue.operatingHours || "Not listed"],
+              ["Operating hours", venue.operatingHours || NONE],
               ["Setup time", minutes(venue.setupMinutes, venue)],
               ["Turnaround time", minutes(venue.turnaroundMinutes, venue)],
-              ["Rooms", venue.rooms.length ? venue.rooms.map((room) => `${room.layoutType} (${room.capacity})`).join(", ") : "None listed"],
+              ["Rooms", venue.rooms.length ? venue.rooms.map((room) => `${room.layoutType} (${room.capacity})`).join(", ") : NONE],
               ["Supported layouts", listText(venue.supportedLayouts, venue)],
               ["Facilities", listText(venue.facilities, venue)],
               ["Accessibility", listText(venue.accessibilityFeatures, venue)],

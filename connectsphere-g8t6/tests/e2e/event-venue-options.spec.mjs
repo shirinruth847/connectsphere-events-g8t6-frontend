@@ -173,17 +173,35 @@ test("[SPM-72 TC-VC-005][AC5] the search ranks venues by requirements, three to 
 
 test("[SPM-72 TC-VC-002][TC-VC-004][AC3][AC11] filters, required facilities and sort are sent to the backend", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
-  const sent = await routeVenueSection(page, { venueOptions: options({ venues: [] }) });
+  const sent = await routeVenueSection(page);
   await page.goto("/events/42");
   await openSearch(page);
-  await expect(page.getByText("No venues are currently available")).toBeVisible();
+  await expect(search(page).getByRole("article")).toHaveCount(3);
 
   await page.getByLabel("Search", { exact: true }).fill("Hall");
   await page.getByLabel("Minimum capacity").fill("200");
-  await page.getByLabel("Required facilities").fill("Projector, Stage");
+  // Layout, facility, accessibility and ranking are dropdowns of the venues' values.
+  await expect(page.getByRole("combobox", { name: "Layout" })).toHaveValue("");
+  expect(await page.getByRole("combobox", { name: "Facility" }).locator("option").allTextContents()).toEqual(["Has facility", "Projector", "Stage"]);
+  expect(await page.getByRole("combobox", { name: "Accessibility" }).locator("option").allTextContents()).toEqual(["Accessibility", "Wheelchair accessible entrance"]);
+  await page.getByRole("combobox", { name: "Layout" }).selectOption("THEATRE");
+  await page.getByRole("button", { name: "Required facilities" }).click();
+  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Projector" }).check();
+  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Stage" }).check();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Required facilities" })).toHaveText(/Rank by Projector, Stage/);
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", layout: "THEATRE", requiredFacilities: "Projector,Stage" });
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect.poll(() => sent.options.at(-1)).toEqual({});
+
+  await page.getByLabel("Search", { exact: true }).fill("Hall");
+  await page.getByLabel("Minimum capacity").fill("200");
+  await page.getByRole("button", { name: "Required facilities" }).click();
+  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Projector" }).check();
+  await page.getByRole("group", { name: "Required facilities" }).getByRole("checkbox", { name: "Stage" }).check();
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", requiredFacilities: "Projector,Stage" });
-  await expect(page.getByText("No venues match these filters")).toBeVisible();
 
   await page.getByLabel("Sort by").selectOption("capacity");
   await page.getByRole("button", { name: /Ascending order/ }).click();
@@ -490,4 +508,46 @@ test("[SPM-74 TC16][SPM-72 AC6] the calendar checks every day of a multi-day eve
     checkEnd: "2026-11-22T17:00:00+08:00",
   }));
   await expect(page.getByLabel("End date")).toHaveValue("2026-11-22");
+});
+
+test("[SPM-72 AC3][AC4] on a laptop screen the venue section uses the full width: three cards a row, list and calendar fit the screen", async ({ page }, testInfo) => {
+  await page.clock.setFixedTime(new Date("2026-11-03T10:00:00+08:00"));
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const many = Array.from({ length: 9 }, (_, index) => venue({ venueId: 100 + index, name: `Synthetic Venue ${index + 1}`, coverPhotoId: null }));
+  await routeVenueSection(page, { venueOptions: options({ venues: many }) });
+  await page.goto("/events/42");
+  await openSearch(page);
+
+  const list = page.getByRole("region", { name: "Venue list" });
+  const tops = await list.getByRole("article").evaluateAll((items) => items.slice(0, 3).map((item) => Math.round(item.getBoundingClientRect().top)));
+  expect(new Set(tops).size).toBe(1);
+  expect((await list.boundingBox()).height).toBeLessThanOrEqual(768);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1366);
+
+  await list.getByRole("article").first().getByRole("button", { name: "View details" }).click();
+  await page.getByRole("button", { name: "Show availability calendar" }).click();
+  const calendar = page.getByRole("region", { name: "Venue availability calendar" });
+  await expect(calendar).toBeVisible();
+  for (const view of ["Week", "Day", "Month", "Year"]) {
+    await calendar.getByRole("button", { name: view, exact: true }).click();
+    expect((await calendar.boundingBox()).height, `${view} view`).toBeLessThanOrEqual(768);
+  }
+  await calendar.getByRole("button", { name: "Week", exact: true }).click();
+  const wrap = calendar.locator(".cal-week-time-grid-wrap");
+  expect(await wrap.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await attachScreenshot(testInfo, page, "venue-section-laptop");
+});
+
+test("[SPM-72 AC4] details a venue does not record show a dash, not wordy notes", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeVenueSection(page, { venueOptions: options({ venues: [venue({ operatingHours: null, facilities: null, knownRestrictions: [], emergencyAccess: null, setupMinutes: null })] }) });
+  await page.goto("/events/42");
+  await openSearch(page);
+  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "View details" }).click();
+  const panel = page.getByRole("region", { name: "Venue details" });
+  for (const term of ["Operating hours", "Facilities", "Known restrictions", "Emergency access", "Setup time"]) {
+    await expect(panel.locator("div", { has: page.locator("dt", { hasText: term }) }).locator("dd")).toHaveText("-");
+  }
+  await expect(panel.getByText(/Not listed|None listed|Not recorded/)).toHaveCount(0);
 });

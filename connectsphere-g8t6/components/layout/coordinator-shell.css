@@ -1733,3 +1733,26 @@
   .coordinator-shell .cal-event-block .cal-event-time { font-size: 10px; }
   .coordinator-shell .cal-event-block .cal-event-title { font-size: 11px; }
 }
+
+/* A shorter calendar (developer request of 24 October 2026): the week and day
+   hours scroll inside a short window, and the year view shows six months a
+   row on wide screens, so the calendar and its toolbar fit on one screen. */
+.coordinator-shell .cal-week-time-grid-wrap,
+.coordinator-shell .cal-day-time-grid-wrap { min-height: 14rem; max-height: min(24rem, calc(100dvh - 22rem)); }
+@media (min-width: 1280px) {
+  .coordinator-shell .cal-year-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+}
+
+/* Dashboard cards sit three to a row on desktop and two on tablets, like the
+   other roles' dashboards (developer request of 24 October 2026). A card is
+   then narrow, so its details stack and its footer wraps. */
+@media (min-width: 768px) {
+  .coordinator-shell .request-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .coordinator-shell .request-card { display: flex; flex-direction: column; min-width: 0; }
+  .coordinator-shell .request-card .request-main { flex-direction: column; gap: 8px; }
+  .coordinator-shell .request-card .details-panel { grid-template-columns: 1fr; }
+  .coordinator-shell .request-card .card-footer { flex-wrap: wrap; margin-top: auto; padding-top: 16px; }
+}
+@media (min-width: 66rem) {
+  .coordinator-shell .request-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

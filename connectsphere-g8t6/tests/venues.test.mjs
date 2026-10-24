@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { availabilityQuery, catalogueQuery, managedVenueQuery, venueOptionsQuery } from '../components/venues/venue-queries.ts';
-import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, showMoreCount, suggestionBlocker } from '../components/venues/event-venue-options/venue-option-model.ts';
+import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, showMoreCount, suggestionBlocker, venueFilterChoices } from '../components/venues/event-venue-options/venue-option-model.ts';
 import { EMPTY_VENUE_FORM, parseList, validateVenueForm } from '../components/venue-staff/venue-management/venue-form-rules.ts';
 import { canViewPath } from '../lib/auth.ts';
 
@@ -116,4 +116,15 @@ test('[SPM-72 AC3][SPM-75 AC2] the list shows 10 venues by default and "Show mor
   assert.equal(showMoreCount(50, 256, 50), 50);
   assert.equal(showMoreCount(250, 256, 10), 6);
   assert.equal(showMoreCount(256, 256, 10), 0);
+});
+
+test('[SPM-75] the filter dropdowns list every value the venues carry, once, and keep earlier ones', () => {
+  const venue = (rooms, supportedLayouts, facilities, accessibilityFeatures) => ({ rooms: rooms.map((layoutType) => ({ layoutType })), supportedLayouts, facilities, accessibilityFeatures });
+  const first = venueFilterChoices([
+    venue(['THEATRE'], ['Banquet'], ['Stage', 'Projector'], ['Ramp']),
+    venue(['theatre', 'CLASSROOM'], null, [' Stage ', ''], null),
+  ]);
+  assert.deepEqual(first, { layouts: ['Banquet', 'CLASSROOM', 'THEATRE'], facilities: ['Projector', 'Stage'], accessibility: ['Ramp'] });
+  // A filtered load returns fewer venues; the earlier choices stay.
+  assert.deepEqual(venueFilterChoices([venue([], [], ['PA system'], [])], first).facilities, ['PA system', 'Projector', 'Stage']);
 });
