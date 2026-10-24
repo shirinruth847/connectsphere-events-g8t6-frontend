@@ -289,7 +289,7 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   equipmentRequirements: values.equipmentRequirements.map(item => ({ ...item })),
 });
 
-// SPM-41: fields an owner may amend while the event is returned for clarification.
+// SPM-41: fields an owner may amend while a clarification thread is open.
 // Registration settings and organisation are not among them.
 export const AMENDABLE_FIELDS = [
   "title",
@@ -319,12 +319,10 @@ export const amendedFields = (original: EventFormValues, current: EventFormValue
   return changes;
 };
 
-// A resubmission needs a written response, at least one amended field, or both.
-export const resubmissionProblem = (response: string, changes: EventAmendments, limit = 2000) => {
-  if (response.length > limit) return `Use ${limit.toLocaleString()} characters or fewer.`;
-  if (!response.trim() && Object.keys(changes).length === 0) {
-    return "Write a response or change at least one detail before resubmitting.";
-  }
+// SPM-41: a thread message is required and at most `limit` characters.
+export const clarificationMessageProblem = (text: string, limit = 2000) => {
+  if (!text.trim()) return "Write a message before sending.";
+  if (text.length > limit) return `Use ${limit.toLocaleString()} characters or fewer.`;
   return null;
 };
 

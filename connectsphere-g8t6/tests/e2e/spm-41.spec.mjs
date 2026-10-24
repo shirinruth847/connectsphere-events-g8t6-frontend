@@ -1,14 +1,22 @@
 import { test, expect } from "@playwright/test";
 import { installConnectSphereMocks } from "./support.mjs";
 
-// SPM-41 clarification UI against the backend contract (backend README and
-// tests/integration/clarifications.integration.test.js), with mocked responses
-// shaped like the real ones: organiser views carry statusLabel but no stored
-// status, and every view carries both SPM-41 permission flags.
+// SPM-41 clarification threads against the backend contract (backend README,
+// "Clarification Threads (SPM-41)", and tests/integration/clarifications.integration.test.js),
+// with mocked responses shaped like the real ones: organiser views carry
+// statusLabel but no stored status, and every view carries all four SPM-41
+// permission flags.
 
-const noClarificationActions = { canRequestClarification: false, canResubmit: false };
+const noClarificationActions = {
+  canRequestClarification: false,
+  canPostClarificationMessage: false,
+  canSaveAmendments: false,
+  canCompleteClarification: false,
+};
 const coordinatorPermissions = { canEdit: true, editableFields: ["title", "purpose", "description"], canViewDraftHistory: false, canViewStaffHistory: true, ...noClarificationActions };
 const ownerPermissions = { canEdit: false, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false, ...noClarificationActions };
+const returnedCoordinatorPermissions = { ...coordinatorPermissions, canEdit: false, editableFields: [], canPostClarificationMessage: true, canCompleteClarification: true };
+const returnedOwnerPermissions = { ...ownerPermissions, canPostClarificationMessage: true, canSaveAmendments: true };
 
 const eventView = (overrides = {}) => ({
   eventId: 42,
@@ -41,16 +49,24 @@ const eventView = (overrides = {}) => ({
   ...overrides,
 });
 
-const answeredRound = {
+const coordinator = { userId: 11, name: "Casey Coordinator", role: "COORDINATOR" };
+const organiser = { userId: 5, name: "Synthetic Organiser", role: "ORGANISER" };
+const message = (messageId, author, body, createdAt) => ({ messageId, body, createdAt, author });
+
+const completedRound = {
   clarificationId: 7,
   round: 1,
-  status: "RESPONDED",
+  status: "COMPLETED",
   message: "What is the expected attendance?",
   requestedAt: "2026-10-13T02:00:00.000Z",
   requestedBy: { userId: 11, name: "Casey Coordinator" },
-  response: null,
-  respondedAt: "2026-10-14T02:00:00.000Z",
-  respondedBy: { userId: 5, name: "Synthetic Organiser" },
+  completedAt: "2026-10-14T02:00:00.000Z",
+  completedBy: { userId: 11, name: "Casey Coordinator" },
+  messages: [
+    message(1, coordinator, "What is the expected attendance?", "2026-10-13T02:00:00.000Z"),
+    message(2, organiser, "About 120.", "2026-10-13T05:00:00.000Z"),
+  ],
+  unreadCount: 0,
 };
 const openRound = {
   clarificationId: 9,
@@ -59,70 +75,129 @@ const openRound = {
   message: "Please confirm whether you need a stage.",
   requestedAt: "2026-10-15T02:00:00.000Z",
   requestedBy: { userId: 11, name: "Casey Coordinator" },
-  response: null,
-  respondedAt: null,
-  respondedBy: null,
+  completedAt: null,
+  completedBy: null,
+  messages: [message(3, coordinator, "Please confirm whether you need a stage.", "2026-10-15T02:00:00.000Z")],
+  unreadCount: 1,
 };
 
+const returnedForOwner = (permissions = returnedOwnerPermissions, overrides = {}) =>
+  eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "OWNER", isOwner: true, permissions, ...overrides });
+
+const PATH = /\/api\/events\/42(\/(history(\/viewed)?|clarifications(\/\d+\/(messages|read|complete))?|amendments))?(\?.*)?$/;
+
 // One mutable fake backend for event 42; the shared support mocks handle the rest.
-async function routeClarifications(page, { event, rounds = [], roundsStatus = 200, onRequest, onResubmit }) {
-  const state = { event, rounds, requests: [], resubmissions: [], roundsStatus };
-  await page.route(/\/api\/events\/42(\/(history|clarifications|resubmit))?(\?.*)?$/, async (route) => {
+async function routeClarifications(page, { event, rounds = [], roundsStatus = 200, history = [], lastViewedAt = null, onRequest, onMessage, onAmend, onComplete }) {
+  const state = { event, rounds, roundsStatus, requests: [], messages: [], amendments: [], completions: [], reads: [], historyViews: 0 };
+  await page.route(PATH, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();
     if (method === "OPTIONS") return route.fallback();
-    if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
+    const call = () => ({ path: pathname, body: request.postDataJSON(), key: request.headers()["idempotency-key"] });
+    if (pathname.endsWith("/history")) return route.fulfill({ json: { history, nextCursor: null, lastViewedAt } });
+    if (pathname.endsWith("/history/viewed")) {
+      state.historyViews += 1;
+      return route.fulfill({ json: { lastViewedAt: "2026-10-24T03:00:00.000Z" } });
+    }
     if (pathname.endsWith("/clarifications") && method === "GET") {
       if (state.roundsStatus !== 200) return route.fulfill({ status: state.roundsStatus, json: { error: "Internal Server Error" } });
       return route.fulfill({ json: { clarifications: state.rounds } });
     }
     if (pathname.endsWith("/clarifications") && method === "POST") {
-      const call = { body: request.postDataJSON(), key: request.headers()["idempotency-key"] };
-      state.requests.push(call);
-      return onRequest(route, call, state);
+      const sent = call();
+      state.requests.push(sent);
+      return onRequest(route, sent, state);
     }
-    if (pathname.endsWith("/resubmit") && method === "POST") {
-      const call = { body: request.postDataJSON(), key: request.headers()["idempotency-key"] };
-      state.resubmissions.push(call);
-      return onResubmit(route, call, state);
+    if (pathname.endsWith("/read")) {
+      state.reads.push(pathname);
+      return route.fulfill({ status: 204, body: "" });
+    }
+    if (pathname.endsWith("/messages")) {
+      const sent = call();
+      state.messages.push(sent);
+      return onMessage(route, sent, state);
+    }
+    if (pathname.endsWith("/complete")) {
+      const sent = call();
+      state.completions.push(sent);
+      return onComplete(route, sent, state);
+    }
+    if (pathname.endsWith("/amendments")) {
+      const sent = call();
+      state.amendments.push(sent);
+      return onAmend(route, sent, state);
     }
     return route.fulfill({ json: { event: state.event } });
   });
   return state;
 }
 
-test.describe("clarification panel", () => {
-  test("[SPM-41 AC3] the coordinator sees every round with question, response and timestamps", async ({ page }) => {
+// Appends the posted message to the open thread, as the backend returns it.
+const acceptMessage = (author) => (route, sent, current) => {
+  const updated = { ...openRound, messages: [...openRound.messages, message(50 + current.messages.length, author, sent.body.body, "2026-10-16T02:00:00.000Z")], unreadCount: 0 };
+  current.rounds = [updated, completedRound];
+  return route.fulfill({ status: 201, json: { message: "Message sent.", clarification: updated } });
+};
+
+const clarificationList = (page) => page.getByRole("region", { name: "Clarification requests" });
+
+// Opens one request's pop-up from its row in the right-hand list.
+async function openThread(page, round) {
+  await clarificationList(page).getByRole("button", { name: `Request ${round}` }).click();
+  const dialog = page.getByRole("dialog", { name: `Request ${round}` });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+test.describe("clarification threads", () => {
+  test("[SPM-41 AC3] the coordinator sees each request as a row and reads its messages in a pop-up", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "COORDINATOR" });
-    await routeClarifications(page, { event: eventView({ status: "AWAITING_CLARIFICATION", statusLabel: "Under Review" }), rounds: [openRound, answeredRound] });
+    const state = await routeClarifications(page, { event: eventView({ status: "AWAITING_CLARIFICATION", permissions: returnedCoordinatorPermissions }), rounds: [completedRound, openRound] });
     await page.goto("/events/42");
 
-    const panel = page.getByRole("region", { name: "Clarification requests" });
-    await expect(panel).toBeVisible();
+    const panel = clarificationList(page);
     await expect(panel.getByText("2 requests")).toBeVisible();
-    const latest = panel.getByRole("listitem", { name: "Clarification request 2" });
-    await expect(latest.getByText("Awaiting organiser")).toBeVisible();
-    await expect(latest.getByText("“Please confirm whether you need a stage.”")).toBeVisible();
-    const earlier = panel.getByRole("listitem", { name: "Clarification request 1" });
-    await expect(earlier.getByText("Answered")).toBeVisible();
-    await expect(earlier.getByText("Resubmitted with changes to the event details, without a written response.")).toBeVisible();
+    // Newest first; rows show only the number and status.
+    await expect(panel.getByRole("list", { name: "Clarification requests, newest first" }).getByRole("button")).toHaveText([/^Request 2\s*Open$/, /^Request 1\s*Complete$/]);
+    await expect(panel.getByText("Please confirm whether you need a stage.")).toHaveCount(0);
+    expect(state.reads).toEqual([]);
+
+    const latest = await openThread(page, 2);
+    await expect(latest.getByText("Open", { exact: true })).toBeVisible();
+    await expect(latest.getByText("Please confirm whether you need a stage.")).toBeVisible();
+    await expect(latest.getByText(/Casey Coordinator \(Coordinator\)/)).toBeVisible();
+    // Opening a request marks it read.
+    await expect.poll(() => state.reads).toEqual(["/api/events/42/clarifications/2/read"]);
+    await page.keyboard.press("Escape");
+    await expect(latest).toBeHidden();
+    await expect(panel.getByRole("button", { name: "Request 2" })).toBeFocused();
+
+    const earlier = await openThread(page, 1);
+    await expect(earlier.getByText("Complete", { exact: true })).toBeVisible();
+    await expect(earlier.getByRole("listitem")).toHaveText([/What is the expected attendance\?/, /About 120\./]);
+    await expect(earlier.getByText(/Marked complete by Casey Coordinator/)).toBeVisible();
     await expect(earlier.locator("time").first()).toHaveAttribute("datetime", "2026-10-13T02:00:00.000Z");
-    // Card 3 without the internal notes box (Master 4.2: organiser-visible content only).
-    await expect(panel.getByRole("textbox")).toHaveCount(0);
+    await expect(earlier.getByRole("textbox")).toHaveCount(0);
+    await expect(earlier.getByRole("button", { name: "Mark complete" })).toHaveCount(0);
   });
 
-  test("[SPM-41 decision 5] a same-organisation organiser sees the rounds read-only", async ({ page }) => {
+  test("[SPM-41 decision 5] a same-organisation organiser reads the threads but cannot write", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
-    await routeClarifications(page, {
-      event: eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "ORGANISATION_MEMBER", isOwner: false, permissions: { canEdit: false, editableFields: [], canViewDraftHistory: false, canViewStaffHistory: false, ...noClarificationActions } }),
-      rounds: [openRound],
+    const state = await routeClarifications(page, {
+      event: eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "ORGANISATION_MEMBER", isOwner: false, permissions: { ...ownerPermissions, canViewDraftHistory: false } }),
+      rounds: [{ ...openRound, unreadCount: null }],
     });
     await page.goto("/events/42");
 
-    await expect(page.getByRole("region", { name: "Clarification requests" }).getByText("“Please confirm whether you need a stage.”")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Respond and resubmit" })).toHaveCount(0);
+    const thread = await openThread(page, 2);
+    await expect(thread.getByText("Please confirm whether you need a stage.")).toBeVisible();
+    await expect(thread.getByRole("textbox")).toHaveCount(0);
+    await expect(thread.getByText("Only the organiser who made the request and the assigned coordinator can reply.")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Amend request" })).toHaveCount(0);
     await expect(page.getByText("Viewing as a member of your organisation")).toBeVisible();
+    expect(state.reads).toEqual([]);
   });
 
   test("[SPM-41] the panel shows an empty state, and an error with a working retry", async ({ page }) => {
@@ -172,20 +247,21 @@ test.describe("coordinator: Request Clarification", () => {
     await expect(page.getByText("Under Review", { exact: true }).first()).toBeVisible();
   });
 
-  test("[SPM-41 TC-01] sending a message returns the event and shows the new round", async ({ page }) => {
+  test("[SPM-41 TC-01] sending a question returns the event and opens a thread", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "COORDINATOR" });
     const state = await routeClarifications(page, {
       event: eventView({ permissions: { ...coordinatorPermissions, canRequestClarification: true } }),
-      onRequest: (route, call, current) => {
-        const round = { ...openRound, clarificationId: 20, round: 1, message: call.body.message };
+      onRequest: (route, sent, current) => {
+        const round = { ...openRound, clarificationId: 20, round: 1, message: sent.body.message, messages: [message(3, coordinator, sent.body.message, "2026-10-15T02:00:00.000Z")], unreadCount: 0 };
         current.rounds = [round];
-        current.event = eventView({ status: "AWAITING_CLARIFICATION", version: 4, permissions: { ...coordinatorPermissions, canEdit: false, editableFields: [] } });
+        current.event = eventView({ status: "AWAITING_CLARIFICATION", version: 4, permissions: returnedCoordinatorPermissions });
         return route.fulfill({ json: { message: "Clarification requested. The organiser has been notified.", event: current.event, clarification: round } });
       },
     });
     await page.goto("/events/42");
 
-    await page.getByRole("button", { name: "Request Clarification" }).click();
+    // The action sits at the top of the clarification list.
+    await clarificationList(page).getByRole("button", { name: "Request Clarification" }).click();
     const dialog = page.getByRole("dialog", { name: "Request clarification" });
     await dialog.getByLabel("Message to the organiser").fill("Please confirm whether you need a stage.");
     await dialog.getByRole("button", { name: "Send request" }).click();
@@ -194,10 +270,14 @@ test.describe("coordinator: Request Clarification", () => {
     expect(state.requests).toHaveLength(1);
     expect(state.requests[0].body).toEqual({ message: "Please confirm whether you need a stage.", version: 3 });
     expect(state.requests[0].key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
-    await expect(page.getByText("Clarification requested", { exact: true })).toBeVisible();
+    await expect(page.getByText("Clarification requested", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Awaiting Clarification", { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole("region", { name: "Clarification requests" }).getByText("“Please confirm whether you need a stage.”")).toBeVisible();
     await expect(page.getByRole("button", { name: "Request Clarification" })).toHaveCount(0);
+    // Focus lands on the new request's row.
+    await expect(clarificationList(page).getByRole("button", { name: "Request 1" })).toBeFocused();
+    const thread = await openThread(page, 1);
+    await expect(thread.getByText("Please confirm whether you need a stage.")).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Mark complete" })).toBeVisible();
   });
 
   test("[SPM-41] a version conflict keeps the message and resends against the latest version", async ({ page }) => {
@@ -205,12 +285,12 @@ test.describe("coordinator: Request Clarification", () => {
     const granted = { ...coordinatorPermissions, canRequestClarification: true };
     const state = await routeClarifications(page, {
       event: eventView({ permissions: granted }),
-      onRequest: (route, call, current) => {
+      onRequest: (route, sent, current) => {
         if (current.requests.length === 1) {
           return route.fulfill({ status: 409, json: { error: "This event changed.", code: "EVENT_VERSION_CONFLICT", event: eventView({ version: 4, title: "Renamed meanwhile", permissions: granted }) } });
         }
-        current.event = eventView({ status: "AWAITING_CLARIFICATION", version: 5, permissions: coordinatorPermissions });
-        return route.fulfill({ json: { message: "Clarification requested. The organiser has been notified.", event: current.event, clarification: { ...openRound, message: call.body.message } } });
+        current.event = eventView({ status: "AWAITING_CLARIFICATION", version: 5, permissions: returnedCoordinatorPermissions });
+        return route.fulfill({ json: { message: "Clarification requested. The organiser has been notified.", event: current.event, clarification: { ...openRound, message: sent.body.message } } });
       },
     });
     await page.goto("/events/42");
@@ -225,67 +305,202 @@ test.describe("coordinator: Request Clarification", () => {
 
     await dialog.getByRole("button", { name: "Send request" }).click();
     await expect(dialog).toBeHidden();
-    expect(state.requests.map((call) => call.body.version)).toEqual([3, 4]);
+    expect(state.requests.map((sent) => sent.body.version)).toEqual([3, 4]);
     expect(state.requests[1].key).not.toBe(state.requests[0].key);
   });
 });
 
-test.describe("organiser: respond and resubmit", () => {
-  const returnedForOwner = (permissions = { ...ownerPermissions, canResubmit: true }) =>
-    eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "OWNER", isOwner: true, permissions });
+test.describe("coordinator: the open thread", () => {
+  const returned = () => eventView({ status: "AWAITING_CLARIFICATION", version: 5, permissions: returnedCoordinatorPermissions });
 
-  test("[SPM-41] without the backend's resubmit permission the form is not offered", async ({ page }) => {
+  test("[SPM-41 v2] the coordinator replies in the open thread", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "COORDINATOR" });
+    const state = await routeClarifications(page, { event: returned(), rounds: [openRound, completedRound], onMessage: acceptMessage(coordinator) });
+    await page.goto("/events/42");
+
+    const thread = await openThread(page, 2);
+    await thread.getByLabel("Your message").fill("  Also, do you need a lectern?  ");
+    await thread.getByRole("button", { name: "Send" }).click();
+
+    await expect(thread.getByText("Also, do you need a lectern?")).toBeVisible();
+    await expect(thread.getByLabel("Your message")).toHaveValue("");
+    await expect(thread.getByLabel("Your message")).toBeFocused();
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].path).toBe("/api/events/42/clarifications/2/messages");
+    expect(state.messages[0].body).toEqual({ body: "  Also, do you need a lectern?  " });
+    expect(state.messages[0].key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
+    // Completed threads take no replies.
+    await page.keyboard.press("Escape");
+    await expect((await openThread(page, 1)).getByRole("textbox")).toHaveCount(0);
+  });
+
+  test("[SPM-41 v2] an empty reply is blocked and nothing is sent", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "COORDINATOR" });
+    const state = await routeClarifications(page, { event: returned(), rounds: [openRound], onMessage: acceptMessage(coordinator) });
+    await page.goto("/events/42");
+
+    const thread = await openThread(page, 2);
+    await thread.getByRole("button", { name: "Send" }).click();
+    await expect(thread.getByText("Write a message before sending.")).toBeVisible();
+    expect(state.messages).toHaveLength(0);
+  });
+
+  test("[SPM-41 v2] marking the thread complete returns the event to review", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "COORDINATOR" });
+    const state = await routeClarifications(page, {
+      event: returned(),
+      rounds: [openRound],
+      onComplete: (route, _sent, current) => {
+        const done = { ...openRound, status: "COMPLETED", completedAt: "2026-10-17T02:00:00.000Z", completedBy: { userId: 11, name: "Casey Coordinator" }, unreadCount: 0 };
+        current.rounds = [done];
+        current.event = eventView({ version: 6, permissions: { ...coordinatorPermissions, canRequestClarification: true } });
+        return route.fulfill({ json: { message: "Clarification marked complete. The request is back under review.", event: current.event, clarification: done } });
+      },
+    });
+    await page.goto("/events/42");
+
+    const thread = await openThread(page, 2);
+    const tick = thread.getByRole("button", { name: "Mark complete" });
+    await expect(tick).toHaveAttribute("aria-expanded", "false");
+    await tick.click();
+    await expect(tick).toHaveAttribute("aria-expanded", "true");
+    await thread.getByRole("group", { name: "Mark request 2 complete" }).getByRole("button", { name: "Confirm" }).click();
+
+    await expect(page.getByText("Clarification complete", { exact: true })).toBeVisible();
+    expect(state.completions).toHaveLength(1);
+    expect(state.completions[0].path).toBe("/api/events/42/clarifications/2/complete");
+    expect(state.completions[0].body).toEqual({ version: 5 });
+    // The pop-up turns read-only and focus moves to the outcome.
+    await expect(thread.getByText("Complete", { exact: true })).toBeVisible();
+    await expect(thread.getByText(/Marked complete by Casey Coordinator/)).toBeFocused();
+    await expect(thread.getByRole("button", { name: "Mark complete" })).toHaveCount(0);
+    await expect(thread.getByRole("textbox")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(clarificationList(page).getByRole("button", { name: "Request 2" })).toContainText("Complete");
+    await expect(page.getByRole("button", { name: "Request Clarification" })).toBeVisible();
+  });
+
+  test("[SPM-41 v2] completing against amendments the coordinator has not seen shows the latest details", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "COORDINATOR" });
+    const state = await routeClarifications(page, {
+      event: returned(),
+      rounds: [openRound],
+      onComplete: (route) =>
+        route.fulfill({ status: 409, json: { error: "This event changed.", code: "EVENT_VERSION_CONFLICT", event: eventView({ status: "AWAITING_CLARIFICATION", version: 6, title: "Amended by the organiser", permissions: returnedCoordinatorPermissions }) } }),
+    });
+    await page.goto("/events/42");
+
+    const thread = await openThread(page, 2);
+    await thread.getByRole("button", { name: "Mark complete" }).click();
+    await thread.getByRole("button", { name: "Confirm" }).click();
+
+    await expect(thread.getByText("The request changed after you loaded it")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Amended by the organiser", exact: true })).toBeVisible();
+    expect(state.completions).toHaveLength(1);
+  });
+});
+
+test.describe("organiser: reply and amend", () => {
+  test("[SPM-41] without the backend's permissions neither the reply box nor the amendment form is offered", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
     await routeClarifications(page, { event: returnedForOwner(ownerPermissions), rounds: [openRound] });
     await page.goto("/events/42");
 
     await expect(page.getByText("Returned – action required")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Respond and resubmit" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Amend request" })).toHaveCount(0);
+    await expect((await openThread(page, 2)).getByRole("textbox")).toHaveCount(0);
   });
 
-  test("[SPM-41 decision 2] resubmitting with no response and no change is blocked", async ({ page }) => {
+  test("[SPM-41 v2] the owner replies in the thread", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
-    const state = await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound], onResubmit: (route) => route.fulfill({ status: 500, json: {} }) });
+    const state = await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound], onMessage: acceptMessage(organiser) });
     await page.goto("/events/42");
 
-    const form = page.getByRole("region", { name: "Your coordinator needs more information" });
-    await expect(form.getByText("“Please confirm whether you need a stage.”")).toBeVisible();
-    await form.getByRole("button", { name: "Respond and resubmit" }).click();
-    await form.getByRole("button", { name: "Resubmit", exact: true }).click();
-    await expect(form.getByText("Write a response or change at least one detail before resubmitting.")).toBeVisible();
-    expect(state.resubmissions).toHaveLength(0);
+    await expect(page.getByText("Your coordinator needs more information")).toBeVisible();
+    const thread = await openThread(page, 2);
+    await thread.getByLabel("Your message").fill("Yes, a 6m stage.");
+    await thread.getByRole("button", { name: "Send" }).click();
+
+    await expect(thread.getByText("Yes, a 6m stage.")).toBeVisible();
+    expect(state.messages.map((sent) => sent.body)).toEqual([{ body: "Yes, a 6m stage." }]);
   });
 
-  test("[SPM-41 TC-04] the owner amends, responds and resubmits; the request stays visible", async ({ page }) => {
+  test("[SPM-41 v2] a reply to a thread completed meanwhile keeps the text", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    await routeClarifications(page, {
+      event: returnedForOwner(),
+      rounds: [openRound],
+      onMessage: (route) => route.fulfill({ status: 409, json: { error: "This clarification request is already complete.", code: "CLARIFICATION_CLOSED" } }),
+    });
+    await page.goto("/events/42");
+
+    const thread = await openThread(page, 2);
+    await thread.getByLabel("Your message").fill("Late answer.");
+    await thread.getByRole("button", { name: "Send" }).click();
+
+    await expect(thread.getByText("This clarification is no longer open")).toBeVisible();
+    await expect(thread.getByLabel("Your message")).toHaveValue("Late answer.");
+  });
+
+  test("[SPM-41 v2] saving with no change is blocked", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    const state = await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound], onAmend: (route) => route.fulfill({ status: 500, json: {} }) });
+    await page.goto("/events/42");
+
+    const form = page.getByRole("region", { name: "Amend your request" });
+    await form.getByRole("button", { name: "Amend request" }).click();
+    await form.getByRole("button", { name: "Save amendments" }).click();
+    await expect(form.getByText("Change at least one detail before saving.")).toBeVisible();
+    expect(state.amendments).toHaveLength(0);
+  });
+
+  test("[SPM-41 TC-04] the owner saves amendments and the request stays returned", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
     const state = await routeClarifications(page, {
       event: returnedForOwner(),
       rounds: [openRound],
-      onResubmit: (route, call, current) => {
-        const answered = { ...openRound, status: "RESPONDED", response: call.body.response, respondedAt: "2026-10-16T02:00:00.000Z", respondedBy: { userId: 5, name: "Synthetic Organiser" } };
-        current.rounds = [answered];
-        current.event = eventView({ status: undefined, statusLabel: "Under Review", version: 5, expectedAttendance: 250, viewerRelationship: "OWNER", isOwner: true, permissions: ownerPermissions });
-        return route.fulfill({ json: { message: "Your event request has been resubmitted for review.", event: current.event, clarification: answered } });
+      onAmend: (route, _sent, current) => {
+        current.event = returnedForOwner(returnedOwnerPermissions, { version: 4, expectedAttendance: 250 });
+        return route.fulfill({ json: { message: "Amendments saved. Your coordinator can see what changed.", event: current.event } });
       },
     });
     await page.goto("/events/42");
 
-    const form = page.getByRole("region", { name: "Your coordinator needs more information" });
-    await form.getByRole("button", { name: "Respond and resubmit" }).click();
+    const form = page.getByRole("region", { name: "Amend your request" });
+    await form.getByRole("button", { name: "Amend request" }).click();
     await expect(form.getByText("Registration settings cannot be changed while responding to a clarification request.")).toBeVisible();
-    await form.getByLabel("Your response").fill("Yes, a 6m stage.");
     await form.getByLabel("Expected attendance").fill("250");
     await expect(form.getByText("1 detail changed")).toBeVisible();
-    await form.getByRole("button", { name: "Resubmit", exact: true }).click();
+    await form.getByRole("button", { name: "Save amendments" }).click();
 
-    await expect(page.getByText("Request resubmitted", { exact: true })).toBeVisible();
-    expect(state.resubmissions).toHaveLength(1);
-    expect(state.resubmissions[0].body).toEqual({ response: "Yes, a 6m stage.", changes: { expectedAttendance: 250 }, version: 3 });
-    expect(state.resubmissions[0].key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
-    await expect(page.getByRole("region", { name: "Your coordinator needs more information" })).toHaveCount(0);
-    const panel = page.getByRole("region", { name: "Clarification requests" });
-    await expect(panel.getByText("“Please confirm whether you need a stage.”")).toBeVisible();
-    await expect(panel.getByText("“Yes, a 6m stage.”")).toBeVisible();
+    await expect(page.getByText("Amendments saved", { exact: true })).toBeVisible();
+    expect(state.amendments).toHaveLength(1);
+    expect(state.amendments[0].body).toEqual({ changes: { expectedAttendance: 250 }, version: 3 });
+    expect(state.amendments[0].key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
+    // Still returned: the thread and the amendment form stay available.
+    await expect(page.getByRole("region", { name: "Amend your request" })).toBeVisible();
+    await expect((await openThread(page, 2)).getByLabel("Your message")).toBeVisible();
+  });
+
+  test("[SPM-41] Venue & layout starts collapsed with a summary and opens from its header", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound] });
+    await page.goto("/events/42");
+
+    const form = page.getByRole("region", { name: "Amend your request" });
+    await form.getByRole("button", { name: "Amend request" }).click();
+    const toggle = form.getByRole("button", { name: /^Venue & layout/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toContainText("1. Main Hall · Layout: Theatre");
+    await expect(form.getByLabel("Preferred layout")).toBeHidden();
+
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(form.getByLabel("Preferred layout")).toBeVisible();
+    await expect(form.getByText("Preference 1")).toBeVisible();
+    await toggle.click();
+    await expect(form.getByLabel("Preferred layout")).toBeHidden();
   });
 
   test("[SPM-41] a coordinator schedule clash is explained and the owner's changes are kept", async ({ page }) => {
@@ -294,49 +509,89 @@ test.describe("organiser: respond and resubmit", () => {
     const state = await routeClarifications(page, {
       event: returnedForOwner(),
       rounds: [openRound],
-      onResubmit: (route) => route.fulfill({ status: 409, json: { error: clash, code: "COORDINATOR_CONFLICT" } }),
+      onAmend: (route) => route.fulfill({ status: 409, json: { error: clash, code: "COORDINATOR_CONFLICT" } }),
     });
     await page.goto("/events/42");
 
-    const form = page.getByRole("region", { name: "Your coordinator needs more information" });
-    await form.getByRole("button", { name: "Respond and resubmit" }).click();
-    await form.getByLabel("Your response").fill("Moved by a day.");
-    await form.getByRole("button", { name: "Resubmit", exact: true }).click();
+    const form = page.getByRole("region", { name: "Amend your request" });
+    await form.getByRole("button", { name: "Amend request" }).click();
+    await form.getByLabel("Expected attendance").fill("90");
+    await form.getByRole("button", { name: "Save amendments" }).click();
 
     await expect(form.getByText(clash)).toBeVisible();
-    await expect(form.getByLabel("Your response")).toHaveValue("Moved by a day.");
-    expect(state.resubmissions).toHaveLength(1);
+    await expect(form.getByLabel("Expected attendance")).toHaveValue("90");
+    expect(state.amendments).toHaveLength(1);
   });
 
-  test("[SPM-41] a round answered elsewhere is reported as no longer waiting", async ({ page }) => {
+  test("[SPM-41] amendments after the thread was completed are reported as no longer open", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
     await routeClarifications(page, {
       event: returnedForOwner(),
       rounds: [openRound],
-      onResubmit: (route) => route.fulfill({ status: 409, json: { error: "This request has no open clarification to respond to. Refresh to see its current status.", code: "CLARIFICATION_NOT_OPEN" } }),
+      onAmend: (route) => route.fulfill({ status: 409, json: { error: "This request has no open clarification. Refresh to see its current status.", code: "CLARIFICATION_NOT_OPEN" } }),
     });
     await page.goto("/events/42");
 
-    const form = page.getByRole("region", { name: "Your coordinator needs more information" });
-    await form.getByRole("button", { name: "Respond and resubmit" }).click();
-    await form.getByLabel("Your response").fill("Answer.");
-    await form.getByRole("button", { name: "Resubmit", exact: true }).click();
+    const form = page.getByRole("region", { name: "Amend your request" });
+    await form.getByRole("button", { name: "Amend request" }).click();
+    await form.getByLabel("Expected attendance").fill("90");
+    await form.getByRole("button", { name: "Save amendments" }).click();
 
-    await expect(page.getByText("This request is no longer waiting for your response")).toBeVisible();
+    await expect(page.getByText("This request is no longer open for amendments")).toBeVisible();
   });
 });
 
-test("[SPM-41] the dialog and the response form fit a mobile screen", async ({ page }) => {
+test.describe("history since the last visit", () => {
+  const entry = (historyId, action, occurredAt) => ({
+    historyId,
+    action,
+    actor: { userId: 11, name: "Casey Coordinator", role: "COORDINATOR" },
+    occurredAt,
+    summary: null,
+    changes: [],
+    audience: "ORGANISER_SAFE",
+  });
+
+  test("[SPM-41 v2] entries after the viewer's last visit are marked new, and the visit is recorded", async ({ page }) => {
+    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    const state = await routeClarifications(page, {
+      event: returnedForOwner(),
+      rounds: [openRound],
+      lastViewedAt: "2026-10-14T00:00:00.000Z",
+      history: [
+        entry(12, "CLARIFICATION_REQUESTED", "2026-10-15T02:00:00.000Z"),
+        entry(11, "COORDINATOR_ASSIGNED", "2026-10-12T02:00:00.000Z"),
+      ],
+    });
+    await page.goto("/events/42");
+
+    const history = page.getByRole("region", { name: "Change history" });
+    await expect(history.getByText("1 new since your last visit.", { exact: false })).toBeVisible();
+    const requested = history.getByRole("listitem").filter({ hasText: "Clarification requested" });
+    await expect(requested.getByText("New", { exact: true })).toBeVisible();
+    await expect(history.getByRole("listitem").filter({ hasText: "Coordinator assigned" }).getByText("New", { exact: true })).toHaveCount(0);
+    // The unseen entry's connecting line uses the shared warning token (yellow).
+    const lineColour = (item) => item.evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
+    expect(await lineColour(requested)).toBe("rgb(242, 183, 5)");
+    expect(await lineColour(history.getByRole("listitem").filter({ hasText: "Coordinator assigned" }))).not.toBe("rgb(242, 183, 5)");
+    await expect.poll(() => state.historyViews).toBeGreaterThan(0);
+  });
+});
+
+test("[SPM-41] the thread and the amendment form fit a mobile screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installConnectSphereMocks(page, { role: "ORGANISER" });
-  await routeClarifications(page, {
-    event: eventView({ status: undefined, statusLabel: "Under Review", statusNote: "Returned – action required", viewerRelationship: "OWNER", isOwner: true, permissions: { ...ownerPermissions, canResubmit: true } }),
-    rounds: [openRound],
-  });
+  await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound, completedRound] });
   await page.goto("/events/42");
-  await page.getByRole("button", { name: "Respond and resubmit" }).click();
-  await expect(page.getByLabel("Your response")).toBeVisible();
+  await page.getByRole("button", { name: "Amend request" }).click();
+  await expect(page.getByRole("region", { name: "Amend your request" }).getByLabel("Expected attendance")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  const thread = await openThread(page, 2);
+  await expect(thread.getByLabel("Your message")).toBeVisible();
+  await expect(thread.getByRole("button", { name: "Send" })).toBeInViewport();
+  const box = await thread.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
 });
 
 test("[SPM-41] the coordinator dialog fits a mobile screen", async ({ page }) => {

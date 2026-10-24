@@ -23,6 +23,7 @@ const PATHS = {
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   "arrow-back": <path d="M19 12H5M11 6l-6 6 6 6" />,
   "arrow-forward": <path d="M5 12h14M13 6l6 6-6 6" />,
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   refresh: <><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 5v6h-6" /></>,
 } satisfies Record<string, ReactNode>;

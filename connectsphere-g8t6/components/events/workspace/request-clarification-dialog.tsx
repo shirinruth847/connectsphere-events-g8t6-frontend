@@ -132,8 +132,8 @@ export function RequestClarificationDialog({ event, onClose, onRequested, onEven
     >
       <form id={`${fieldId}-form`} onSubmit={send} noValidate className="grid gap-4">
         <p className="text-sm leading-relaxed text-on-surface-variant">
-          The request returns to the organiser, who sees your message, can amend the event and resubmits it to you.
-          It stays assigned to you while you wait.
+          The request returns to the organiser, who can reply to your message and amend the event. It stays assigned
+          to you, and you mark the clarification complete when you have what you need.
         </p>
         {banner ? <AlertBanner tone={banner.tone} title={banner.title}>{banner.message}</AlertBanner> : null}
         <div>

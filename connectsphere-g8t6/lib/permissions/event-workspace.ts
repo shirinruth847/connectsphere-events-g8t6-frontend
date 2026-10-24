@@ -13,4 +13,8 @@ export const editableIdentityFields = (permissions: EventPermissions): IdentityF
 // SPM-41: shown only when the backend grants them, never inferred from the status.
 export const canRequestClarification = (permissions: EventPermissions) => permissions.canRequestClarification === true;
 
-export const canResubmit = (permissions: EventPermissions) => permissions.canResubmit === true;
+export const canPostClarificationMessage = (permissions: EventPermissions) => permissions.canPostClarificationMessage === true;
+
+export const canSaveAmendments = (permissions: EventPermissions) => permissions.canSaveAmendments === true;
+
+export const canCompleteClarification = (permissions: EventPermissions) => permissions.canCompleteClarification === true;

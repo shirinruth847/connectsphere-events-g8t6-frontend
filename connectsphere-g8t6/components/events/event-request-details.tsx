@@ -10,8 +10,8 @@ import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
 import { ClarificationPanel } from "@/components/events/workspace/clarification-panel";
-import { ClarificationResponseForm } from "@/components/events/workspace/clarification-response-form";
-import { openRound, useEventClarifications } from "@/components/events/workspace/use-event-clarifications";
+import { ClarificationAmendmentForm } from "@/components/events/workspace/clarification-amendment-form";
+import { useEventClarifications } from "@/components/events/workspace/use-event-clarifications";
 import {
   equipmentItems,
   registrationRows,
@@ -22,7 +22,7 @@ import {
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { eventDisplayStatus, eventStatusLabel, isDraftEvent } from "@/lib/events";
-import { canResubmit } from "@/lib/permissions/event-workspace";
+import { canPostClarificationMessage, canSaveAmendments } from "@/lib/permissions/event-workspace";
 
 function Card({ labelledBy, children }: { labelledBy: string; children: ReactNode }) {
   return (
@@ -61,7 +61,8 @@ function AccessNotice({ event }: { event: EventView }) {
 
 // The organiser's event view: the owner (draft or submitted) or a member of the
 // same organisation, who sees submitted requests read-only. While the request is
-// returned for clarification, the owner answers and resubmits here (SPM-41).
+// returned for clarification, the owner replies in the thread and amends the
+// request here; the coordinator marks the clarification complete (SPM-41).
 export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
   event: EventView;
   onEventChange?: (event: EventView) => void;
@@ -69,9 +70,26 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
 }) {
   const [historyKey, setHistoryKey] = useState(0);
   const [clarificationKey, setClarificationKey] = useState(0);
-  const [resubmitted, setResubmitted] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const clarifications = useEventClarifications(event.eventId, clarificationKey);
-  const responding = canResubmit(event.permissions);
+  // The owner of a returned request, who replies from the clarification list and amends here.
+  const responding = canPostClarificationMessage(event.permissions);
+  const clarificationPanel = (
+    <ClarificationPanel
+      event={event}
+      state={clarifications.state}
+      onRetry={clarifications.retry}
+      onThreadOpened={clarifications.markRead}
+      onRoundUpdated={clarifications.replaceRound}
+      onCompleted={(updated) => {
+        onEventChange?.(updated);
+        setHistoryKey((value) => value + 1);
+        setClarificationKey((value) => value + 1);
+      }}
+      onEventReplaced={(latest) => onEventChange?.(latest)}
+      onAccessChanged={() => onAccessChanged?.()}
+    />
+  );
   const isMember = event.viewerRelationship === "ORGANISATION_MEMBER";
   const label = eventStatusLabel(event);
   const attendance = event.expectedAttendance ?? 0;
@@ -108,9 +126,9 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
       </div>
 
       <div aria-live="polite" role="status">
-        {resubmitted ? (
-          <AlertBanner tone="success" title="Request resubmitted" live={false}>
-            Your coordinator has been notified and is reviewing your request again. The clarification request stays in the list below.
+        {saved ? (
+          <AlertBanner tone="success" title="Amendments saved" live={false}>
+            {saved} The request stays returned until your coordinator marks the clarification complete.
           </AlertBanner>
         ) : null}
       </div>
@@ -120,14 +138,17 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
       <div className="grid items-start gap-5 xl:grid-cols-12">
         <div className="grid gap-5 xl:col-span-8">
           {responding ? (
-            <ClarificationResponseForm
+            <AlertBanner tone="warning" title="Your coordinator needs more information">
+              Open the request under Clarification requests to reply, and amend the request below if needed. Your coordinator marks the clarification complete when they have what they need.
+            </AlertBanner>
+          ) : null}
+          {canSaveAmendments(event.permissions) ? (
+            <ClarificationAmendmentForm
               event={event}
-              question={openRound(clarifications.state)}
-              onResubmitted={(updated) => {
-                setResubmitted(true);
+              onSaved={(updated, message) => {
+                setSaved(message);
                 onEventChange?.(updated);
                 setHistoryKey((value) => value + 1);
-                setClarificationKey((value) => value + 1);
               }}
               onEventReplaced={(latest) => onEventChange?.(latest)}
               onAccessChanged={() => onAccessChanged?.()}
@@ -184,9 +205,7 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
               ]}
             />
           </Card>
-          {event.status !== "DRAFT" ? (
-            <ClarificationPanel eventId={event.eventId} state={clarifications.state} onRetry={clarifications.retry} />
-          ) : null}
+          {event.status !== "DRAFT" ? clarificationPanel : null}
           <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
       </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { AlertBanner, Button, PageHeader, ReferenceIdTag, SectionCard, StatusChip } from "@/components/shared/primitives";
+import { AlertBanner, PageHeader, ReferenceIdTag, SectionCard, StatusChip } from "@/components/shared/primitives";
 import { CapacityBar } from "@/components/shared/capacity-bar";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
@@ -11,9 +11,8 @@ import { SectionHeading } from "@/components/shared/section-heading";
 import { eventDisplayStatus, statusPresentation } from "@/lib/events";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
-import { canRequestClarification, editableIdentityFields } from "@/lib/permissions/event-workspace";
+import { editableIdentityFields } from "@/lib/permissions/event-workspace";
 import { ClarificationPanel } from "./clarification-panel";
-import { RequestClarificationDialog } from "./request-clarification-dialog";
 import { useEventClarifications } from "./use-event-clarifications";
 import {
   equipmentItems,
@@ -58,13 +57,40 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
   const [statusNotice, setStatusNotice] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
   const [clarificationKey, setClarificationKey] = useState(0);
-  const [requesting, setRequesting] = useState(false);
   const clarifications = useEventClarifications(event.eventId, clarificationKey);
   const editable = editableIdentityFields(event.permissions);
   const status = eventDisplayStatus(event);
   const statusLabel = statusPresentation(status).label;
   const attendance = event.expectedAttendance ?? 0;
   const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
+  const clarificationPanel = (
+    <ClarificationPanel
+      event={event}
+      state={clarifications.state}
+      onRetry={clarifications.retry}
+      onThreadOpened={clarifications.markRead}
+      onRoundUpdated={clarifications.replaceRound}
+      onCompleted={(updated, message) => {
+        onEventChange(updated);
+        setHistoryKey((value) => value + 1);
+        setClarificationKey((value) => value + 1);
+        setStatusNotice("");
+        setNotice({ title: "Clarification complete", message: `${message} The organiser has been notified.` });
+      }}
+      onEventReplaced={(latest) => {
+        setNotice(null);
+        onEventChange(latest);
+        setHistoryKey((value) => value + 1);
+      }}
+      onAccessChanged={onAccessChanged}
+      onRequested={(updated) => {
+        onEventChange(updated);
+        setHistoryKey((value) => value + 1);
+        setClarificationKey((value) => value + 1);
+        setNotice({ title: "Clarification requested", message: "The organiser has been notified and can reply and amend the request. It stays assigned to you until you mark the clarification complete." });
+      }}
+    />
+  );
 
   return (
     <div className="grid gap-5">
@@ -76,16 +102,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         eyebrow="Event coordinator review"
         title={event.title || "Untitled request"}
         description={`Requested by ${event.organiser?.name ?? "the organiser"}${event.organisation ? ` · ${event.organisation.name}` : ""}`}
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusChip status={status} />
-            {canRequestClarification(event.permissions) ? (
-              <Button variant="secondary" onClick={() => setRequesting(true)}>
-                <Icon name="help" size={16} />Request Clarification
-              </Button>
-            ) : null}
-          </div>
-        }
+        action={<StatusChip status={status} />}
       />
 
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -173,6 +190,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             }}
             onAccessChanged={onAccessChanged}
           />
+          {clarificationPanel}
           <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
             <SectionHeading id="coordination-heading" title="Coordination" />
             <KeyValuePanel
@@ -185,26 +203,9 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               ]}
             />
           </section>
-          <ClarificationPanel eventId={event.eventId} state={clarifications.state} onRetry={clarifications.retry} />
           <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
       </div>
-
-      {requesting ? (
-        <RequestClarificationDialog
-          event={event}
-          onClose={() => setRequesting(false)}
-          onRequested={(updated) => {
-            setRequesting(false);
-            onEventChange(updated);
-            setHistoryKey((value) => value + 1);
-            setClarificationKey((value) => value + 1);
-            setNotice({ title: "Clarification requested", message: "The organiser has been notified and can amend and resubmit the request. It stays assigned to you." });
-          }}
-          onEventReplaced={onEventChange}
-          onAccessChanged={onAccessChanged}
-        />
-      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AMENDABLE_FIELDS, amendedFields, formValuesFromEvent, resubmissionProblem } from "../lib/events.ts";
+import { AMENDABLE_FIELDS, amendedFields, clarificationMessageProblem, formValuesFromEvent } from "../lib/events.ts";
+import { isNewHistoryEntry } from "../lib/event-history.ts";
 
 const returned = {
   title: "SMU Alumni Gala 2026",
@@ -46,14 +47,31 @@ test("[SPM-41 decision 3] registration settings are never sent as amendments", (
   assert.ok(!AMENDABLE_FIELDS.includes("registrationCapacity"));
 });
 
-test("[SPM-41 decision 2] a resubmission needs a response or an amendment", () => {
-  assert.match(resubmissionProblem("", {}), /response or change at least one detail/);
-  assert.match(resubmissionProblem("   ", {}), /response or change at least one detail/);
-  assert.equal(resubmissionProblem("A 6m stage is enough.", {}), null);
-  assert.equal(resubmissionProblem("", { expectedAttendance: 250 }), null);
+test("[SPM-41 v2] a thread message is required", () => {
+  assert.equal(clarificationMessageProblem(""), "Write a message before sending.");
+  assert.equal(clarificationMessageProblem("   \n"), "Write a message before sending.");
+  assert.equal(clarificationMessageProblem("A 6m stage is enough."), null);
 });
 
-test("[SPM-41 decision 1] the response is capped at 2,000 characters", () => {
-  assert.equal(resubmissionProblem("a".repeat(2000), {}), null);
-  assert.match(resubmissionProblem("a".repeat(2001), {}), /2,000 characters or fewer/);
+test("[SPM-41 decision 1] a thread message is capped at 2,000 characters", () => {
+  assert.equal(clarificationMessageProblem("a".repeat(2000)), null);
+  assert.match(clarificationMessageProblem("a".repeat(2001)), /2,000 characters or fewer/);
+});
+
+const baseline = { lastViewedAt: "2026-10-23T03:00:00.000Z", newestSeenId: 40 };
+
+test("[SPM-41 v2] history entries after the viewer's last visit are new", () => {
+  assert.equal(isNewHistoryEntry({ historyId: 40, occurredAt: "2026-10-23T05:00:00.000Z" }, baseline), true);
+  assert.equal(isNewHistoryEntry({ historyId: 39, occurredAt: "2026-10-23T02:59:59.000Z" }, baseline), false);
+});
+
+test("[SPM-41 v2] changes made during this visit are not new", () => {
+  assert.equal(isNewHistoryEntry({ historyId: 41, occurredAt: "2026-10-24T05:00:00.000Z" }, baseline), false);
+});
+
+test("[SPM-41 v2] nothing is new on a first visit or before the history loads", () => {
+  const entry = { historyId: 40, occurredAt: "2026-10-23T05:00:00.000Z" };
+  assert.equal(isNewHistoryEntry(entry, null), false);
+  assert.equal(isNewHistoryEntry(entry, { lastViewedAt: null, newestSeenId: 40 }), false);
+  assert.equal(isNewHistoryEntry(entry, { lastViewedAt: "not a date", newestSeenId: 40 }), false);
 });

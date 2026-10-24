@@ -5,24 +5,16 @@ import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/share
 import { Icon } from "@/components/shared/icon";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { apiRequest, ApiError } from "@/lib/api";
-import {
-  CLARIFICATION_TEXT_LIMIT,
-  parseEventView,
-  resubmitEvent,
-  type ClarificationRound,
-  type EventView,
-} from "@/lib/api/event-workspace";
-import { formatTimestamp } from "@/lib/datetime";
+import { parseEventView, saveAmendments, type EventView } from "@/lib/api/event-workspace";
 import {
   ACCESSIBILITY_OPTIONS,
   amendedFields,
   formValuesFromEvent,
-  resubmissionProblem,
   validateEventStep,
   type EventFormValues,
   type EventRequest,
 } from "@/lib/events";
-import { equipmentItems, RequirementList } from "./event-detail-rows";
+import { equipmentItems, layoutLabel, RequirementList } from "./event-detail-rows";
 
 // Same limits as the SPM-33 editor and the request form; the backend's answer wins.
 const TEXT_LIMITS = { title: 200, purpose: 2000, description: 5000 } as const;
@@ -34,6 +26,7 @@ type RequestOptions = { venues: Array<{ venueId: number; name: string }>; layout
 const valuesOf = (event: EventView): EventFormValues => formValuesFromEvent(event as unknown as EventRequest);
 
 const SCHEDULE_FIELDS = ["startDatetime", "endDatetime", "expectedAttendance"] as const;
+const VENUE_FIELDS = ["venuePreferences", "preferredLayoutType"] as const;
 
 function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -45,40 +38,72 @@ function Group({ title, description, children }: { title: string; description?: 
   );
 }
 
+// A Group that starts collapsed behind a header button; the summary stands in for
+// the fields while it is closed. The fields stay mounted, so nothing typed is lost.
+function CollapsibleGroup({ id, title, summary, expanded, onToggle, children }: {
+  id: string;
+  title: string;
+  summary: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-control border border-outline-variant/60">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={id}
+        onClick={onToggle}
+        className="flex min-h-11 w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors duration-150 hover:bg-surface-container-low focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:px-4"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-on-surface">{title}</span>
+          {expanded ? null : <span className="mt-0.5 block text-xs text-on-surface-variant [overflow-wrap:anywhere]">{summary}</span>}
+        </span>
+        <Icon name="chevron-down" size={20} className={`shrink-0 text-on-surface-variant transition-transform duration-150 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      <fieldset id={id} hidden={!expanded} className={expanded ? "grid gap-4 px-3 pb-3 sm:px-4 sm:pb-4" : "hidden"}>
+        <legend className="sr-only">{title}</legend>
+        {children}
+      </fieldset>
+    </div>
+  );
+}
+
 function FieldError({ id, message }: { id: string; message?: string }) {
   return message ? (
     <p id={id} className="mt-1 text-xs font-semibold text-error"><Icon name="warning" size={16} className="mr-1 inline align-[-3px]" />{message}</p>
   ) : null;
 }
 
-interface ClarificationResponseFormProps {
+interface ClarificationAmendmentFormProps {
   event: EventView;
-  question: ClarificationRound | null;
-  onResubmitted: (event: EventView) => void;
+  onSaved: (event: EventView, message: string) => void;
   // A newer version replaced the one on screen (version conflict).
   onEventReplaced: (event: EventView) => void;
   // The backend refused because the event is no longer waiting for this owner.
   onAccessChanged: () => void;
 }
 
-// SPM-41 AC3/TC4: the owner reads the coordinator's question, amends any
-// submission field and resubmits in one action. Registration settings and the
-// organisation are not amendable here. A resubmission needs a written response,
-// at least one changed field, or both.
-export function ClarificationResponseForm({ event, question, onResubmitted, onEventReplaced, onAccessChanged }: ClarificationResponseFormProps) {
+// SPM-41 v2 AC3/TC4: while a clarification thread is open the owner amends any
+// submission field; the request stays with the coordinator, who marks the
+// thread complete. Registration settings and the organisation are not
+// amendable here. Saving needs at least one changed field.
+export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, onAccessChanged }: ClarificationAmendmentFormProps) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<EventFormValues>(() => valuesOf(event));
   const [original, setOriginal] = useState<EventFormValues>(() => valuesOf(event));
-  const [response, setResponse] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<Banner>(null);
   const [sending, setSending] = useState(false);
   const [options, setOptions] = useState<RequestOptions | null>(null);
   const [optionsError, setOptionsError] = useState("");
+  const [venueExpanded, setVenueExpanded] = useState(false);
   const pendingKey = useRef<{ key: string; body: string } | null>(null);
   const openButton = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
-  const id = (field: string) => `event-${event.eventId}-resubmit-${field}`;
+  const id = (field: string) => `event-${event.eventId}-amend-${field}`;
 
   useEffect(() => {
     if (wasOpen.current && !open) openButton.current?.focus();
@@ -98,9 +123,9 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
     const current = valuesOf(event);
     setValues(current);
     setOriginal(current);
-    setResponse("");
     setFieldErrors({});
     setBanner(null);
+    setVenueExpanded(false);
     setOpen(true);
   };
 
@@ -109,6 +134,12 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
     setFieldErrors({});
     setBanner(null);
     setOpen(false);
+  };
+
+  // A collapsed section opens when one of its fields needs attention.
+  const showErrors = (errors: Record<string, string>) => {
+    setFieldErrors(errors);
+    if (VENUE_FIELDS.some((field) => errors[field])) setVenueExpanded(true);
   };
 
   const clearError = (field: string) => {
@@ -138,29 +169,27 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
       ...validateEventStep(values, 2, true),
       ...validateEventStep(values, 3, true),
     };
-    const problem = resubmissionProblem(response, changes, CLARIFICATION_TEXT_LIMIT);
-    if (problem) errors.response = problem;
-    setFieldErrors(errors);
+    showErrors(errors);
     if (Object.keys(errors).length) {
-      setBanner({ tone: "error", title: "Check the highlighted fields", message: "Nothing was resubmitted." });
+      setBanner({ tone: "error", title: "Check the highlighted fields", message: "Nothing was saved." });
+      return;
+    }
+    if (Object.keys(changes).length === 0) {
+      setBanner({ tone: "error", title: "Nothing to save", message: "Change at least one detail before saving." });
       return;
     }
 
-    const payload = {
-      ...(response.trim() ? { response } : {}),
-      ...(Object.keys(changes).length ? { changes } : {}),
-    };
-    const body = JSON.stringify({ ...payload, version: event.version });
+    const body = JSON.stringify({ changes, version: event.version });
     const attempt = pendingKey.current?.body === body ? pendingKey.current : { key: crypto.randomUUID(), body };
     pendingKey.current = attempt;
 
     setSending(true);
     setBanner(null);
     try {
-      const result = await resubmitEvent(event.eventId, payload, event.version, attempt.key);
+      const result = await saveAmendments(event.eventId, changes, event.version, attempt.key);
       pendingKey.current = null;
       setOpen(false);
-      onResubmitted(result.event);
+      onSaved(result.event, result.message);
     } catch (caught) {
       handleError(caught);
     } finally {
@@ -170,16 +199,16 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
 
   const handleError = (caught: unknown) => {
     if (!(caught instanceof ApiError)) {
-      setBanner({ tone: "error", title: "Could not resubmit", message: "Something went wrong. Your changes are still here; try again." });
+      setBanner({ tone: "error", title: "Could not save", message: "Something went wrong. Your changes are still here; try again." });
       return;
     }
     switch (caught.code) {
       case "VALIDATION_FAILED":
-        setFieldErrors(caught.fields);
-        setBanner({ tone: "error", title: "Check the highlighted fields", message: caught.message });
+        showErrors(caught.fields);
+        setBanner({ tone: "error", title: "Check the highlighted fields", message: caught.fields.changes ?? caught.message });
         return;
       case "FIELD_NOT_EDITABLE":
-        setFieldErrors(caught.fields);
+        showErrors(caught.fields);
         setBanner({ tone: "error", title: "Some fields can no longer be changed", message: caught.message });
         onAccessChanged();
         return;
@@ -191,92 +220,68 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
           setOriginal(valuesOf(latest));
           onEventReplaced(latest);
         }
-        setBanner({ tone: "warning", title: "This event changed while you were editing", message: "Nothing was resubmitted. Your changes and response are still here; check them against the latest details, then resubmit." });
+        setBanner({ tone: "warning", title: "This event changed while you were editing", message: "Nothing was saved. Your changes are still here; check them against the latest details, then save again." });
         return;
       }
       case "TRANSITION_NOT_ALLOWED":
       case "EVENT_NOT_EDITABLE_IN_STATUS":
       case "EVENT_READ_ONLY":
       case "CLARIFICATION_NOT_OPEN":
-        setBanner({ tone: "warning", title: "This request is no longer waiting for your response", message: "Nothing was resubmitted. Your text is still shown so you can copy it." });
+        setBanner({ tone: "warning", title: "This request is no longer open for amendments", message: "Nothing was saved. Your coordinator may have marked the clarification complete. Your changes are still shown so you can copy them." });
         onAccessChanged();
         return;
+      case "COORDINATOR_CONFLICT":
+        setBanner({ tone: "error", title: "These dates are not available", message: caught.message });
+        return;
       case "EVENT_NOT_FOUND":
-        setBanner({ tone: "error", title: "Event no longer available", message: "You can no longer open this event. Nothing was resubmitted." });
+        setBanner({ tone: "error", title: "Event no longer available", message: "You can no longer open this event. Nothing was saved." });
         return;
       case "IDEMPOTENCY_IN_PROGRESS":
-        setBanner({ tone: "warning", title: "Still resubmitting", message: "Your previous resubmission is still being processed. Wait a moment, then select Resubmit again." });
+        setBanner({ tone: "warning", title: "Still saving", message: "Your previous save is still being processed. Wait a moment, then select Save amendments again." });
         return;
       case "IDEMPOTENCY_KEY_REUSED":
         pendingKey.current = null;
-        setBanner({ tone: "error", title: "Could not resubmit", message: "This resubmission clashed with an earlier attempt. Resubmit again to retry." });
+        setBanner({ tone: "error", title: "Could not save", message: "This save clashed with an earlier attempt. Save again to retry." });
         return;
       case "UNAUTHENTICATED":
-        setBanner({ tone: "error", title: "Your session has expired", message: "Sign in again in another tab, then resubmit. Your changes are still here." });
+        setBanner({ tone: "error", title: "Your session has expired", message: "Sign in again in another tab, then save. Your changes are still here." });
         return;
       case "NETWORK_ERROR":
-        setBanner({ tone: "error", title: "Could not reach ConnectSphere", message: "Your changes are still here. Resubmit when you are back online; a repeated resubmission is applied only once." });
+        setBanner({ tone: "error", title: "Could not reach ConnectSphere", message: "Your changes are still here. Save when you are back online; a repeated save is applied only once." });
         return;
       default:
-        setBanner({ tone: "error", title: "Could not resubmit", message: caught.message });
+        setBanner({ tone: "error", title: "Could not save", message: caught.message });
     }
   };
+
+  const venueName = (venueId: number) => options?.venues.find((venue) => venue.venueId === venueId)?.name ?? `Venue #${venueId}`;
+  const venueSummary = [
+    values.venuePreferences.length
+      ? values.venuePreferences.map((venueId, index) => `${index + 1}. ${venueName(venueId)}`).join(", ")
+      : "No venue preference",
+    `Layout: ${layoutLabel(values.preferredLayoutType)}`,
+  ].join(" · ");
 
   const errorProps = (field: string) => ({
     "aria-invalid": fieldErrors[field] ? true : undefined,
     "aria-describedby": fieldErrors[field] ? `${id(field)}-error` : undefined,
   });
 
-  const questionQuote = question ? (
-    <blockquote className="rounded-control bg-primary-fixed/60 p-3 sm:p-4">
-      <p className="text-xs font-semibold text-primary">
-        {question.requestedBy.name ?? "Your coordinator"} asked on <time dateTime={question.requestedAt}>{formatTimestamp(question.requestedAt)}</time>
-      </p>
-      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-on-surface [overflow-wrap:anywhere]">&ldquo;{question.message}&rdquo;</p>
-    </blockquote>
-  ) : null;
-
   return (
     <section aria-labelledby={id("heading")} className="grid gap-4 rounded-panel border-t-4 border-t-tertiary bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
       <SectionHeading
         id={id("heading")}
-        title="Your coordinator needs more information"
-        description="Answer the question, amend the request if needed, then resubmit it to the same coordinator."
+        title="Amend your request"
+        description="Change any details your coordinator asked about. The request stays with your coordinator, who marks the clarification complete when they have what they need."
       />
-      {questionQuote}
 
       {!open ? (
         <div>
-          <Button ref={openButton} onClick={start}><Icon name="edit" size={16} />Respond and resubmit</Button>
+          <Button ref={openButton} onClick={start}><Icon name="edit" size={16} />Amend request</Button>
         </div>
       ) : (
-        <form onSubmit={submit} noValidate className="grid gap-4" aria-label="Respond and resubmit">
+        <form onSubmit={submit} noValidate className="grid gap-4" aria-label="Amend request">
           {banner ? <AlertBanner tone={banner.tone} title={banner.title}>{banner.message}</AlertBanner> : null}
-
-          <div>
-            <FormLabel htmlFor={id("response")}>Your response</FormLabel>
-            <textarea
-              id={id("response")}
-              rows={4}
-              autoFocus
-              value={response}
-              onChange={(change) => {
-                setResponse(change.target.value);
-                clearError("response");
-              }}
-              placeholder="Answer the coordinator's question."
-              className={`${fieldClasses} resize-y ${fieldErrors.response ? "border-error" : ""}`}
-              aria-invalid={fieldErrors.response ? true : undefined}
-              aria-describedby={`${id("response")}-count ${fieldErrors.response ? `${id("response")}-error` : ""}`.trim()}
-            />
-            <div className="mt-1 flex justify-between gap-3 text-xs">
-              <span id={`${id("response")}-error`} className="font-semibold text-error">{fieldErrors.response ?? ""}</span>
-              <span id={`${id("response")}-count`} className={`tabular-nums ${response.length > CLARIFICATION_TEXT_LIMIT ? "font-semibold text-error" : "text-on-surface-variant"}`}>
-                {response.length.toLocaleString()} / {CLARIFICATION_TEXT_LIMIT.toLocaleString()}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-on-surface-variant">Optional if you change the details below.</p>
-          </div>
 
           <Group title="Event identity & purpose">
             {(["title", "purpose", "description"] as const).map((field) => (
@@ -317,7 +322,14 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
             </div>
           </Group>
 
-          <Group title="Venue & layout" description="Preferences do not reserve or hold a venue.">
+          <CollapsibleGroup
+            id={id("venue-layout")}
+            title="Venue & layout"
+            summary={venueSummary}
+            expanded={venueExpanded}
+            onToggle={() => setVenueExpanded((value) => !value)}
+          >
+            <p className="text-xs text-on-surface-variant">Preferences do not reserve or hold a venue.</p>
             {optionsError ? <AlertBanner tone="warning">{optionsError}</AlertBanner> : null}
             {options?.venues.length ? (
               <div className="grid gap-2 sm:grid-cols-2">
@@ -351,7 +363,7 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
               </select>
               <FieldError id={`${id("preferredLayoutType")}-error`} message={fieldErrors.preferredLayoutType} />
             </div>
-          </Group>
+          </CollapsibleGroup>
 
           <Group title="Accessibility">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -377,13 +389,13 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
 
           <Group title="Equipment">
             <RequirementList items={equipmentItems(event)} empty="No equipment was requested." />
-            <p className="text-xs text-on-surface-variant">Equipment is kept as requested. Describe any equipment change in your response.</p>
+            <p className="text-xs text-on-surface-variant">Equipment is kept as requested. Describe any equipment change in a message to your coordinator.</p>
           </Group>
 
           <p className="text-xs text-on-surface-variant">Registration settings cannot be changed while responding to a clarification request.</p>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" disabled={sending}>{sending ? "Resubmitting…" : "Resubmit"}</Button>
+            <Button type="submit" disabled={sending}>{sending ? "Saving…" : "Save amendments"}</Button>
             <Button type="button" variant="quiet" onClick={cancel} disabled={sending}>Cancel</Button>
             <span className="text-xs text-on-surface-variant" aria-live="polite">
               {Object.keys(changes).length ? `${Object.keys(changes).length} ${Object.keys(changes).length === 1 ? "detail" : "details"} changed` : "No details changed yet"}
