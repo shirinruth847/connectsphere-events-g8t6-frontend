@@ -27,7 +27,8 @@ export interface ChecklistEntry {
 }
 export type SafetyChecklist = Partial<Record<SafetyFactor, ChecklistEntry>>;
 
-// Backend validators/safetyValidator.js LIMITS.
+// Backend validators/safetyValidator.js LIMITS. The backend is the authority;
+// these are for UI feedback only and must match the backend exactly.
 export const SAFETY_LIMITS = {
   factorComment: 1000,
   organiserComment: 2000,
