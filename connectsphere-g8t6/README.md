@@ -158,3 +158,58 @@ rollback and real hosted/browser verification commands.
 stale rejection, role restrictions, queue resilience and calendar boundaries
 using mocked APIs. These journeys do not establish real backend/database
 integration; the backend's opt-in `leadAssignment.browser.cjs` runner does.
+
+## Attendee notifications (SPM-155)
+
+Attendees open their in-app inbox from the **Updates** button in the page
+header of My Events (`/my-registrations`) and Event Discovery (`/events`),
+following the Figma frames `282:664` (Updates button) and `282:1173`
+(notification panel). The button shows the unread count in a red pill (a
+deliberate departure from the design system's primary pill) and opens a panel
+of the five latest notifications; **See more** and the attendee sidebar's
+**Notifications** tab open the full inbox, read and unread, at
+`/notifications`, which is also the login return target (TC-12).
+
+- Data comes from the backend `/api/notifications` routes through
+  `lib/api/notifications.ts`; display rules (Go to Event targets, SGT times,
+  offer expiry, badge text, page merging) are in `lib/notifications.ts`.
+- Components are role-agnostic in `components/notifications/`. Other roles get
+  the inbox by widening `canViewPath`, the page's `DashboardWorkspace` role and
+  placing `NotificationsBell` on their pages (SPM-192/193).
+- Read state and the unread count change only after the backend confirms them.
+  The count refreshes on window focus, on tab visibility and after each read
+  action; nothing promises instant delivery. After an action that writes a
+  notification (e.g. a future registration), call
+  `announceNotificationsChanged()` without a count and the badge fetches it again.
+- **Go to Event** marks the notification read, then opens
+  `/my-registrations?eventId=<id>&from=notification` (attendees) or
+  `/events/<id>` (staff workspace, other roles later). On My Events that URL
+  opens the event details dialog (frame `282:1271`) over the outlined card, labelled "Opened from your
+  notification"; **View Event Details** on a card opens the same dialog
+  without that label, and closing removes the parameters. A notification the
+  backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
+  navigating, and a background refresh drops any it no longer returns.
+- Event Discovery and My Events share that dialog
+  (`components/attendee/discovery/event-details-dialog.tsx`), and each reads
+  its own endpoint through `useAttendeeEvent`. From Event Discovery it reads
+  `GET /api/events/discovery/:id`, unchanged from SPM-34. From My Events, a
+  notification or Go to Event it reads `GET /api/registrations/mine/:eventId`
+  (`lib/api/my-events.ts`), which returns events the attendee is registered or
+  waitlisted for in any status, with `attendeeStatus`, `detailsWithheld`,
+  `lastConfirmedAt` and `myRegistration`. An event being reconfirmed or
+  cancelled after a confirmation shows its last confirmed details (SPM-173's
+  confirmation snapshot, Master 5.7) under a notice saying when they were
+  confirmed (`LastConfirmedNotice`). Without such a confirmation, or when not
+  published, it shows only its title, status and a short notice. Both notices
+  state only what is known ("This event has been cancelled" or "This event's
+  details are being confirmed"), without promising a notification
+  (`TODO(SPM-163)` marks the offer follow-up). The attendee's own place reads
+  "On the waitlist", since "Waitlisted" is Event Discovery's word for a full
+  event. The dialog is the attendee's whole event view: there is no separate
+  attendee event page (team decision), and `/events/<id>` stays the staff
+  workspace.
+- Accept Slot and Decline for waitlist offers belong to SPM-163; the
+  notification shows the offer expiry, and the dialog keeps a footer slot.
+
+See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
+command: `npm run test:e2e -- --grep SPM-155`.
