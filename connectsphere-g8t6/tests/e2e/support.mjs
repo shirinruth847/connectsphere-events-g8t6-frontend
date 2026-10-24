@@ -94,6 +94,8 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (state.failure && state.failure.path === pathname) return json(state.failure.body, state.failure.status);
     if (pathname === "/api/auth/me") return state.revoked ? json({ error: "Please log in to continue." }, 401) : json({ user: { user_id: 11, name: "Test User", email: "user@example.com", role: state.role } });
     if (pathname === "/api/auth/logout") { state.revoked = true; return route.fulfill({ status: 204 }); }
+    if (pathname === "/api/venues/bookings") return json(state.venueBookings ?? { bookings: [], hasMore: false, pendingCount: 0 });
+    if (pathname === "/api/venues/manage/options") return json({ venues: state.venueOptions ?? [] });
     if (pathname === "/api/events/assigned") return json({ events: [{ eventId: 42, title: "Assigned coordinator event", status: "UNDER_REVIEW" }] });
     if (pathname === "/api/events/unassigned") {
       if (state.queueEvents === null) state.queueEvents = { events: [{ eventId: 71, requestId: "REQ-000071", status: "SUBMITTED", title: "Unassigned lead queue event", purpose: "Community outreach", startDatetime: "2026-10-20T09:00:00.000Z", endDatetime: "2026-10-20T11:00:00.000Z", expectedAttendance: 120, venuePreferences: [1], equipmentRequirements: [{ equipmentId: 4, quantity: 2 }], organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-01T09:00:00.000Z", submittedAt: "2026-10-20T08:30:00.000Z" }] }.events;
@@ -123,6 +125,8 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     // Attendees land on Event Discovery; specs needing events route it themselves.
     if (pathname === "/api/events/discovery") return json({ events: [], nextCursor: null });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
+    // The Updates button on attendee pages (SPM-155); its spec mocks the inbox itself.
+    if (pathname === "/api/notifications/unread-count") return json({ unreadCount: 0 });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 
     if (pathname === "/api/events/mine" && method === "GET") {

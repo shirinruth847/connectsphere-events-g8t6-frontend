@@ -15,18 +15,25 @@ const organiserItems: NavigationItem[] = [
 
 const mainItems: Record<UserRole, NavigationItem[]> = {
   ORGANISER: organiserItems,
-  COORDINATOR: [{ id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }],
+  COORDINATOR: [
+    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }
+  ],
   COORDINATOR_LEAD: [
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
     { id: "unassigned", title: "Unassigned Queue", icon: "event", href: "/events" },
     { id: "assignments", title: "Assignments", icon: "assignments", href: ROUTES.assignments },
     { id: "calendar", title: "Calendar", icon: "calendar", href: ROUTES.calendar },
   ],
-  VENUE_STAFF: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
+  VENUE_STAFF: [
+    { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
+    { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
+  ],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   ATTENDEE: [
     { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
     { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
+    // The full inbox, read and unread (SPM-155); the Updates panel's See more leads here too.
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
 };
 
@@ -45,8 +52,18 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === "/calendar") return "calendar";
     return "home";
   }
+<<<<<<< HEAD
   if (role === "ATTENDEE") return pathname === ROUTES.events || /^\/events\/[^/]+$/.test(pathname) ? "discovery" : "home";
   if (role !== "ORGANISER") return "home";
+=======
+  if (role === "ATTENDEE") {
+    if (pathname === ROUTES.events) return "discovery";
+    if (pathname === ROUTES.notifications) return "notifications";
+    return "home";
+  }
+  const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
+  if (role !== "ORGANISER") return inVenues ? "venues" : "home";
+>>>>>>> 5a20b0e2f95136615620b006f6e7491b8f7671ba
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";
 }

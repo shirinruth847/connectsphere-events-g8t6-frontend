@@ -80,10 +80,12 @@ test("[SPM-173 AC6] an owner's view without a stored status uses the organiser l
 });
 
 test("[SPM-33 AC5 / TC-14] an event outside the viewer's scope is not found, inside the shell", async ({ page }) => {
-  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  // Venue Staff have their own booking view of events (SPM-181), so Technical
+  // Support stands in for a role with no relationship to the event.
+  await installConnectSphereMocks(page, { role: "TECH_SUPPORT" });
   await routeEvent(page, null);
   await page.goto("/events/42");
-  await expect(page.locator('[data-dashboard-shell="VENUE_STAFF"]')).toBeVisible();
+  await expect(page.locator('[data-dashboard-shell="TECH_SUPPORT"]')).toBeVisible();
   await expect(page.getByText("Event not available")).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to your workspace" })).toHaveAttribute("href", "/dashboard");
 });

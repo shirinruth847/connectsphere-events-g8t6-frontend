@@ -33,7 +33,11 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
+<<<<<<< HEAD
 for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','Event Discovery'],['COORDINATOR_LEAD','Assignment queue']]) {
+=======
+for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations'],['COORDINATOR_LEAD','Assignment queue']]) {
+>>>>>>> 5a20b0e2f95136615620b006f6e7491b8f7671ba
  test(`[SPM-32] ${role} login reaches its authorised workspace`, async ({page}) => {
   await installLoginMock(page,{role});await page.goto('/login');await page.getByLabel('Email',{exact:false}).fill('user@example.com');await page.getByLabel('Password',{exact:false}).fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible();
@@ -44,8 +48,9 @@ for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event
   expect((await shell.locator('aside').boundingBox()).width).toBe(225);
   const nav=page.getByRole('navigation',{name:'Main Navigation',exact:true});
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+  if(role==='VENUE_STAFF') await expect(nav.getByRole('link',{name:'My Requests',exact:true})).toHaveAttribute('aria-current','page');
   if(role!=='ORGANISER') {
-   await expect(nav.getByRole('link',{name:'My Requests',exact:true})).toHaveCount(0);
+   if(role!=='VENUE_STAFF') await expect(nav.getByRole('link',{name:'My Requests',exact:true})).toHaveCount(0);
    await expect(page.getByRole('link',{name:'Add Quick Event',exact:false})).toHaveCount(0);
   }
   await page.setViewportSize({width:390,height:844});
