@@ -1,0 +1,44 @@
+/* Height grows from 0 by animating the grid row from 0fr to 1fr, with a short
+   fade and slide, so a panel eases open instead of appearing at once. The
+   global reduced-motion rule in app/globals.css shortens these to ~0ms. */
+.panel {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.opening {
+  animation: collapse-open 260ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.closing {
+  animation: collapse-close 200ms cubic-bezier(0.3, 0, 1, 1) forwards;
+}
+
+@keyframes collapse-open {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes collapse-close {
+  from {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}

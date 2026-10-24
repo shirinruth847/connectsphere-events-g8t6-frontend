@@ -8,7 +8,7 @@
 
 import { apiRequest } from "@/lib/api";
 
-export type ViewerRelationship = "OWNER" | "ORGANISATION_MEMBER" | "ASSIGNED_COORDINATOR";
+export type ViewerRelationship = "OWNER" | "ORGANISATION_MEMBER" | "ASSIGNED_COORDINATOR" | "SAFETY_OFFICER";
 
 export type HistoryAudience = "OWNER_ONLY" | "ORGANISER_SAFE" | "STAFF_ONLY";
 
@@ -28,9 +28,11 @@ export interface EventPermissions {
 export interface EventView {
   eventId: number;
   requestId: string;
-  // Stored state. Typed as string because the live enum can hold values the
-  // frontend does not know (e.g. APPROVED); render those as unknown, never guess.
-  status: string;
+  // Stored state, returned only to the assigned coordinator (SPM-173 AC6);
+  // organisers get statusLabel alone, read through eventDisplayStatus. Typed as
+  // string because the live enum can hold values the frontend does not know
+  // (e.g. APPROVED); render those as unknown, never guess.
+  status?: string;
   statusLabel: string;
   // What the request is waiting for, e.g. "Waiting for a coordinator".
   statusNote?: string | null;
@@ -60,6 +62,13 @@ export interface EventView {
   // Only returned to the assigned coordinator.
   coordinatorId?: number | null;
   organiser?: { userId: number; name: string } | null;
+  // SPM-173: counts changes to venue bookings, technical arrangements and
+  // attendance; a safety approval is valid only for the version it reviewed.
+  arrangementVersion?: number;
+  // SPM-246: Safety Officers get the registration count, never participant data,
+  // and the review round to open (null when none is in their scope).
+  registeredCount?: number;
+  safetyReviewId?: number | null;
 }
 
 export interface EventHistoryChange {
@@ -146,6 +155,52 @@ export function getEventHistory(
   const query = new URLSearchParams({ limit: String(options.limit ?? 20) });
   if (options.cursor) query.set("cursor", options.cursor);
   return apiRequest<EventHistoryPage>(`/events/${eventId}/history?${query}`);
+}
+
+// ---------- SPM-173 coordinator lifecycle actions ----------
+// Backend README, "Event Lifecycle (SPM-173)". Codes are the backend's.
+
+export interface ReadinessFailure {
+  code: string;
+  message: string;
+}
+
+export interface EventReadiness {
+  ready: boolean;
+  failures: ReadinessFailure[];
+  status: string;
+  version: number;
+  arrangementVersion: number;
+}
+
+export const LIFECYCLE_ACTION_PATHS = {
+  submitForSafetyReview: "submit-for-safety-review",
+  confirm: "confirm",
+  startPreparation: "start-preparation",
+  complete: "complete",
+} as const;
+export type LifecycleAction = keyof typeof LIFECYCLE_ACTION_PATHS;
+
+// GET /api/events/:id/readiness — assigned coordinator only; 404 otherwise.
+export function getEventReadiness(eventId: number): Promise<EventReadiness> {
+  return apiRequest<EventReadiness>(`/events/${eventId}/readiness`);
+}
+
+// POST /api/events/:id/<action> with the loaded version and an Idempotency-Key.
+// Errors: 403 TRANSITION_NOT_ALLOWED (details.currentStatus), 409
+// EVENT_VERSION_CONFLICT (details.event), 409 READINESS_BLOCKED
+// (details.failures), 409 SAFETY_APPROVAL_REQUIRED, 409 EVENT_NOT_ENDED.
+export async function runLifecycleAction(
+  eventId: number,
+  action: LifecycleAction,
+  version: number,
+  idempotencyKey: string,
+): Promise<{ message: string; event: EventView }> {
+  const result = await apiRequest<{ message: string; event: RawEventView }>(
+    `/events/${eventId}/${LIFECYCLE_ACTION_PATHS[action]}`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ version }) },
+  );
+  return { message: result.message, event: toEventView(result.event) };
 }
 
 // GET /api/events/assigned — COORDINATOR only; soonest event first.

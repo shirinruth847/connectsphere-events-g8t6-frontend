@@ -6,7 +6,14 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
-import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
+import {
+  calendarDate,
+  calendarDayBounds,
+  overlapsCalendarDay,
+  shiftCalendarMonth,
+  calendarLabelInstant,
+  calendarHourInstant,
+} from "@/lib/coordinator-calendar";
 import styles from "./calendar-view.module.css";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
@@ -32,6 +39,14 @@ export type CalendarEvent = {
   venuePreferences?: number[];
   equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
   createdAt?: string;
+};
+
+// What each lane (legend entry) is called. Defaults to coordinators; the venue
+// availability calendar (SPM-181) shows venues.
+export type CalendarEntityLabel = { singular: string; plural: string };
+const COORDINATOR_LABEL: CalendarEntityLabel = {
+  singular: "coordinator",
+  plural: "coordinators",
 };
 
 export type CalendarCoordinator = {
@@ -85,7 +100,8 @@ function getTextColor(backgroundColor: string): string {
 
   const luminance = 0.2126 * sRGB(r) + 0.7152 * sRGB(g) + 0.0722 * sRGB(b);
   const whiteContrast = 1.05 / (luminance + 0.05);
-  const darkLuminance = 0.2126 * sRGB(32) + 0.7152 * sRGB(33) + 0.0722 * sRGB(36);
+  const darkLuminance =
+    0.2126 * sRGB(32) + 0.7152 * sRGB(33) + 0.0722 * sRGB(36);
   const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
   return darkContrast >= whiteContrast ? "#202124" : "#ffffff";
 }
@@ -129,7 +145,9 @@ function addYears(date: Date, years: number): Date {
   const month = d.getMonth();
   d.setDate(1);
   d.setFullYear(d.getFullYear() + years);
-  d.setDate(Math.min(date.getDate(), new Date(d.getFullYear(), month + 1, 0).getDate()));
+  d.setDate(
+    Math.min(date.getDate(), new Date(d.getFullYear(), month + 1, 0).getDate()),
+  );
   return d;
 }
 
@@ -147,7 +165,6 @@ const timeFormat = new Intl.DateTimeFormat("en-SG", {
   minute: "2-digit",
   hourCycle: "h23",
 });
-
 
 const monthFormat = new Intl.DateTimeFormat("en-SG", {
   timeZone: "Asia/Singapore",
@@ -183,7 +200,8 @@ function formatYearLabel(date: Date): string {
 
 function dateToMinutes(date: Date): number {
   const parts = timeFormat.formatToParts(date);
-  const value = (type: "hour" | "minute") => Number(parts.find((part) => part.type === type)?.value);
+  const value = (type: "hour" | "minute") =>
+    Number(parts.find((part) => part.type === type)?.value);
   return value("hour") * 60 + value("minute");
 }
 
@@ -209,11 +227,14 @@ function layoutDayEvents(
   const bounds = calendarDayBounds(day);
 
   const items: ParsedEvent[] = events
-    .filter((event) => overlapsCalendarDay(event.startDatetime, event.endDatetime, day))
+    .filter((event) =>
+      overlapsCalendarDay(event.startDatetime, event.endDatetime, day),
+    )
     .map((e) => {
       const startMs = new Date(e.startDatetime).getTime();
       const endMs = new Date(e.endDatetime).getTime();
-      const startMin = (Math.max(startMs, bounds.start) - bounds.start) / 60_000;
+      const startMin =
+        (Math.max(startMs, bounds.start) - bounds.start) / 60_000;
       const endMin = (Math.min(endMs, bounds.end) - bounds.start) / 60_000;
       return { ...e, startMin, endMin };
     })
@@ -297,13 +318,16 @@ function CoordinatorLegend({
   onToggle,
   onSetVisibleIds,
   colorMap,
+  entityLabel = COORDINATOR_LABEL,
 }: {
   coordinators: CalendarCoordinator[];
   visibleIds: Set<number>;
   onToggle: (id: number) => void;
   onSetVisibleIds: (ids: Set<number>) => void;
   colorMap: Map<number, string>;
+  entityLabel?: CalendarEntityLabel;
 }) {
+  const { singular, plural } = entityLabel;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -321,7 +345,9 @@ function CoordinatorLegend({
     return c.name;
   };
 
-  const allVisible = coordinators.length > 0 && coordinators.every((c) => visibleIds.has(c.coordinatorId));
+  const allVisible =
+    coordinators.length > 0 &&
+    coordinators.every((c) => visibleIds.has(c.coordinatorId));
   const noneVisible = coordinators.length > 0 && visibleIds.size === 0;
 
   const filtered = coordinators.filter((c) =>
@@ -332,10 +358,16 @@ function CoordinatorLegend({
     return null;
   }
 
-  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
+  const selectedCoords = coordinators.filter((c) =>
+    visibleIds.has(c.coordinatorId),
+  );
 
   return (
-    <div className="cal-legend" role="group" aria-label="Filter by coordinator">
+    <div
+      className="cal-legend"
+      role="group"
+      aria-label={`Filter by ${singular}`}
+    >
       <button
         type="button"
         className="cal-legend-trigger"
@@ -344,15 +376,18 @@ function CoordinatorLegend({
         aria-haspopup="listbox"
       >
         <span className="cal-legend-trigger-label">
-          {selectedCoords.length === coordinators.length ? "All coordinators"
-            : selectedCoords.length === 0 ? "No coordinators"
-            : `${selectedCoords.length} coordinator${selectedCoords.length === 1 ? "" : "s"}`}</span>
+          {selectedCoords.length === coordinators.length
+            ? `All ${plural}`
+            : selectedCoords.length === 0
+              ? `No ${plural}`
+              : `${selectedCoords.length} ${selectedCoords.length === 1 ? singular : plural}`}
+        </span>
         <span className="cal-legend-trigger-arrow">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
         <div className="cal-legend-panel" role="listbox">
           <div className="cal-legend-panel-header">
-            <span className="cal-legend-panel-title">Filter coordinators</span>
+            <span className="cal-legend-panel-title">Filter {plural}</span>
             <button
               type="button"
               className="cal-legend-close"
@@ -365,16 +400,21 @@ function CoordinatorLegend({
           <input
             className="cal-legend-search"
             type="search"
-            placeholder="Search coordinators…"
+            placeholder={`Search ${plural}…`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search coordinators"
+            aria-label={`Search ${plural}`}
           />
           <div className="cal-legend-actions">
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { onSetVisibleIds(new Set(coordinators.map((c) => c.coordinatorId))); setOpen(false); }}
+              onClick={() => {
+                onSetVisibleIds(
+                  new Set(coordinators.map((c) => c.coordinatorId)),
+                );
+                setOpen(false);
+              }}
               disabled={allVisible}
             >
               All
@@ -382,7 +422,10 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => { onSetVisibleIds(new Set()); setOpen(false); }}
+              onClick={() => {
+                onSetVisibleIds(new Set());
+                setOpen(false);
+              }}
               disabled={noneVisible}
             >
               None
@@ -390,7 +433,7 @@ function CoordinatorLegend({
           </div>
           <div className="cal-legend-list">
             {filtered.length === 0 ? (
-              <p className="cal-legend-empty">No coordinators match.</p>
+              <p className="cal-legend-empty">No {plural} match.</p>
             ) : (
               filtered.map((coordinator) => {
                 const color = colorMap.get(coordinator.coordinatorId) ?? "#999";
@@ -409,10 +452,17 @@ function CoordinatorLegend({
                     />
                     <span
                       className="cal-legend-swatch"
-                      style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
+                      style={{
+                        backgroundColor: color,
+                        opacity: visible ? 1 : 0.3,
+                      }}
                     />
-                    <span className="cal-legend-name">{displayName(coordinator)}</span>
-                    <span className="cal-legend-count">{coordinator.events.length}</span>
+                    <span className="cal-legend-name">
+                      {displayName(coordinator)}
+                    </span>
+                    <span className="cal-legend-count">
+                      {coordinator.events.length}
+                    </span>
                   </label>
                 );
               })
@@ -423,7 +473,6 @@ function CoordinatorLegend({
     </div>
   );
 }
-
 
 function EventBlock({
   event,
@@ -437,7 +486,8 @@ function EventBlock({
   onHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
 }) {
   const isTerminal =
-    event.status && ["COMPLETED", "REJECTED", "CANCELLED"].includes(event.status);
+    event.status &&
+    ["COMPLETED", "REJECTED", "CANCELLED"].includes(event.status);
   const heightPct = event.height;
   const statusLabel = STATUS_LABELS[event.status ?? ""] ?? event.status;
 
@@ -468,7 +518,10 @@ function EventBlock({
       onMouseLeave={() => onHover?.(null)}
       aria-label={`${formatTime(new Date(event.startDatetime))}–${formatTime(new Date(event.endDatetime))}: ${event.title}; ${statusLabel}`}
     >
-      <span className="cal-event-color-strip" style={{ backgroundColor: color }} />
+      <span
+        className="cal-event-color-strip"
+        style={{ backgroundColor: color }}
+      />
       {heightPct > 10 && (
         <>
           <small className="cal-event-time">
@@ -479,7 +532,8 @@ function EventBlock({
             {event.title}
           </strong>
           <span className="cal-event-meta">
-            {statusLabel}{event.organisation ? ` · ${event.organisation}` : ""}
+            {statusLabel}
+            {event.organisation ? ` · ${event.organisation}` : ""}
           </span>
         </>
       )}
@@ -492,7 +546,10 @@ function EventBlock({
         </span>
       )}
       {heightPct <= 4 && (
-        <span className="cal-event-tiny" title={`${event.title} · ${statusLabel}`} />
+        <span
+          className="cal-event-tiny"
+          title={`${event.title} · ${statusLabel}`}
+        />
       )}
     </div>
   );
@@ -557,7 +614,7 @@ function WeekView({
   currentDate: Date;
   colorMap: Map<number, string>;
   visibleIds: Set<number>;
-   onEventClick?: (event: LayoutEvent) => void;
+  onEventClick?: (event: LayoutEvent) => void;
   onEventHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
   onDayClick?: (date: Date) => void;
   selectedEvent?: CalendarEvent;
@@ -571,7 +628,9 @@ function WeekView({
     return { hour: h, label: formatTime(slotDate) };
   });
 
-  const visibleCoordinators = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
+  const visibleCoordinators = coordinators.filter((c) =>
+    visibleIds.has(c.coordinatorId),
+  );
   const allEvents = visibleCoordinators.flatMap((c) => c.events);
   const now = new Date();
   const showNowLine = days.some((d) => isSameDay(d, calendarDate(now)));
@@ -610,21 +669,23 @@ function WeekView({
               .sort((a, b) => a - b)[0];
             const nowMs = now.getTime();
             const targetTime = firstEvent !== undefined ? firstEvent : nowMs;
-            const targetTop = (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
+            const targetTop =
+              (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
             const scrollToPx = (targetTop / 100) * el.scrollHeight - 60;
             if (scrollToPx > 0) el.scrollTop = scrollToPx;
           }
         }}
       >
-        <TimeGrid
-          hours={hours}
-          now={now}
-          showNowLine={showNowLine}
-        >
+        <TimeGrid hours={hours} now={now} showNowLine={showNowLine}>
           {days.map((day) => {
             const layouted = layoutDayEvents(allEvents, day, colorMap);
             const selectedLayouted =
-              selectedEvent && overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, day)
+              selectedEvent &&
+              overlapsCalendarDay(
+                selectedEvent.startDatetime,
+                selectedEvent.endDatetime,
+                day,
+              )
                 ? layoutDayEvents([selectedEvent], day, colorMap)
                 : [];
 
@@ -686,7 +747,9 @@ function DayView({
     return { hour: h, label: formatTime(slotDate) };
   });
 
-  const visibleCoordinators = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
+  const visibleCoordinators = coordinators.filter((c) =>
+    visibleIds.has(c.coordinatorId),
+  );
   const allEvents = visibleCoordinators.flatMap((c) => c.events);
   const now = new Date();
 
@@ -713,17 +776,14 @@ function DayView({
               .sort((a, b) => a - b)[0];
             const nowMs = now.getTime();
             const targetTime = firstEvent !== undefined ? firstEvent : nowMs;
-            const targetTop = (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
+            const targetTop =
+              (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
             const scrollToPx = (targetTop / 100) * el.scrollHeight - 60;
             if (scrollToPx > 0) el.scrollTop = scrollToPx;
           }
         }}
       >
-        <TimeGrid
-          hours={hours}
-          now={now}
-          showNowLine={isToday}
-        >
+        <TimeGrid hours={hours} now={now} showNowLine={isToday}>
           <div className="cal-day-column">
             {layoutDayEvents(allEvents, currentDate, colorMap).map((event) => (
               <EventBlock
@@ -735,7 +795,11 @@ function DayView({
               />
             ))}
             {selectedEvent &&
-              overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, currentDate) && (
+              overlapsCalendarDay(
+                selectedEvent.startDatetime,
+                selectedEvent.endDatetime,
+                currentDate,
+              ) && (
                 <div
                   className="cal-event-phantom"
                   style={{
@@ -876,9 +940,7 @@ function YearView({
   onMonthClick?: (date: Date) => void;
 }) {
   const yearStart = startOfYear(currentDate);
-  const months = Array.from({ length: 12 }, (_, i) =>
-    addMonths(yearStart, i),
-  );
+  const months = Array.from({ length: 12 }, (_, i) => addMonths(yearStart, i));
 
   return (
     <div className="cal-year-view">
@@ -912,11 +974,7 @@ function YearView({
                     monthStart.getMonth(),
                     d,
                   );
-                  const dots = getCoordinatorDots(
-                    coordinators,
-                    colorMap,
-                    date,
-                  );
+                  const dots = getCoordinatorDots(coordinators, colorMap, date);
                   cells.push(
                     <div
                       key={d}
@@ -988,48 +1046,56 @@ function CalendarTooltip({
   x: number;
   y: number;
 }) {
-  const coord = coordinators.find((c) => c.coordinatorId === event.coordinatorId);
+  const coord = coordinators.find(
+    (c) => c.coordinatorId === event.coordinatorId,
+  );
   const color = event.color;
-  const statusLabel = STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
+  const statusLabel =
+    STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
 
   return (
-    <div
-      className="cal-tooltip"
-      style={{ left: `${x}px`, top: `${y}px` }}
-    >
+    <div className="cal-tooltip" style={{ left: `${x}px`, top: `${y}px` }}>
       <div className="cal-tooltip-title">{event.title}</div>
       {event.purpose && (
         <div className="cal-tooltip-purpose">{event.purpose}</div>
       )}
       <div className="cal-tooltip-row">
-        <span
-          className="cal-tooltip-dot"
-          style={{ backgroundColor: color }}
-        />
+        <span className="cal-tooltip-dot" style={{ backgroundColor: color }} />
         <span>{coord?.name ?? "Unknown coordinator"}</span>
       </div>
       <div className="cal-tooltip-time">
-        {formatTime(new Date(event.startDatetime))}{" – "}
+        {formatTime(new Date(event.startDatetime))}
+        {" – "}
         {formatTime(new Date(event.endDatetime))}
       </div>
-      {event.preferredLayoutType && event.preferredLayoutType !== "NO_PREFERENCE" && (
-        <div className="cal-tooltip-row">
-          <span className="cal-tooltip-dot" style={{ backgroundColor: "#64748b" }} />
-          <span>Layout: {event.preferredLayoutType}</span>
-        </div>
-      )}
+      {event.preferredLayoutType &&
+        event.preferredLayoutType !== "NO_PREFERENCE" && (
+          <div className="cal-tooltip-row">
+            <span
+              className="cal-tooltip-dot"
+              style={{ backgroundColor: "#64748b" }}
+            />
+            <span>Layout: {event.preferredLayoutType}</span>
+          </div>
+        )}
       {event.isRegistrationEnabled && (
         <div className="cal-tooltip-row">
-          <span className="cal-tooltip-dot" style={{ backgroundColor: "#16A34A" }} />
+          <span
+            className="cal-tooltip-dot"
+            style={{ backgroundColor: "#16A34A" }}
+          />
           <span>
-            Registration: {event.registrationCapacity ? `${event.registrationCapacity} seats` : "Open"}
+            Registration:{" "}
+            {event.registrationCapacity
+              ? `${event.registrationCapacity} seats`
+              : "Open"}
           </span>
         </div>
       )}
       {event.status && (
-          <span className="cal-tag" title={statusLabel}>
-            {statusLabel}
-          </span>
+        <span className="cal-tag" title={statusLabel}>
+          {statusLabel}
+        </span>
       )}
     </div>
   );
@@ -1048,10 +1114,13 @@ function EventPopover({
   selectedCoordinatorId?: number | null;
   onSelectCoordinator?: (id: number) => void;
 }) {
-  const coord = coordinators.find((c) => c.coordinatorId === event.coordinatorId);
+  const coord = coordinators.find(
+    (c) => c.coordinatorId === event.coordinatorId,
+  );
   const color = event.color;
   const textColor = getTextColor(color);
-  const statusLabel = STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
+  const statusLabel =
+    STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
   const [showDetails, setShowDetails] = useState(false);
 
   const nameCounts = useMemo(() => {
@@ -1096,10 +1165,7 @@ function EventPopover({
 
   return (
     <div className="cal-popover-backdrop" onClick={onClose}>
-      <div
-        className="cal-popover"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="cal-popover" onClick={(e) => e.stopPropagation()}>
         <div className="cal-popover-header">
           <span
             className="cal-popover-swatch"
@@ -1120,17 +1186,20 @@ function EventPopover({
           <div className="cal-popover-summary">
             <div className="cal-popover-time">
               <span className="cal-popover-time-date">{dateStr}</span>
-              <span className="cal-popover-time-range">{startStr} – {endStr}</span>
+              <span className="cal-popover-time-range">
+                {startStr} – {endStr}
+              </span>
             </div>
 
             <div className="cal-popover-coordinator">
-              <span className="cal-popover-coord-dot" style={{ backgroundColor: color }} />
+              <span
+                className="cal-popover-coord-dot"
+                style={{ backgroundColor: color }}
+              />
               <span className="cal-popover-coord-name">{displayName}</span>
             </div>
 
-            <span className="cal-tag">
-              {statusLabel}
-            </span>
+            <span className="cal-tag">{statusLabel}</span>
           </div>
 
           <div className="cal-popover-divider" />
@@ -1142,7 +1211,11 @@ function EventPopover({
             aria-expanded={showDetails}
           >
             <span>Event details</span>
-            <span className={`cal-popover-chevron ${showDetails ? "open" : ""}`}>▼</span>
+            <span
+              className={`cal-popover-chevron ${showDetails ? "open" : ""}`}
+            >
+              ▼
+            </span>
           </button>
 
           {showDetails && (
@@ -1156,25 +1229,33 @@ function EventPopover({
               {event.description && (
                 <div>
                   <div className="cal-popover-meta-label">Description</div>
-                  <div className="cal-popover-meta-value">{event.description}</div>
+                  <div className="cal-popover-meta-value">
+                    {event.description}
+                  </div>
                 </div>
               )}
               {event.expectedAttendance && (
                 <div>
                   <div className="cal-popover-meta-label">Attendance</div>
-                  <div className="cal-popover-meta-value">{event.expectedAttendance} people</div>
+                  <div className="cal-popover-meta-value">
+                    {event.expectedAttendance} people
+                  </div>
                 </div>
               )}
               {event.organisation && (
                 <div>
                   <div className="cal-popover-meta-label">Organisation</div>
-                  <div className="cal-popover-meta-value">{event.organisation}</div>
+                  <div className="cal-popover-meta-value">
+                    {event.organisation}
+                  </div>
                 </div>
               )}
               {event.requestId && (
                 <div>
                   <div className="cal-popover-meta-label">Request ID</div>
-                  <div className="cal-popover-meta-value">{event.requestId}</div>
+                  <div className="cal-popover-meta-value">
+                    {event.requestId}
+                  </div>
                 </div>
               )}
               {event.createdAt && (
@@ -1190,23 +1271,30 @@ function EventPopover({
                   </div>
                 </div>
               )}
-              {event.preferredLayoutType && event.preferredLayoutType !== "NO_PREFERENCE" && (
-                <div>
-                  <div className="cal-popover-meta-label">Layout</div>
-                  <div className="cal-popover-meta-value">{event.preferredLayoutType}</div>
-                </div>
-              )}
+              {event.preferredLayoutType &&
+                event.preferredLayoutType !== "NO_PREFERENCE" && (
+                  <div>
+                    <div className="cal-popover-meta-label">Layout</div>
+                    <div className="cal-popover-meta-value">
+                      {event.preferredLayoutType}
+                    </div>
+                  </div>
+                )}
               {event.accessibilityNeeds && (
                 <div>
                   <div className="cal-popover-meta-label">Accessibility</div>
-                  <div className="cal-popover-meta-value">{event.accessibilityNeeds}</div>
+                  <div className="cal-popover-meta-value">
+                    {event.accessibilityNeeds}
+                  </div>
                 </div>
               )}
               {event.isRegistrationEnabled && (
                 <div>
                   <div className="cal-popover-meta-label">Registration</div>
                   <div className="cal-popover-meta-value">
-                    {event.registrationCapacity ? `${event.registrationCapacity} seats` : "Open"}
+                    {event.registrationCapacity
+                      ? `${event.registrationCapacity} seats`
+                      : "Open"}
                   </div>
                 </div>
               )}
@@ -1220,7 +1308,9 @@ function EventPopover({
                 <select
                   className="cal-popover-select"
                   value={selectedCoordinatorId ?? ""}
-                  onChange={(e) => onSelectCoordinator?.(Number(e.target.value))}
+                  onChange={(e) =>
+                    onSelectCoordinator?.(Number(e.target.value))
+                  }
                 >
                   {coordinators.map((c) => (
                     <option key={c.coordinatorId} value={c.coordinatorId}>
@@ -1250,6 +1340,7 @@ export type CalendarViewProps = {
   onViewModeChange?: (mode: CalendarViewMode) => void;
   currentDate?: Date;
   onCurrentDateChange?: (date: Date) => void;
+  entityLabel?: CalendarEntityLabel;
 };
 
 export function CalendarView({
@@ -1263,12 +1354,16 @@ export function CalendarView({
   onViewModeChange,
   currentDate: controlledDate,
   onCurrentDateChange,
+  entityLabel = COORDINATOR_LABEL,
 }: CalendarViewProps) {
-  const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
-    defaultView,
+  const [internalViewMode, setInternalViewMode] =
+    useState<CalendarViewMode>(defaultView);
+  const [internalCurrentDate, setInternalCurrentDate] = useState(() =>
+    calendarDate(new Date()),
   );
-  const [internalCurrentDate, setInternalCurrentDate] = useState(() => calendarDate(new Date()));
-  const [manualVisibleIds, setManualVisibleIds] = useState<Set<number> | null>(null);
+  const [manualVisibleIds, setManualVisibleIds] = useState<Set<number> | null>(
+    null,
+  );
 
   const visibleIds = useMemo(() => {
     if (manualVisibleIds === null) {
@@ -1309,23 +1404,25 @@ export function CalendarView({
     setInternalCurrentDate(date);
   };
 
-   const handleDayClick = (date: Date) => {
-     setInternalCurrentDate(date);
-     onCurrentDateChange?.(date);
-     setInternalViewMode("day");
-     onViewModeChange?.("day");
-   };
+  const handleDayClick = (date: Date) => {
+    setInternalCurrentDate(date);
+    onCurrentDateChange?.(date);
+    setInternalViewMode("day");
+    onViewModeChange?.("day");
+  };
 
-   const handleMonthClick = (date: Date) => {
-     setInternalCurrentDate(date);
-     onCurrentDateChange?.(date);
-     setInternalViewMode("month");
-     onViewModeChange?.("month");
-   };
+  const handleMonthClick = (date: Date) => {
+    setInternalCurrentDate(date);
+    onCurrentDateChange?.(date);
+    setInternalViewMode("month");
+    onViewModeChange?.("month");
+  };
 
   const toggleCoordinator = (id: number) => {
     setManualVisibleIds((prev) => {
-      const next = new Set(prev ?? coordinators.map((coordinator) => coordinator.coordinatorId));
+      const next = new Set(
+        prev ?? coordinators.map((coordinator) => coordinator.coordinatorId),
+      );
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
@@ -1395,7 +1492,7 @@ export function CalendarView({
       <div className={styles.scope}>
         <div className="calendar-view">
           <div className="calendar-empty">
-            <p>No coordinators with events to display.</p>
+            <p>No {entityLabel.plural} with events to display.</p>
           </div>
         </div>
       </div>
@@ -1404,147 +1501,144 @@ export function CalendarView({
 
   return (
     <div className={styles.scope}>
-    <div className="calendar-view" onClick={() => setPopoverEvent(null)}>
-      <div className="calendar-toolbar">
-        <div className="calendar-nav">
-          <button
-            className="cal-btn"
-            onClick={handlePrev}
-            aria-label="Previous"
+      <div className="calendar-view" onClick={() => setPopoverEvent(null)}>
+        <div className="calendar-toolbar">
+          <div className="calendar-nav">
+            <button
+              className="cal-btn"
+              onClick={handlePrev}
+              aria-label="Previous"
+            >
+              ‹
+            </button>
+            <button className="cal-btn cal-btn--today" onClick={handleToday}>
+              Today
+            </button>
+            <button className="cal-btn" onClick={handleNext} aria-label="Next">
+              ›
+            </button>
+          </div>
+          <div className="calendar-title">{title}</div>
+          <div
+            className="calendar-views"
+            role="group"
+            aria-label="Calendar views"
           >
-            ‹
-          </button>
-          <button
-            className="cal-btn cal-btn--today"
-            onClick={handleToday}
-          >
-            Today
-          </button>
-          <button className="cal-btn" onClick={handleNext} aria-label="Next">
-            ›
-          </button>
+            {(["year", "month", "week", "day"] as CalendarViewMode[]).map(
+              (mode) => (
+                <button
+                  key={mode}
+                  className={`cal-view-btn ${
+                    effectiveViewMode === mode ? "active" : ""
+                  }`}
+                  onClick={() => handleViewModeChange(mode)}
+                  aria-pressed={effectiveViewMode === mode}
+                >
+                  {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              ),
+            )}
+          </div>
         </div>
-        <div className="calendar-title">{title}</div>
-        <div
-          className="calendar-views"
-          role="group"
-          aria-label="Calendar views"
-        >
-          {(["year", "month", "week", "day"] as CalendarViewMode[]).map(
-            (mode) => (
-              <button
-                key={mode}
-                className={`cal-view-btn ${
-                  effectiveViewMode === mode ? "active" : ""
-                }`}
-                onClick={() => handleViewModeChange(mode)}
-                aria-pressed={effectiveViewMode === mode}
-              >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </button>
-            ),
+
+        <CoordinatorLegend
+          coordinators={coordinators}
+          visibleIds={visibleIds}
+          onToggle={toggleCoordinator}
+          onSetVisibleIds={setManualVisibleIds}
+          colorMap={colorMap}
+          entityLabel={entityLabel}
+        />
+
+        <div className="calendar-grid-wrapper">
+          {visibleCoordinators.length === 0 ? (
+            <div className="calendar-empty">
+              <p>
+                No {entityLabel.plural} selected. Click a name in the legend
+                above to show their events.
+              </p>
+            </div>
+          ) : (
+            <>
+              {effectiveViewMode === "year" && (
+                <YearView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  onMonthClick={handleMonthClick}
+                />
+              )}
+              {effectiveViewMode === "month" && (
+                <MonthView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  onDayClick={handleDayClick}
+                />
+              )}
+              {effectiveViewMode === "week" && (
+                <WeekView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  visibleIds={visibleIds}
+                  onEventClick={(e) => {
+                    if (onEventClick) {
+                      onEventClick(e);
+                    } else {
+                      setPopoverEvent(e);
+                    }
+                  }}
+                  onEventHover={(e, x, y) => {
+                    if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
+                    else setTooltipEvent(null);
+                  }}
+                  selectedEvent={selectedEvent}
+                />
+              )}
+              {effectiveViewMode === "day" && (
+                <DayView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  visibleIds={visibleIds}
+                  onEventClick={(e) => {
+                    if (onEventClick) {
+                      onEventClick(e);
+                    } else {
+                      setPopoverEvent(e);
+                    }
+                  }}
+                  onEventHover={(e, x, y) => {
+                    if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
+                    else setTooltipEvent(null);
+                  }}
+                  selectedEvent={selectedEvent}
+                />
+              )}
+            </>
           )}
         </div>
-      </div>
 
+        {tooltipEvent && (
+          <CalendarTooltip
+            event={tooltipEvent.event}
+            coordinators={coordinators}
+            x={tooltipEvent.x}
+            y={tooltipEvent.y}
+          />
+        )}
 
-      <CoordinatorLegend
-        coordinators={coordinators}
-        visibleIds={visibleIds}
-        onToggle={toggleCoordinator}
-        onSetVisibleIds={setManualVisibleIds}
-        colorMap={colorMap}
-      />
-
-      <div className="calendar-grid-wrapper">
-        {visibleCoordinators.length === 0 ? (
-          <div className="calendar-empty">
-            <p>
-              No coordinators selected. Click a name in the legend above to
-              show their events.
-            </p>
-          </div>
-        ) : (
-          <>
-            {effectiveViewMode === "year" && (
-              <YearView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                onMonthClick={handleMonthClick}
-              />
-            )}
-            {effectiveViewMode === "month" && (
-              <MonthView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                onDayClick={handleDayClick}
-              />
-            )}
-            {effectiveViewMode === "week" && (
-              <WeekView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                visibleIds={visibleIds}
-                onEventClick={(e) => {
-                  if (onEventClick) {
-                    onEventClick(e);
-                  } else {
-                    setPopoverEvent(e);
-                  }
-                }}
-                onEventHover={(e, x, y) => {
-                  if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
-                  else setTooltipEvent(null);
-                }}
-                selectedEvent={selectedEvent}
-              />
-            )}
-            {effectiveViewMode === "day" && (
-              <DayView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                visibleIds={visibleIds}
-                onEventClick={(e) => {
-                  if (onEventClick) {
-                    onEventClick(e);
-                  } else {
-                    setPopoverEvent(e);
-                  }
-                }}
-                onEventHover={(e, x, y) => {
-                  if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
-                  else setTooltipEvent(null);
-                }}
-                selectedEvent={selectedEvent}
-              />
-            )}
-          </>
+        {popoverEvent && (
+          <EventPopover
+            event={popoverEvent}
+            coordinators={coordinators}
+            onClose={() => setPopoverEvent(null)}
+            selectedCoordinatorId={selectedCoordinatorId}
+            onSelectCoordinator={onSelectCoordinator}
+          />
         )}
       </div>
-
-      {tooltipEvent && (
-        <CalendarTooltip
-          event={tooltipEvent.event}
-          coordinators={coordinators}
-          x={tooltipEvent.x}
-          y={tooltipEvent.y}
-        />
-      )}
-
-      {popoverEvent && (
-        <EventPopover
-          event={popoverEvent}
-          coordinators={coordinators}
-          onClose={() => setPopoverEvent(null)}
-          selectedCoordinatorId={selectedCoordinatorId}
-          onSelectCoordinator={onSelectCoordinator}
-        />
-      )}
-    </div>
     </div>
   );
 }

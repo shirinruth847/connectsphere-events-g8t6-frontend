@@ -29,6 +29,16 @@ export const makeDraft = (overrides = {}) => ({
   ...overrides,
 });
 
+// Organiser responses carry statusLabel but not the stored status (backend
+// SPM-173 AC6); only the assigned coordinator's event view keeps it. The mock
+// state keeps status so the routes below can decide like the backend does.
+export const organiserView = (event) => {
+  if (!event || event.viewerRelationship === "ASSIGNED_COORDINATOR") return event;
+  const view = { ...event };
+  delete view.status;
+  return view;
+};
+
 export async function installConnectSphereMocks(page, { authenticated = true, draft = null, role = "ORGANISER" } = {}) {
   const state = {
     events: draft ? [draft] : [],
@@ -84,6 +94,8 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (state.failure && state.failure.path === pathname) return json(state.failure.body, state.failure.status);
     if (pathname === "/api/auth/me") return state.revoked ? json({ error: "Please log in to continue." }, 401) : json({ user: { user_id: 11, name: "Test User", email: "user@example.com", role: state.role } });
     if (pathname === "/api/auth/logout") { state.revoked = true; return route.fulfill({ status: 204 }); }
+    if (pathname === "/api/venues/bookings") return json(state.venueBookings ?? { bookings: [], hasMore: false, pendingCount: 0 });
+    if (pathname === "/api/venues/manage/options") return json({ venues: state.venueOptions ?? [] });
     if (pathname === "/api/events/assigned") return json({ events: [{ eventId: 42, title: "Assigned coordinator event", status: "UNDER_REVIEW" }] });
     if (pathname === "/api/events/unassigned") {
       if (state.queueEvents === null) state.queueEvents = { events: [{ eventId: 71, requestId: "REQ-000071", status: "SUBMITTED", title: "Unassigned lead queue event", purpose: "Community outreach", startDatetime: "2026-10-20T09:00:00.000Z", endDatetime: "2026-10-20T11:00:00.000Z", expectedAttendance: 120, venuePreferences: [1], equipmentRequirements: [{ equipmentId: 4, quantity: 2 }], organisation: { organisationId: 7, name: "Test Organisation" }, createdAt: "2026-10-01T09:00:00.000Z", submittedAt: "2026-10-20T08:30:00.000Z" }] }.events;
@@ -111,10 +123,12 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
     if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
+    // The Updates button on attendee pages (SPM-155); its spec mocks the inbox itself.
+    if (pathname === "/api/notifications/unread-count") return json({ unreadCount: 0 });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
 
     if (pathname === "/api/events/mine" && method === "GET") {
-      return json({ events: state.events, nextCursor: null });
+      return json({ events: state.events.map(organiserView), nextCursor: null });
     }
 
     if (pathname === "/api/events/drafts" && method === "POST") {
@@ -123,14 +137,14 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
       state.draft = makeDraft({ ...payload, eventId: 501, requestId: "REQ-000501" });
       state.events = [state.draft, ...state.events.filter((event) => event.eventId !== state.draft.eventId)];
-      return json({ message: "Draft saved successfully.", event: state.draft, savedAt: FIXED_SAVED_AT }, 201);
+      return json({ message: "Draft saved successfully.", event: organiserView(state.draft), savedAt: FIXED_SAVED_AT }, 201);
     }
 
     if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
       const event = state.events.find(event => event.eventId === Number(eventMatch[1]));
-      if (event) return json({ event });
+      if (event) return json({ event: organiserView(event) });
       return json({ error: "Event not found." }, 404);
     }
 
@@ -144,7 +158,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       delete fields.isAutoSave;
       state.draft = makeDraft({ ...state.draft, ...fields, updatedAt: FIXED_SAVED_AT });
       state.events = state.events.map((event) => event.eventId === state.draft.eventId ? state.draft : event);
-      return json({ message: payload.isAutoSave ? "Draft auto-saved." : "Draft saved successfully.", event: state.draft, savedAt: FIXED_SAVED_AT });
+      return json({ message: payload.isAutoSave ? "Draft auto-saved." : "Draft saved successfully.", event: organiserView(state.draft), savedAt: FIXED_SAVED_AT });
     }
 
     const submitMatch = pathname.match(/^\/api\/events\/(\d+)\/submit$/);
@@ -159,7 +173,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       }
       state.draft = makeDraft({ ...state.draft, ...payload, status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = state.events.map((event) => event.eventId === state.draft.eventId ? state.draft : event);
-      return json({ message: "Your event request has been submitted successfully.", event: state.draft });
+      return json({ message: "Your event request has been submitted successfully.", event: organiserView(state.draft) });
     }
 
     if (pathname === "/api/events" && method === "POST") {
@@ -167,8 +181,11 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       state.createEventRequests.push({ payload, headers: request.headers() });
       const event = makeDraft({ ...payload, eventId: 600, requestId: "REQ-000600", status: "SUBMITTED", statusLabel: "Submitted", submittedAt: FIXED_SAVED_AT, permissions: { ...state.draft?.permissions, canEdit: false } });
       state.events = [event, ...state.events];
-      return json({ message: "Your event request has been submitted successfully.", event }, 201);
+      return json({ message: "Your event request has been submitted successfully.", event: organiserView(event) }, 201);
     }
+
+    // SPM-251: event pages list safety review rounds; none unless a spec routes them.
+    if (/^\/api\/events\/\d+\/safety-reviews$/.test(pathname) && method === "GET") return json({ reviews: [] });
 
     return json({ error: `Unmocked API request: ${method} ${pathname}` }, 501);
   });

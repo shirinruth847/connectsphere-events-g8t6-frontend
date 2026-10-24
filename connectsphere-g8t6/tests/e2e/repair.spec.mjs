@@ -33,7 +33,7 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations'],['COORDINATOR_LEAD','Assignment queue']]) {
+for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations'],['COORDINATOR_LEAD','Assignment queue']]) {
  test(`[SPM-32] ${role} login reaches its authorised workspace`, async ({page}) => {
   await installLoginMock(page,{role});await page.goto('/login');await page.getByLabel('Email',{exact:false}).fill('user@example.com');await page.getByLabel('Password',{exact:false}).fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible();
@@ -44,8 +44,9 @@ for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event
   expect((await shell.locator('aside').boundingBox()).width).toBe(225);
   const nav=page.getByRole('navigation',{name:'Main Navigation',exact:true});
   await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+  if(role==='VENUE_STAFF') await expect(nav.getByRole('link',{name:'My Requests',exact:true})).toHaveAttribute('aria-current','page');
   if(role!=='ORGANISER') {
-   await expect(nav.getByRole('link',{name:'My Requests',exact:true})).toHaveCount(0);
+   if(role!=='VENUE_STAFF') await expect(nav.getByRole('link',{name:'My Requests',exact:true})).toHaveCount(0);
    await expect(page.getByRole('link',{name:'Add Quick Event',exact:false})).toHaveCount(0);
   }
   await page.setViewportSize({width:390,height:844});
@@ -188,7 +189,7 @@ test('[SPM-37 Scenario 5] dirty link and browser Back show the in-app warning', 
  await installConnectSphereMocks(page);await page.goto('/dashboard');await page.getByRole('link',{name:'New Event',exact:false}).click();await page.locator('#title').fill('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.goBack();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await page.getByRole('button',{name:'Leave page'}).click();await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toBeVisible();await expect(page.getByText('Draft saved successfully.')).toHaveCount(0);
 });
 test('[SPM-37 Scenario 4] submitted or missing draft never renders an editable form', async ({page}) => {
- await installConnectSphereMocks(page,{draft:makeDraft({status:'SUBMITTED'})});await page.goto('/events/new?draft=43');await expect(page.getByText('Draft unavailable',{exact:true})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);await page.goto('/events/new?draft=999');await expect(page.getByText('Draft unavailable',{exact:true})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);
+ await installConnectSphereMocks(page,{draft:makeDraft({status:'SUBMITTED',statusLabel:'Submitted'})});await page.goto('/events/new?draft=43');await expect(page.getByText('Draft unavailable',{exact:true})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);await page.goto('/events/new?draft=999');await expect(page.getByText('Draft unavailable',{exact:true})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);
 });
 test('[SPM-35 AC2] server scheduling errors appear on the scheduling step', async ({page}) => {
  const state=await installConnectSphereMocks(page);state.failure={path:'/api/events',status:400,body:{error:'Please correct the highlighted fields.',fields:{startDatetime:'Server says the start is too soon.'}}};await page.goto('/events/new');await enterCompleteRequestThroughSubmit(page);await page.getByRole('button',{name:'Submit Request',exact:true}).click();await expect(page.getByText('Server says the start is too soon.')).toBeVisible();await expect(page.getByRole('heading',{name:'Scheduling & Attendance Estimates',exact:true})).toBeVisible();
