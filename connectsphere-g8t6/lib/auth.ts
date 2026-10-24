@@ -12,6 +12,7 @@ export const ROUTES = {
   newEvent: "/events/new",
   createEvent: "/events/create",
   drafts: "/dashboard?status=DRAFT#my-drafts",
+  notifications: "/notifications",
   venues: "/venues",
 } as const;
 
@@ -46,6 +47,8 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
   if (pathname === ROUTES.events) return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
+  // The inbox (SPM-155); organisers and coordinators join with SPM-192/193.
+  if (pathname === ROUTES.notifications) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
   // Venue Staff open an event through its venue bookings (SPM-181).
