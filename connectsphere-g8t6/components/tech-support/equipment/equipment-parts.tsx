@@ -4,7 +4,13 @@ import type { ReactNode } from "react";
 import { FormLabel } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { unavailableShare } from "@/lib/equipment";
-import type { EquipmentStatus, UnavailabilityReason } from "@/lib/api/equipment";
+import type { Equipment, EquipmentStatus, UnavailabilityReason } from "@/lib/api/equipment";
+
+// Called after every confirmed save with the item the backend returned; the page
+// shows it at once and then reloads everything the save may have changed.
+export type Saved = (message: string, equipment?: Equipment) => void;
+
+export const errorText = (caught: unknown, fallback: string) => (caught instanceof Error ? caught.message : fallback);
 
 // Status categories of the design system: success (usable), primary (pending),
 // neutral (inactive), error (needs action), tertiary (special).
