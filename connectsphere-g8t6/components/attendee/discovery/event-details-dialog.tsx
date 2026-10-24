@@ -18,21 +18,10 @@ import type {
   AttendeeEventDetail,
   AttendeeEventSummary,
 } from "@/lib/api/discovery";
-import {
-  DiscoveryDetailsPanel,
-  type DiscoveryDetailRow,
-} from "./discovery-details-panel";
-import { DiscoveryIcon } from "./discovery-icon";
+import type { AttendeeEventView } from "@/lib/api/my-events";
+import { DiscoveryDetailsPanel } from "./discovery-details-panel";
 import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
-import {
-  formatEventDate,
-  formatEventTime,
-  formatTimestamp,
-} from "./format-event-time";
-import {
-  getRegistrationAction,
-  isRegistrationEnabled,
-} from "./registration-availability";
+import { formatEventDate, formatEventTime } from "./format-event-time";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
 import {
   useAttendeeEvent,
@@ -140,29 +129,35 @@ function EventDetailsContent({
   onNotFound?: (eventId: number) => void;
   notFoundDescription: string;
 }) {
-  const { state, retry } = useDiscoveryEvent(summary.eventId, {
+  // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
+  const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom, {
     onLoaded,
     onNotFound,
   });
-  const shown = state.status === "ready" ? state.event : summary;
+  const event = state.status === "ready" ? state.event : null;
+  const withheld = Boolean(event?.detailsWithheld);
+  const myRegistration = event?.myRegistration ?? null;
+  // Availability is for deciding whether to sign up, so it is not shown to
+  // someone who already holds a place, or when the details are held back.
+  const availability = event
+    ? event.registrationAvailability
+    : summary.registrationAvailability;
+  const showAvailability =
+    state.status !== "not-found" &&
+    !withheld &&
+    !myRegistration &&
+    availability;
 
   return (
     <>
-      <header className="flex items-start justify-between gap-4 border-b border-outline-variant/60 px-5 py-4">
-        <div className="flex min-w-0 flex-col gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-label text-tertiary">
-            Event details
-          </span>
-          <h2
-            id={titleId}
-            className="text-xl font-bold leading-7 tracking-[-0.025em] text-on-surface [overflow-wrap:anywhere]"
-          >
-            {shown.title}
-          </h2>
-          {state.status !== "not-found" ? (
-            <RegistrationAvailabilityChip
-              value={shown.registrationAvailability}
-            />
+      <header className="flex items-center justify-between gap-3 border-b border-outline-variant/40 bg-surface-container-lowest px-4 py-2.5 sm:px-6">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {showAvailability ? (
+            <RegistrationAvailabilityChip value={availability} />
+          ) : null}
+          {event ? <AttendeeStatusChip status={event.attendeeStatus} /> : null}
+          {myRegistration ? (
+            <MyPlaceChip registration={myRegistration} />
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -223,26 +218,12 @@ function EventDetailsContent({
 
         {state.status === "not-found" ? (
           <AlertBanner tone="warning" title="This event is no longer available">
-            {notFoundDescription}
+            It may have been unpublished or rescheduled. It has been removed
+            from your list.
           </AlertBanner>
         ) : null}
 
-        {state.status === "error" && state.error.status === 401 ? (
-          // apiRequest reports the 401 to AuthGate, which sends the attendee to sign in.
-          <AlertBanner tone="info" title="Your session has ended">
-            Taking you to sign in…
-          </AlertBanner>
-        ) : null}
-
-        {state.status === "error" && state.error.status === 403 ? (
-          <AlertBanner tone="error" title="Attendee access required">
-            Event details are available to attendee accounts only.
-          </AlertBanner>
-        ) : null}
-
-        {state.status === "error" &&
-        state.error.status !== 401 &&
-        state.error.status !== 403 ? (
+        {state.status === "error" ? (
           <AlertBanner tone="error" title="Could not load the event details">
             {discoveryErrorMessage(state.error, "event details")}
             <div className="mt-3">
@@ -270,91 +251,13 @@ function EventDetailsContent({
         {event && !withheld ? <EventSummaryBody event={event} /> : null}
       </div>
 
-      {state.status === "ready" ? (
-        <RegistrationActionFooter event={state.event} />
-      ) : null}
+      {event ? <EventDetailsFooter event={event} /> : null}
     </>
   );
 }
 
-// Read out as the disabled action's description. It explains why the action
-// is unavailable without contradicting the availability chip.
-export const REGISTRATION_UNAVAILABLE_NOTE =
-  "Online sign-up isn't available in ConnectSphere yet.";
-
-// Shows the one registration action for this event, as unavailable: there are
-// no register, waitlist or notify endpoints yet (separate ticket). It uses
-// aria-disabled rather than disabled so keyboard and screen-reader users can
-// still reach it and hear why it is unavailable. It has no click handler.
-// The shared Button's disabled: style only matches the disabled attribute, so
-// the same classes are applied through aria-disabled: instead.
-function RegistrationActionFooter({ event }: { event: AttendeeEventDetail }) {
-  const helperId = useId();
-  const action = getRegistrationAction(event);
-  if (!action) return null;
-
-  return (
-    <footer className="flex flex-col gap-2 border-t border-outline-variant/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
-      <p
-        id={helperId}
-        className="text-xs text-on-surface-variant sm:order-first"
-      >
-        {REGISTRATION_UNAVAILABLE_NOTE}
-      </p>
-      <Button
-        type="button"
-        variant={action.variant}
-        aria-disabled="true"
-        aria-describedby={helperId}
-        className="w-full aria-disabled:pointer-events-none aria-disabled:opacity-55 max-lg:min-h-11 sm:w-auto"
-      >
-        {action.label}
-      </Button>
-    </footer>
-  );
-}
-
-function EventDetailsBody({ event }: { event: AttendeeEventDetail }) {
-  const rows: DiscoveryDetailRow[] = [
-    {
-      label: "Date",
-      icon: "calendar",
-      value: formatEventDate(event.startDatetime, event.endDatetime),
-    },
-    {
-      label: "Time",
-      icon: "schedule",
-      value: formatEventTime(event.startDatetime, event.endDatetime),
-    },
-    {
-      label: "Location",
-      icon: "venue",
-      value: event.location ?? LOCATION_PENDING_LABEL,
-    },
-  ];
-  if (event.organisationName) {
-    rows.push({
-      label: "Organised by",
-      icon: "organisation",
-      value: event.organisationName,
-    });
-  }
-  // Events without attendee registration carry no registration wording (AC4).
-  if (isRegistrationEnabled(event.registrationAvailability)) {
-    rows.push(
-      {
-        label: "Registration opens",
-        icon: "registration",
-        value: formatTimestamp(event.registrationOpenAt) ?? "Immediately",
-      },
-      {
-        label: "Registration closes",
-        icon: "registration",
-        value: formatTimestamp(event.registrationCloseAt) ?? "No closing date",
-      },
-    );
-  }
-
+// The frame's abstract, then schedule and venue side by side.
+function EventSummaryBody({ event }: { event: AttendeeEventDetail }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-[70ch] whitespace-pre-line text-sm leading-relaxed text-on-surface-variant [overflow-wrap:anywhere]">

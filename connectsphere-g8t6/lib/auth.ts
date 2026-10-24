@@ -26,12 +26,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export function homeForRole(role: UserRole) {
-<<<<<<< HEAD
   return role === "ATTENDEE" ? ROUTES.events : ROUTES.dashboard;
-=======
-  if (role === 'ATTENDEE') return ROUTES.registrations;
-  return ROUTES.dashboard;
->>>>>>> 5a20b0e2f95136615620b006f6e7491b8f7671ba
 }
 
 export function safeNextPath(value: string | null): string | null {
@@ -55,18 +50,12 @@ export function canViewPath(role: UserRole, path: string) {
   // The inbox (SPM-155); organisers and coordinators join with SPM-192/193.
   if (pathname === ROUTES.notifications) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
-<<<<<<< HEAD
-  // The event workspace (SPM-33) and the attendee event details (SPM-44); the
-  // backend still answers "not found" for unrelated or unpublished events.
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "ATTENDEE";
-=======
   // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
   // Venue Staff open an event through its venue bookings (SPM-181).
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF";
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF" || role === "ATTENDEE";
   if (pathname === ROUTES.venues) return ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(role);
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
->>>>>>> 5a20b0e2f95136615620b006f6e7491b8f7671ba
   return false;
 }
 

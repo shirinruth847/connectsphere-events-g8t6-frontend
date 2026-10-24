@@ -52,10 +52,6 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === "/calendar") return "calendar";
     return "home";
   }
-<<<<<<< HEAD
-  if (role === "ATTENDEE") return pathname === ROUTES.events || /^\/events\/[^/]+$/.test(pathname) ? "discovery" : "home";
-  if (role !== "ORGANISER") return "home";
-=======
   if (role === "ATTENDEE") {
     if (pathname === ROUTES.events) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
@@ -63,7 +59,6 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";
->>>>>>> 5a20b0e2f95136615620b006f6e7491b8f7671ba
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";
 }

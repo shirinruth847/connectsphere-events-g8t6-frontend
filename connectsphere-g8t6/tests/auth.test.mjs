@@ -18,19 +18,11 @@ test('[SPM-32 TC-004/011/012] return paths respect role permissions', () => {
   for (const role of ['ATTENDEE','COORDINATOR','VENUE_STAFF','TECH_SUPPORT']) assert.equal(canViewPath(role, '/events/new'), false);
   assert.equal(postLoginPath({role:'ORGANISER'}, '/login'), '/dashboard');
 });
-<<<<<<< HEAD
-test('[SPM-33 / SPM-174] the event workspace and Lead queue keep their role boundaries', () => {
-  for (const role of ['ORGANISER','COORDINATOR']) assert.equal(postLoginPath({role}, '/events/42'), '/events/42');
-  for (const role of ['COORDINATOR_LEAD','VENUE_STAFF','TECH_SUPPORT']) assert.equal(canViewPath(role, '/events/42'), false);
-  assert.equal(postLoginPath({role:'COORDINATOR_LEAD'}, '/events/42'), '/events');
-  assert.equal(canViewPath('COORDINATOR_LEAD', '/events'), true);
-=======
 test('[SPM-33 AC1][SPM-181 AC4] the event workspace is a return path for organisers, coordinators and Venue Staff only', () => {
   for (const role of ['ORGANISER','COORDINATOR','VENUE_STAFF']) assert.equal(postLoginPath({role}, '/events/42'), '/events/42');
   assert.equal(postLoginPath({role:'VENUE_STAFF'}, '/events/42?booking=7'), '/events/42?booking=7');
   for (const role of ['COORDINATOR_LEAD','TECH_SUPPORT','ATTENDEE']) assert.equal(canViewPath(role, '/events/42'), false);
   assert.equal(canViewPath('VENUE_STAFF', '/events/new'), false);
->>>>>>> 5a20b0e2f95136615620b006f6e7491b8f7671ba
   assert.equal(canViewPath('COORDINATOR', '/events/new'), false);
 });
 test('[SPM-177/SPM-34] /events returns Leads to the queue, attendees to discovery', () => {
