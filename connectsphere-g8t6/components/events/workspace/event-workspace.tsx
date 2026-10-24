@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AttendeeEventDetailsPage } from "@/components/attendee/discovery/attendee-event-details-page";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { EventRequestDetails } from "@/components/events/event-request-details";
 import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton } from "@/components/shared/primitives";
@@ -53,10 +54,12 @@ function LoadedWorkspace({ eventId, home }: { eventId: number; home: string }) {
 
 // /events/[eventId]: the role-aware event workspace (SPM-33). Render inside
 // DashboardWorkspace; what it shows comes from the relationship the backend
-// reports for this event, and unrelated events answer "not found".
+// reports for this event, and unrelated events answer "not found". Attendees
+// get the published attendee view from the discovery endpoint instead (SPM-44).
 export function EventWorkspace({ eventId: rawEventId }: { eventId: string }) {
   const user = useSessionUser();
   const eventId = parseEventId(rawEventId);
+  if (user?.role === "ATTENDEE") return <AttendeeEventDetailsPage eventId={eventId} />;
   const home = user ? homeForRole(user.role) : ROUTES.dashboard;
   if (eventId === null) return <EventUnavailable home={home} />;
   // Venue Staff reach events only through their venue bookings (SPM-181).
