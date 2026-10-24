@@ -243,7 +243,9 @@ export function getEventClarifications(eventId: number): Promise<{ clarification
 }
 
 // POST /api/events/:id/clarifications — assigned coordinator, UNDER_REVIEW only.
-// Agreed contract; the backend route is added with the SPM-173 lifecycle engine.
+// Errors: 400 VALIDATION_FAILED (fields.message), 403 TRANSITION_NOT_ALLOWED
+// (details.currentStatus), 404 for another coordinator, 409 EVENT_VERSION_CONFLICT
+// (details.event).
 export async function requestClarification(
   eventId: number,
   message: string,
@@ -259,8 +261,10 @@ export async function requestClarification(
 }
 
 // POST /api/events/:id/resubmit — owner, AWAITING_CLARIFICATION only. Needs a
-// response, at least one changed field, or both. Agreed contract; the backend
-// route is added with the SPM-173 lifecycle engine.
+// response, at least one changed field, or both. Errors: 400 VALIDATION_FAILED
+// (fields), 403 FIELD_NOT_EDITABLE / EVENT_READ_ONLY / TRANSITION_NOT_ALLOWED,
+// 409 EVENT_VERSION_CONFLICT (details.event), CLARIFICATION_NOT_OPEN, or
+// COORDINATOR_CONFLICT when amended dates clash with the coordinator's schedule.
 export async function resubmitEvent(
   eventId: number,
   body: { response?: string; changes?: ResubmitChanges },

@@ -197,6 +197,7 @@ export function ClarificationResponseForm({ event, question, onResubmitted, onEv
       case "TRANSITION_NOT_ALLOWED":
       case "EVENT_NOT_EDITABLE_IN_STATUS":
       case "EVENT_READ_ONLY":
+      case "CLARIFICATION_NOT_OPEN":
         setBanner({ tone: "warning", title: "This request is no longer waiting for your response", message: "Nothing was resubmitted. Your text is still shown so you can copy it." });
         onAccessChanged();
         return;
