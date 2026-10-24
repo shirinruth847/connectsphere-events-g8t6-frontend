@@ -17,6 +17,8 @@ import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import type { AttendeeEventDetail, AttendeeEventSummary } from "@/lib/api/discovery";
 import type { AttendeeEventView } from "@/lib/api/my-events";
 import { DiscoveryDetailsPanel } from "./discovery-details-panel";
+import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
+import { formatEventDate, formatEventTime } from "./format-event-time";
 import { DiscoveryIcon } from "./discovery-icon";
 import { discoveryErrorMessage } from "./discovery-state";
 import { EventDetailsBody, RegistrationActionFooter } from "./event-details-content";
