@@ -98,11 +98,9 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         </AlertBanner>
       ) : null}
 
-      {/* Steps 1-2 sit beside the coordination panel; the venue section and the
-          steps after it use the full width, so the venue search, its three-card
-          rows and the calendar fit the screen. min-w-0 keeps wide content from
-          widening a column. */}
       <div className="grid items-start gap-5 xl:grid-cols-12">
+        {/* min-w-0: wide venue content scrolls inside its own box instead of
+            widening a column. */}
         <div className="grid min-w-0 gap-5 xl:col-span-8">
           <ReviewSection
             step={1}
@@ -132,6 +130,29 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               <CapacityBar label="Expected attendance vs registration capacity" value={attendance} total={capacity} unit="people" />
             ) : null}
           </ReviewSection>
+
+          <ReviewSection step={3} title="Venue & layout" description="The organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
+            <KeyValuePanel rows={layoutRows(event)} />
+            <EventVenueSection
+              key={event.venueSuggestion?.version ?? 0}
+              event={event}
+              onSuggested={() => setHistoryKey((value) => value + 1)}
+              onStale={onAccessChanged}
+            />
+          </ReviewSection>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <ReviewSection step={4} title="Accessibility" action={significantPill}>
+              <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
+            </ReviewSection>
+            <ReviewSection step={5} title="Technical & equipment" action={significantPill}>
+              <RequirementList items={equipmentItems(event)} empty="No equipment was requested." />
+            </ReviewSection>
+          </div>
+
+          <ReviewSection step={6} title="Registration" action={<PermissionPill tone="read-only">Read-only</PermissionPill>}>
+            <KeyValuePanel rows={registrationRows(event)} />
+          </ReviewSection>
         </div>
 
         <aside className="grid min-w-0 gap-5 xl:col-span-4" aria-label="Coordination and history">
@@ -159,30 +180,6 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
           </section>
           <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
-
-        <div className="grid min-w-0 gap-5 xl:col-span-12">
-          <ReviewSection step={3} title="Venue & layout" description="The organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
-            <KeyValuePanel rows={layoutRows(event)} />
-            <EventVenueSection
-              key={event.venueSuggestion?.version ?? 0}
-              event={event}
-              onSuggested={() => setHistoryKey((value) => value + 1)}
-              onStale={onAccessChanged}
-            />
-          </ReviewSection>
-
-          <div className="grid items-start gap-5 md:grid-cols-2 xl:grid-cols-3">
-            <ReviewSection step={4} title="Accessibility" action={significantPill}>
-              <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
-            </ReviewSection>
-            <ReviewSection step={5} title="Technical & equipment" action={significantPill}>
-              <RequirementList items={equipmentItems(event)} empty="No equipment was requested." />
-            </ReviewSection>
-            <ReviewSection step={6} title="Registration" action={<PermissionPill tone="read-only">Read-only</PermissionPill>}>
-              <KeyValuePanel rows={registrationRows(event)} />
-            </ReviewSection>
-          </div>
-        </div>
       </div>
     </div>
   );
