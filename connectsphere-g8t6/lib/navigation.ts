@@ -1,6 +1,6 @@
 import { ROUTES, type UserRole } from "@/lib/auth";
 
-export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "assignments" | "calendar";
+export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "assignments" | "calendar" | "equipment";
 type NavigationItem = { id: string; title: string; icon: NavigationIcon; href?: string };
 type NavigationGroup = { title: string; items: NavigationItem[] };
 
@@ -28,7 +28,11 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
     { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
   ],
-  TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
+  TECH_SUPPORT: [
+    { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
+    // Equipment catalogue (SPM-52).
+    { id: "equipment", title: "Equipment", icon: "equipment", href: ROUTES.equipment },
+  ],
   ATTENDEE: [
     { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
     { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
@@ -56,6 +60,9 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === ROUTES.events) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
     return "home";
+  }
+  if (role === "TECH_SUPPORT") {
+    return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";

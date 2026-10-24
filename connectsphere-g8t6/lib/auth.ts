@@ -14,6 +14,7 @@ export const ROUTES = {
   drafts: "/dashboard?status=DRAFT#my-drafts",
   notifications: "/notifications",
   venues: "/venues",
+  equipment: "/equipment",
 } as const;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -57,6 +58,8 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === ROUTES.venues) return ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(role);
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
+  // Equipment catalogue (SPM-52).
+  if (pathname === ROUTES.equipment || /^\/equipment\/\d+$/.test(pathname)) return role === "TECH_SUPPORT";
   return false;
 }
 
