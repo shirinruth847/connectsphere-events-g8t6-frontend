@@ -167,7 +167,18 @@ export function BookingRequestList() {
     : [];
 
   return (
-    <PageContent title="My Requests" eyebrow={ROLE_LABELS.VENUE_STAFF} description="Venue booking requests from event coordinators. Open a request to review its venue requirements and the event it belongs to.">
+    <PageContent
+      title="My Requests"
+      eyebrow={ROLE_LABELS.VENUE_STAFF}
+      description="Venue booking requests from event coordinators. Open a request to review its venue requirements, approve or reject it."
+      action={
+        state.status === "ready" ? (
+          <span className="rounded-control bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
+            <strong className="block text-xl font-bold text-primary">{state.pendingCount}</strong>Pending
+          </span>
+        ) : null
+      }
+    >
       <section aria-label="Search, sort and filter booking requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
         <div className="grid min-w-[14rem] flex-1 gap-1">
           <label htmlFor="booking-search" className="text-xs font-semibold text-on-surface-variant">Search</label>

@@ -52,6 +52,11 @@ export interface VenueBookingDetail extends VenueBookingSummary {
   accessibilityRequirements: string[];
   specialRequirements: string | null;
   rejectionReason: string | null;
+  // Who decided the booking and when (SPM-186 AC1); null while pending.
+  reviewedAt?: string | null;
+  reviewedByName?: string | null;
+  // Which decisions the backend allows now (SPM-186 AC4, SPM-189 AC6, T31).
+  actions?: { canApprove: boolean; canReject: boolean };
 }
 
 export interface VenueBookingEvent {
@@ -89,3 +94,26 @@ export const listVenueBookings = (filters: VenueBookingFilters = {}) =>
 
 export const getEventVenueBookings = (eventId: number) =>
   apiRequest<EventVenueBookings>(`/venues/bookings/events/${eventId}`);
+
+// Venue Staff decisions (SPM-186, SPM-189). The status the user saw is sent
+// back so a decision already made by someone else is refused (409
+// BOOKING_ALREADY_DECIDED) instead of being overwritten.
+export interface VenueBookingDecisionResult {
+  message: string;
+  booking: VenueBookingDetail;
+  event: VenueBookingEvent;
+}
+
+export const approveVenueBooking = (bookingId: number, expectedStatus: string) =>
+  apiRequest<VenueBookingDecisionResult>(`/venues/bookings/${bookingId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ expectedStatus }),
+  });
+
+export const rejectVenueBooking = (bookingId: number, reason: string, expectedStatus: string) =>
+  apiRequest<VenueBookingDecisionResult>(`/venues/bookings/${bookingId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason, expectedStatus }),
+  });
+
+export const MAX_REJECTION_REASON_LENGTH = 1000;

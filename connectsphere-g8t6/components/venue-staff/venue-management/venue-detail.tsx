@@ -15,6 +15,7 @@ import {
   getManagedVenue,
   updateVenue,
   updateVenueDetails,
+  type AffectedEvent,
   type DetailStatus,
   type ManagedVenue,
   type VenueDetails,
@@ -98,7 +99,7 @@ function StatusSection({ venue, onSaved }: { venue: ManagedVenue; onSaved: (venu
   const [reason, setReason] = useState(venue.statusReason ?? "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [confirm, setConfirm] = useState<{ upcoming: number | null; firstStart?: string | null } | null>(null);
+  const [confirm, setConfirm] = useState<{ upcoming: number | null; firstStart?: string | null; affectedEvents?: AffectedEvent[] } | null>(null);
 
   const send = async (confirmUpcomingBookings: boolean) => {
     setSaving(true);
@@ -111,10 +112,17 @@ function StatusSection({ venue, onSaved }: { venue: ManagedVenue; onSaved: (venu
         confirmUpcomingBookings,
       });
       setConfirm(null);
-      onSaved(result.venue, result.upcomingBookings ? `${result.message} ${result.upcomingBookings} upcoming booking(s) were kept.` : result.message);
+      const notified = result.affectedEvents?.length
+        ? ` The coordinators and organisers of ${result.affectedEvents.length} affected event${result.affectedEvents.length === 1 ? "" : "s"} were notified.`
+        : "";
+      onSaved(result.venue, result.upcomingBookings ? `${result.message} ${result.upcomingBookings} upcoming booking(s) were kept.${notified}` : result.message);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "VENUE_HAS_UPCOMING_BOOKINGS") {
-        setConfirm({ upcoming: (caught.details.upcomingBookings as number) ?? null, firstStart: caught.details.firstStart as string | null });
+        setConfirm({
+          upcoming: (caught.details.upcomingBookings as number) ?? null,
+          firstStart: caught.details.firstStart as string | null,
+          affectedEvents: Array.isArray(caught.details.affectedEvents) ? (caught.details.affectedEvents as AffectedEvent[]) : [],
+        });
       } else {
         setConfirm(null);
         setError(caught instanceof ApiError && caught.fields.reason ? caught.fields.reason : caught instanceof Error ? caught.message : "The status could not be changed.");
@@ -158,15 +166,38 @@ function StatusSection({ venue, onSaved }: { venue: ManagedVenue; onSaved: (venu
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="quiet" onClick={() => setConfirm(null)}>Keep current status</Button>
-            <Button variant="danger" disabled={saving} onClick={() => void send(confirm?.upcoming !== null)}>Confirm</Button>
+            <Button variant="danger" disabled={saving} onClick={() => void send(confirm?.upcoming !== null)}>
+              {confirm?.upcoming ? "Proceed and notify" : "Confirm"}
+            </Button>
           </div>
         }
       >
         {confirm?.upcoming ? (
-          <AlertBanner tone="warning" title="This venue has upcoming bookings">
-            {confirm.upcoming} upcoming booking{confirm.upcoming === 1 ? "" : "s"}
-            {confirm.firstStart ? `, the first on ${formatTimestamp(confirm.firstStart)}` : ""}. They are kept and stay linked to the venue, but the venue cannot be selected for new bookings.
-          </AlertBanner>
+          <div className="grid gap-3">
+            <AlertBanner tone="warning" title="This venue has upcoming bookings">
+              {confirm.upcoming} upcoming booking{confirm.upcoming === 1 ? "" : "s"}
+              {confirm.firstStart ? `, the first on ${formatTimestamp(confirm.firstStart)}` : ""}. The bookings and events are kept, not cancelled, but the venue cannot be selected for new bookings.
+              If you continue, each event&apos;s coordinator and organiser are notified so the coordinator can arrange another venue with the organiser.
+            </AlertBanner>
+            {confirm.affectedEvents?.length ? (
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Affected events</h3>
+                <ul className="grid max-h-60 gap-2 overflow-y-auto">
+                  {confirm.affectedEvents.map((item) => (
+                    <li key={item.eventId} className="flex flex-wrap items-center justify-between gap-2 rounded-control bg-surface-container-low px-3 py-2 text-sm">
+                      <span className="grid min-w-0">
+                        <span className="truncate font-semibold text-on-surface">{item.title}</span>
+                        <span className="text-xs text-on-surface-variant">
+                          {formatTimestamp(item.firstStart)} · {item.bookings} booking{item.bookings === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                      <ReferenceIdTag value={item.requestId} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <p className="text-sm text-on-surface">The venue will not be available for new bookings. It stays in historical records and can be reactivated later.</p>
         )}

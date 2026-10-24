@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api";
 import { formatDuration, formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
 import { formatBookingId } from "./booking-filters";
+import { BookingDecision, type DecisionNotice } from "./booking-decision";
 import { BookingStatusChip } from "./booking-status-chip";
 import { Collapse } from "./collapse";
 import { useOpenedBookings } from "./use-opened-bookings";
@@ -88,16 +89,17 @@ function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
   );
 }
 
-function VenueBookingsSection({ bookings, selectedId, onSelect }: {
+function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
   bookings: VenueBookingDetail[];
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
+  onDecided: (notice: DecisionNotice) => void;
 }) {
   return (
     <ReviewSection
       step={3}
       title="Venue bookings"
-      description={`${bookings.length} venue ${bookings.length === 1 ? "booking" : "bookings"} under this event, each with its own status. Select one to review its requirements.`}
+      description={`${bookings.length} venue ${bookings.length === 1 ? "booking" : "bookings"} under this event, each with its own status. Select one to review its requirements and decide it.`}
       action={<PermissionPill tone="edit">Venue Staff review</PermissionPill>}
     >
       <ul className="grid gap-3">
@@ -129,7 +131,8 @@ function VenueBookingsSection({ bookings, selectedId, onSelect }: {
                 </span>
               </button>
               <Collapse open={selected} id={panelId}>
-                <div className="border-t border-outline-variant p-3 sm:p-4">
+                <div className="grid gap-4 border-t border-outline-variant p-3 sm:p-4">
+                  <BookingDecision booking={booking} onDecided={onDecided} />
                   <BookingRequirements booking={booking} />
                 </div>
               </Collapse>
@@ -141,10 +144,12 @@ function VenueBookingsSection({ bookings, selectedId, onSelect }: {
   );
 }
 
-function LoadedView({ data, selectedId, onSelect }: {
+function LoadedView({ data, selectedId, onSelect, notice, onDecided }: {
   data: EventVenueBookings;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
+  notice: DecisionNotice | null;
+  onDecided: (notice: DecisionNotice) => void;
 }) {
   const { event, bookings } = data;
   const duration = formatDuration(event.startDatetime, event.endDatetime);
@@ -171,6 +176,8 @@ function LoadedView({ data, selectedId, onSelect }: {
         <PermissionPill tone="read-only">Venue Staff • Event details read-only</PermissionPill>
       </div>
 
+      {notice ? <AlertBanner tone={notice.tone}>{notice.text}</AlertBanner> : null}
+
       <div className="grid items-start gap-5 xl:grid-cols-12">
         <div className="grid gap-5 xl:col-span-8">
           <ReviewSection step={1} title="Event identity & purpose" description="The organiser's request as reviewed by the coordinator." action={readOnly}>
@@ -194,7 +201,7 @@ function LoadedView({ data, selectedId, onSelect }: {
             />
           </ReviewSection>
 
-          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} />
+          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onDecided={onDecided} />
 
           <div className="grid gap-5 md:grid-cols-2">
             <ReviewSection step={4} title="Accessibility" action={readOnly}>
@@ -253,7 +260,8 @@ function LoadedView({ data, selectedId, onSelect }: {
 }
 
 // /events/[eventId] for Venue Staff (SPM-181): the coordinator's layout with
-// every event section read-only; only the venue bookings are interactive.
+// every event section read-only; only the venue bookings are interactive, and
+// each one is approved or rejected there (SPM-186, SPM-189).
 // ?booking=<id> opens that booking; without it the page is the event view
 // listing all bookings under the event.
 export function VenueStaffEventView({ eventId }: { eventId: number }) {
@@ -262,6 +270,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const searchParams = useSearchParams();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [notice, setNotice] = useState<DecisionNotice | null>(null);
   const rawBooking = searchParams.get("booking");
   const selectedId = rawBooking && /^[1-9]\d{0,9}$/.test(rawBooking) ? Number(rawBooking) : null;
   const { markOpened } = useOpenedBookings();
@@ -289,7 +298,14 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   }, [eventId, attempt]);
 
   const select = (bookingId: number | null) => {
+    setNotice(null);
     router.replace(bookingId ? `${pathname}?booking=${bookingId}` : pathname, { scroll: false });
+  };
+
+  // Reload in place after a decision, or after learning someone else decided first.
+  const decided = (next: DecisionNotice) => {
+    setNotice(next);
+    setAttempt((value) => value + 1);
   };
 
   if (state.status === "loading") {
@@ -330,7 +346,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
       {bookingMissing ? (
         <div className="mb-4"><AlertBanner tone="warning">That booking is not part of this event. Showing every booking under the event instead.</AlertBanner></div>
       ) : null}
-      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} />
+      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} notice={notice} onDecided={decided} />
     </>
   );
 }
