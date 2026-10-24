@@ -141,6 +141,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
 
     if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
+    if (/^\/api\/events\/\d+\/clarifications$/.test(pathname) && method === "GET") return json({ clarifications: [] });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
       const event = state.events.find(event => event.eventId === Number(eventMatch[1]));

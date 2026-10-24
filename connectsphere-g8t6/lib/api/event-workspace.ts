@@ -23,6 +23,11 @@ export interface EventPermissions {
   editableFields: string[];
   canViewDraftHistory: boolean;
   canViewStaffHistory: boolean;
+  // SPM-41 clarification threads. When absent the controls stay hidden.
+  canRequestClarification?: boolean;
+  canPostClarificationMessage?: boolean;
+  canSaveAmendments?: boolean;
+  canCompleteClarification?: boolean;
 }
 
 export interface EventView {
@@ -86,6 +91,8 @@ export interface EventHistoryEntry {
 export interface EventHistoryPage {
   history: EventHistoryEntry[];
   nextCursor: string | null;
+  // When this viewer last marked the history viewed; null before their first view (SPM-41).
+  lastViewedAt?: string | null;
 }
 
 export interface AssignedEvent {
@@ -153,6 +160,11 @@ export function getEventHistory(
   return apiRequest<EventHistoryPage>(`/events/${eventId}/history?${query}`);
 }
 
+// POST /api/events/:id/history/viewed — records that this viewer saw the history now.
+export function markHistoryViewed(eventId: number): Promise<{ lastViewedAt: string }> {
+  return apiRequest<{ lastViewedAt: string }>(`/events/${eventId}/history/viewed`, { method: "POST" });
+}
+
 // ---------- SPM-173 coordinator lifecycle actions ----------
 // Backend README, "Event Lifecycle (SPM-173)". Codes are the backend's.
 
@@ -197,6 +209,134 @@ export async function runLifecycleAction(
     { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ version }) },
   );
   return { message: result.message, event: toEventView(result.event) };
+}
+
+/// ---------- SPM-41 clarification threads ----------
+// Backend README, "Clarification Threads (SPM-41)". Codes are the backend's.
+
+// Backend limit for the coordinator's question and every thread message.
+export const CLARIFICATION_TEXT_LIMIT = 2000;
+
+export interface ClarificationMessage {
+  messageId: number;
+  body: string;
+  createdAt: string;
+  author: { userId: number; name: string | null; role: string | null };
+}
+
+export interface ClarificationRound {
+  clarificationId: number;
+  round: number;
+  status: "OPEN" | "COMPLETED";
+  // The coordinator's opening question; also the thread's first message.
+  message: string;
+  requestedAt: string;
+  requestedBy: { userId: number; name: string | null };
+  completedAt: string | null;
+  // The coordinator who completed it (or, for rounds closed before threads
+  // existed, the organiser who resubmitted).
+  completedBy: { userId: number; name: string | null } | null;
+  // Oldest first.
+  messages: ClarificationMessage[];
+  // Messages from the other party since this viewer last opened the thread;
+  // null for viewers whose reads are not tracked (same-organisation organisers).
+  unreadCount: number | null;
+}
+
+// The submission fields an owner may amend while a thread is open
+// (registration settings and organisation are not among them).
+export interface AmendmentChanges {
+  title?: string;
+  purpose?: string | null;
+  description?: string | null;
+  startDatetime?: string | null;
+  endDatetime?: string | null;
+  expectedAttendance?: number | null;
+  preferredLayoutType?: string;
+  venuePreferences?: number[];
+  accessibilityNeeds?: string[];
+  equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
+}
+
+// GET /api/events/:id/clarifications — owner, same-organisation organisers and
+// the assigned coordinator; newest thread first.
+export function getEventClarifications(eventId: number): Promise<{ clarifications: ClarificationRound[] }> {
+  return apiRequest<{ clarifications: ClarificationRound[] }>(`/events/${eventId}/clarifications`);
+}
+
+// POST /api/events/:id/clarifications — assigned coordinator, UNDER_REVIEW only;
+// opens a thread. Errors: 400 VALIDATION_FAILED (fields.message), 403
+// TRANSITION_NOT_ALLOWED (details.currentStatus), 404 for another coordinator,
+// 409 EVENT_VERSION_CONFLICT (details.event).
+export async function requestClarification(
+  eventId: number,
+  message: string,
+  version: number,
+  idempotencyKey: string,
+): Promise<{ event: EventView; clarification: ClarificationRound }> {
+  const result = await apiRequest<{ event: RawEventView; clarification: ClarificationRound }>(`/events/${eventId}/clarifications`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ message, version }),
+  });
+  return { event: toEventView(result.event), clarification: result.clarification };
+}
+
+// POST /api/events/:id/clarifications/:round/messages — owner or assigned
+// coordinator, open thread only. Errors: 400 VALIDATION_FAILED (fields.body),
+// 403 EVENT_READ_ONLY, 404 CLARIFICATION_NOT_FOUND, 409 CLARIFICATION_CLOSED.
+export function postClarificationMessage(
+  eventId: number,
+  round: number,
+  body: string,
+  idempotencyKey: string,
+): Promise<{ message: string; clarification: ClarificationRound | null }> {
+  return apiRequest<{ message: string; clarification: ClarificationRound | null }>(
+    `/events/${eventId}/clarifications/${round}/messages`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ body }) },
+  );
+}
+
+// POST /api/events/:id/clarifications/:round/read — lets the next message notify
+// this viewer again. Stored only for the owner and the assigned coordinator.
+export function markClarificationRead(eventId: number, round: number): Promise<void> {
+  return apiRequest<void>(`/events/${eventId}/clarifications/${round}/read`, { method: "POST" });
+}
+
+// POST /api/events/:id/amendments — owner, open thread only; the event stays
+// returned. Errors: 400 VALIDATION_FAILED (fields; fields.changes when nothing
+// changed), 403 FIELD_NOT_EDITABLE / EVENT_READ_ONLY / TRANSITION_NOT_ALLOWED,
+// 409 EVENT_VERSION_CONFLICT (details.event), CLARIFICATION_NOT_OPEN, or
+// COORDINATOR_CONFLICT when amended dates clash with the coordinator's schedule.
+export async function saveAmendments(
+  eventId: number,
+  changes: AmendmentChanges,
+  version: number,
+  idempotencyKey: string,
+): Promise<{ message: string; event: EventView }> {
+  const result = await apiRequest<{ message: string; event: RawEventView }>(`/events/${eventId}/amendments`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ changes, version }),
+  });
+  return { message: result.message, event: toEventView(result.event) };
+}
+
+// POST /api/events/:id/clarifications/:round/complete — assigned coordinator;
+// returns the event to UNDER_REVIEW. A version from before the latest amendments
+// is 409 EVENT_VERSION_CONFLICT (details.event); also 409 CLARIFICATION_CLOSED,
+// 403 TRANSITION_NOT_ALLOWED.
+export async function completeClarification(
+  eventId: number,
+  round: number,
+  version: number,
+  idempotencyKey: string,
+): Promise<{ message: string; event: EventView; clarification: ClarificationRound | null }> {
+  const result = await apiRequest<{ message: string; event: RawEventView; clarification: ClarificationRound | null }>(
+    `/events/${eventId}/clarifications/${round}/complete`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ version }) },
+  );
+  return { message: result.message, event: toEventView(result.event), clarification: result.clarification };
 }
 
 // GET /api/events/assigned — COORDINATOR only; soonest event first.

@@ -289,6 +289,43 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   equipmentRequirements: values.equipmentRequirements.map(item => ({ ...item })),
 });
 
+// SPM-41: fields an owner may amend while a clarification thread is open.
+// Registration settings and organisation are not among them.
+export const AMENDABLE_FIELDS = [
+  "title",
+  "purpose",
+  "description",
+  "startDatetime",
+  "endDatetime",
+  "expectedAttendance",
+  "preferredLayoutType",
+  "venuePreferences",
+  "accessibilityNeeds",
+  "equipmentRequirements",
+] as const;
+export type AmendableField = (typeof AMENDABLE_FIELDS)[number];
+export type EventAmendments = Partial<Pick<EventRequestPayload, AmendableField>>;
+
+// Only the amendable fields whose submitted value differs from the event as loaded.
+export const amendedFields = (original: EventFormValues, current: EventFormValues): EventAmendments => {
+  const before = toPayload(original);
+  const after = toPayload(current);
+  const changes: EventAmendments = {};
+  for (const field of AMENDABLE_FIELDS) {
+    if (JSON.stringify(before[field]) !== JSON.stringify(after[field])) {
+      (changes as Record<string, unknown>)[field] = after[field];
+    }
+  }
+  return changes;
+};
+
+// SPM-41: a thread message is required and at most `limit` characters.
+export const clarificationMessageProblem = (text: string, limit = 2000) => {
+  if (!text.trim()) return "Write a message before sending.";
+  if (text.length > limit) return `Use ${limit.toLocaleString()} characters or fewer.`;
+  return null;
+};
+
 export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
   const savedNeeds = Array.isArray(event.accessibilityNeeds)
     ? event.accessibilityNeeds
