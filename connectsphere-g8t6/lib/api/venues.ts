@@ -2,7 +2,6 @@ import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
 import {
   availabilityQuery,
-  catalogueQuery,
   managedVenueQuery,
   type AvailabilityParams,
   type CatalogueFilters,
@@ -19,6 +18,8 @@ export type VenueRoom = {
 
 export type DetailStatus = "CURRENT" | "NOT_AVAILABLE" | "NOT_CHECKED";
 
+// A venue's catalogue fields; the event venue section (lib/api/event-venues.ts)
+// adds each event's requirements and availability to them.
 export type Venue = {
   venueId: number;
   name: string;
@@ -41,15 +42,6 @@ export type Venue = {
   emergencyAccess: string | null;
   knownRestrictions: string[] | null;
 };
-
-export type VenueCatalogue = {
-  venues: Venue[];
-  detailsAvailable: boolean;
-  filtersNotChecked?: string[];
-};
-
-export const getVenueCatalogue = (filters: CatalogueFilters = {}) =>
-  apiRequest<VenueCatalogue>(`/venues${catalogueQuery(filters)}`);
 
 // ---------- maintenance (SPM-73, Venue Staff) ----------
 

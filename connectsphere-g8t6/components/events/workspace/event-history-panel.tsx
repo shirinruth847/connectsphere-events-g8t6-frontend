@@ -21,6 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
   EVENT_CONFIRMED: "Event confirmed",
   PREPARATION_STARTED: "Preparation started",
   EVENT_COMPLETED: "Event completed",
+  VENUE_SUGGESTED: "Venue suggested",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -51,11 +52,33 @@ function describeHistory(event: EventView) {
   return "Changes made since the request was submitted.";
 }
 
+// A suggestion is not an edit of the request (SPM-72 AC8): it reads as the
+// venue suggested, and which suggestion it replaces, rather than From/To.
+function ChangeValue({ change }: { change: EventHistoryEntry["changes"][number] }) {
+  if (change.field === "suggestedVenue") {
+    return (
+      <dd className="mt-1 grid gap-0.5 text-on-surface">
+        <span className="line-clamp-3">{formatValue(change.field, change.after)}</span>
+        {change.before ? <span className="line-clamp-3 text-on-surface-variant">Replaces {formatValue(change.field, change.before)}</span> : null}
+      </dd>
+    );
+  }
+  return (
+    <dd className="mt-1 grid gap-0.5 text-on-surface">
+      <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {formatValue(change.field, change.before)}</span>
+      <span className="line-clamp-3"><span className="font-semibold">To:</span> {formatValue(change.field, change.after)}</span>
+    </dd>
+  );
+}
+
+const historyIcon = (action: string) =>
+  action.startsWith("COORDINATOR_") ? "person" : action === "EVENT_SUBMITTED" ? "check" : action === "VENUE_SUGGESTED" ? "venue" : "edit";
+
 function HistoryItem({ entry }: { entry: EventHistoryEntry }) {
   return (
     <li className="relative pl-7">
       <span aria-hidden="true" className="absolute left-0 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-primary-fixed text-primary">
-        <Icon name={entry.action.startsWith("COORDINATOR_") ? "person" : entry.action === "EVENT_SUBMITTED" ? "check" : "edit"} size={16} />
+        <Icon name={historyIcon(entry.action)} size={16} />
       </span>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <p className="text-sm font-semibold text-on-surface">{actionLabel(entry)}</p>
@@ -73,10 +96,7 @@ function HistoryItem({ entry }: { entry: EventHistoryEntry }) {
           {entry.changes.map((change) => (
             <div key={change.field} className="text-xs">
               <dt className="font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{fieldLabel(change.field)}</dt>
-              <dd className="mt-1 grid gap-0.5 text-on-surface">
-                <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {formatValue(change.field, change.before)}</span>
-                <span className="line-clamp-3"><span className="font-semibold">To:</span> {formatValue(change.field, change.after)}</span>
-              </dd>
+              <ChangeValue change={change} />
             </div>
           ))}
         </dl>

@@ -8,7 +8,8 @@
 
 import { apiRequest } from "@/lib/api";
 
-export type ViewerRelationship = "OWNER" | "ORGANISATION_MEMBER" | "ASSIGNED_COORDINATOR";
+// SUPERVISING_LEAD: the Lead who assigned the event, read-only (SPM-72/74).
+export type ViewerRelationship = "OWNER" | "ORGANISATION_MEMBER" | "ASSIGNED_COORDINATOR" | "SUPERVISING_LEAD";
 
 export type HistoryAudience = "OWNER_ONLY" | "ORGANISER_SAFE" | "STAFF_ONLY";
 
@@ -23,6 +24,20 @@ export interface EventPermissions {
   editableFields: string[];
   canViewDraftHistory: boolean;
   canViewStaffHistory: boolean;
+  // The assigned coordinator, while the event is under review or in planning.
+  canSuggestVenue?: boolean;
+}
+
+// The coordinator's suggested venue (SPM-72/74). Advice to the organiser, not
+// a hold or booking.
+export interface VenueSuggestion {
+  venueId: number;
+  name: string | null;
+  address: string | null;
+  maxCapacity: number | null;
+  suggestedAt: string;
+  suggestedBy: string | null;
+  version: number;
 }
 
 export interface EventView {
@@ -65,6 +80,7 @@ export interface EventView {
   // SPM-173: counts changes to venue bookings, technical arrangements and
   // attendance; a safety approval is valid only for the version it reviewed.
   arrangementVersion?: number;
+  venueSuggestion?: VenueSuggestion | null;
 }
 
 export interface EventHistoryChange {

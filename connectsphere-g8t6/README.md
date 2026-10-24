@@ -90,7 +90,7 @@ Validation used Node.js 24.9.0.
   and traces are under ignored `playwright-report/` and `test-results/`.
   Live-account browser checks may use `E2E_COORDINATOR_EMAIL`,
   `E2E_COORDINATOR_PASSWORD`, `E2E_ATTENDEE_EMAIL`, and
-  `E2E_ATTENDEE_PASSWORD`; the venue catalogue tests do not require these
+  `E2E_ATTENDEE_PASSWORD`; the event venue section tests do not require these
   variables because they mock authentication and venue responses.
 - `npm run build` uses Webpack and performs TypeScript checks.
 - `npm run test:live` requires both real applications already running at

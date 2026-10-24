@@ -49,9 +49,11 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
-  // Venue Staff open an event through its venue bookings (SPM-181).
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF";
-  if (pathname === ROUTES.venues) return ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(role);
+  // Venue Staff open an event through its venue bookings (SPM-181); Leads open
+  // the events they supervise, read-only (SPM-72/74).
+  if (/^\/events\/\d+$/.test(pathname)) return ["ORGANISER", "COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(role);
+  // Coordinators and Leads browse venues inside each event instead (SPM-72/74).
+  if (pathname === ROUTES.venues) return role === "VENUE_STAFF";
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
   return false;

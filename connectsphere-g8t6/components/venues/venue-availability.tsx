@@ -12,7 +12,6 @@ import { calendarDate } from "@/lib/coordinator-calendar";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import {
   getVenueAvailability,
-  getVenueCatalogue,
   type AvailabilityParams,
   type CalendarEntry,
   type VenueAvailability,
@@ -137,52 +136,43 @@ function VenueSummaryCard({ venue }: { venue: VenueCalendar }) {
   );
 }
 
-type PickerVenue = { venueId: number; name: string };
-
-// The venues a role may pick: Venue Staff get every non-deleted venue (live, so
-// added or removed venues show up); coordinators get the active catalogue.
-function usePickerVenues(): { venues: PickerVenue[] | null; error: string } {
-  const user = useSessionUser();
-  const isStaff = user?.role === "VENUE_STAFF";
-  const options = useVenueOptions(isStaff);
-  const [catalogue, setCatalogue] = useState<PickerVenue[] | null>(null);
-  const [catalogueError, setCatalogueError] = useState("");
-
-  useEffect(() => {
-    if (!user || isStaff) return;
-    let alive = true;
-    getVenueCatalogue()
-      .then((result) => { if (alive) setCatalogue(result.venues.map(({ venueId, name }) => ({ venueId, name }))); })
-      .catch((caught: unknown) => { if (alive) setCatalogueError(caught instanceof Error ? caught.message : "Venues could not be loaded."); });
-    return () => { alive = false; };
-  }, [user, isStaff]);
-
-  return isStaff ? { venues: options.venues, error: options.error } : { venues: catalogue, error: catalogueError };
+// The venues an event's calendar shows, opened on the event's date with its
+// window checked (SPM-72/74 venue section); the venue picker is hidden.
+export interface FixedCalendarVenues {
+  venueIds: number[];
+  date: Date;
+  check: AvailabilityParams["check"];
 }
 
-// The venue availability calendar (SPM-74, SPM-181) for Event Coordinators and
-// Venue Staff, in the shared calendar's year/month/week/day timeline. The
+// The venue availability calendar (SPM-74, SPM-181) in the shared calendar's
+// year/month/week/day timeline: Venue Staff pick venues at /venues; Event
+// Coordinators see it inside an event's venue section with `fixed` venues. The
 // backend computes availability from PostgreSQL bookings and MongoDB holds and
 // blocks; if it cannot be loaded, no calendar is shown, so nothing looks free.
-export function VenueAvailabilityCalendar() {
+export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenues } = {}) {
   const searchParams = useSearchParams();
+  const user = useSessionUser();
   const initialVenue = Number(searchParams.get("venueId"));
-  const picker = usePickerVenues();
+  // Every non-deleted venue for Venue Staff, live (SPM-181).
+  const picker = useVenueOptions(!fixed && user?.role === "VENUE_STAFF");
   const [venueSearch, setVenueSearch] = useState("");
-  const [selected, setSelected] = useState<number[]>(Number.isInteger(initialVenue) && initialVenue > 0 ? [initialVenue] : []);
-  const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
-  const [currentDate, setCurrentDate] = useState(() => calendarDate(new Date()));
-  const [checkOn, setCheckOn] = useState(false);
-  const [checkDraft, setCheckDraft] = useState({ date: civilDate(calendarDate(new Date())), startTime: "10:00", endTime: "12:00" });
-  const [check, setCheck] = useState<AvailabilityParams["check"]>(null);
+  const [pickedVenues, setSelected] = useState<number[]>(Number.isInteger(initialVenue) && initialVenue > 0 ? [initialVenue] : []);
+  const selected = fixed ? fixed.venueIds : pickedVenues;
+  const [viewMode, setViewMode] = useState<CalendarViewMode>(fixed ? "week" : "month");
+  const [currentDate, setCurrentDate] = useState(() => fixed?.date ?? calendarDate(new Date()));
+  const [checkOn, setCheckOn] = useState(Boolean(fixed?.check));
+  const [checkDraft, setCheckDraft] = useState(() => fixed?.check ?? { date: civilDate(calendarDate(new Date())), startTime: "10:00", endDate: "", endTime: "12:00" });
+  const [check, setCheck] = useState<AvailabilityParams["check"]>(fixed?.check ?? null);
   const [state, setState] = useState<CalendarState>({ status: "idle" });
   const [attempt, setAttempt] = useState(0);
   const [openEntry, setOpenEntry] = useState<CalendarEntryRef | null>(null);
 
   const range = calendarRange(viewMode, currentDate);
+  // Keyed on the IDs' contents: a fixed list is rebuilt on every parent render.
+  const selectedKey = selected.join(",");
   const params: AvailabilityParams | null = useMemo(
-    () => (selected.length ? { date: range.date, days: range.days, venueIds: selected, check } : null),
-    [selected, range.date, range.days, check],
+    () => (selectedKey ? { date: range.date, days: range.days, venueIds: selectedKey.split(",").map(Number), check } : null),
+    [selectedKey, range.date, range.days, check],
   );
 
   // Loads whenever the venues, the visible range or the checked period change.
@@ -223,8 +213,8 @@ export function VenueAvailabilityCalendar() {
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <fieldset className="grid content-start gap-2">
+      <div className={`grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 ${fixed ? "" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"}`}>
+        {fixed ? null : <fieldset className="grid content-start gap-2">
           <legend className="mb-1 text-xs font-semibold text-on-surface">Venues ({selected.length}/{MAX_VENUES} selected)</legend>
           <input aria-label="Find a venue" type="search" className={fieldClasses} placeholder="Find a venue" value={venueSearch} onChange={(event) => setVenueSearch(event.target.value)} />
           {picker.error ? <AlertBanner tone="error">{picker.error}</AlertBanner> : null}
@@ -239,7 +229,7 @@ export function VenueAvailabilityCalendar() {
               )) : <p className="p-2 text-sm text-on-surface-variant">No venues match.</p>}
             </div>
           ) : null}
-        </fieldset>
+        </fieldset>}
 
         <form onSubmit={applyCheck} aria-label="Check a requested period" className="grid content-start gap-3">
           <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-on-surface">
@@ -248,7 +238,7 @@ export function VenueAvailabilityCalendar() {
           </label>
           {checkOn ? (
             <>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div>
                   <FormLabel htmlFor="check-date">Date</FormLabel>
                   <input id="check-date" type="date" className={fieldClasses} value={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, date: event.target.value })} />
@@ -256,6 +246,10 @@ export function VenueAvailabilityCalendar() {
                 <div>
                   <FormLabel htmlFor="check-start">Start</FormLabel>
                   <input id="check-start" type="time" className={fieldClasses} value={checkDraft.startTime} onChange={(event) => setCheckDraft({ ...checkDraft, startTime: event.target.value })} />
+                </div>
+                <div>
+                  <FormLabel htmlFor="check-end-date">End date</FormLabel>
+                  <input id="check-end-date" type="date" className={fieldClasses} value={checkDraft.endDate ?? ""} min={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, endDate: event.target.value })} />
                 </div>
                 <div>
                   <FormLabel htmlFor="check-end">End</FormLabel>

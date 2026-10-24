@@ -235,3 +235,47 @@ export async function installLoginMock(page, { role = "ORGANISER", invalid = fal
   return state;
 }
 export { expect };
+
+// SPM-72/74: one venue option as the venue-options routes return it.
+export const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005050201a5d9ad9c0000000049454e44ae426082", "hex");
+
+export const requirement = (key, label, status, detail) => ({ key, label, status, detail });
+export const venueOption = (overrides = {}) => ({
+  venueId: 45,
+  name: "Synthetic Grand Hall",
+  address: "1 Harbourfront Walk",
+  maxCapacity: 300,
+  operatingHours: "08:00-22:00",
+  accessibilityFeatures: ["Wheelchair accessible entrance"],
+  setupMinutes: 30,
+  turnaroundMinutes: 45,
+  rooms: [{ roomId: 1, layoutType: "THEATRE", capacity: 300 }],
+  detailStatus: "CURRENT",
+  description: "Main hall with a stage.",
+  facilities: ["Projector", "Stage"],
+  supportedLayouts: ["THEATRE"],
+  emergencyAccess: "Two exits on the north side",
+  knownRestrictions: ["No open flames"],
+  coverPhotoId: "6716f0c2a1b2c3d4e5f60718",
+  availability: { status: "AVAILABLE", label: "Available", occupiedStart: "2026-11-20T01:30:00.000Z", occupiedEnd: "2026-11-20T04:45:00.000Z", conflicts: [], operatingHoursWarning: null },
+  requirements: [
+    requirement("capacity", "Capacity", "MET", "Holds 300; 150 expected"),
+    requirement("availability", "Availability", "MET", "Available"),
+    requirement("layout", "Layout", "MET", "THEATRE layout"),
+    requirement("accessibility-0", "Accessibility", "MET", "Wheelchair access"),
+  ],
+  unmetCount: 0,
+  allRequirementsMet: true,
+  ...overrides,
+});
+
+// Read-only photos for everyone choosing a venue (GET /api/venues/options/:id/photos).
+export async function routeVenuePhotos(page) {
+  await page.route(/\/api\/venues\/options\/\d+\/photos(\/\w+)?$/, (route) => {
+    if (route.request().method() === "OPTIONS") return route.fallback();
+    if (/\/photos$/.test(new URL(route.request().url()).pathname)) {
+      return route.fulfill({ json: { photos: [{ photoId: "6716f0c2a1b2c3d4e5f60718", position: 0, caption: "Front entrance", contentType: "image/png", size: PNG.length, uploadedAt: "2026-10-20T00:00:00.000Z", updatedAt: null, version: 1 }] } });
+    }
+    return route.fulfill({ status: 200, contentType: "image/png", body: PNG });
+  });
+}

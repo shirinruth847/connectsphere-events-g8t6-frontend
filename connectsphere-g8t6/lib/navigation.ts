@@ -48,6 +48,8 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
     if (pathname === "/calendar") return "calendar";
+    // A supervised event is opened from Assignments (SPM-72/74).
+    if (pathname.startsWith("/events/")) return "assignments";
     return "home";
   }
   if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
