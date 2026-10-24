@@ -41,6 +41,10 @@ export type Venue = {
   supportedLayouts: string[] | null;
   emergencyAccess: string | null;
   knownRestrictions: string[] | null;
+  // Venues of the same building (a hall and its rooms), each bookable on its
+  // own; only those still available. null when the detail service is down;
+  // absent from older backends.
+  relatedVenues?: { venueId: number; name: string }[] | null;
 };
 
 // ---------- maintenance (SPM-73, Venue Staff) ----------

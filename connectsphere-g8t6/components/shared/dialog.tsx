@@ -11,11 +11,13 @@ interface DialogProps {
   badge?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  // "wide" fits a whole workspace, e.g. the venue search.
+  size?: "default" | "wide";
 }
 
 // Modal built on the native <dialog>: showModal() traps focus, Escape closes it,
 // and focus returns to whatever opened it.
-export function Dialog({ open, onClose, title, badge, children, footer }: DialogProps) {
+export function Dialog({ open, onClose, title, badge, children, footer, size = "default" }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const titleId = useId();
@@ -42,7 +44,7 @@ export function Dialog({ open, onClose, title, badge, children, footer }: Dialog
         event.preventDefault();
         onClose();
       }}
-      className="m-auto w-[min(640px,calc(100vw-32px))] max-h-[calc(100vh-48px)] rounded-panel bg-surface-container-lowest p-0 text-on-surface shadow-elevation-4 backdrop:bg-on-surface/40 backdrop:backdrop-blur-sm open:flex open:flex-col"
+      className={`m-auto ${size === "wide" ? "w-[min(1280px,calc(100vw-32px))] max-h-[calc(100dvh-32px)]" : "w-[min(640px,calc(100vw-32px))] max-h-[calc(100vh-48px)]"} rounded-panel bg-surface-container-lowest p-0 text-on-surface shadow-elevation-4 backdrop:bg-on-surface/40 backdrop:backdrop-blur-sm open:flex open:flex-col`}
     >
       <header className="flex items-start justify-between gap-4 border-b border-outline-variant/60 px-5 py-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -57,7 +59,9 @@ export function Dialog({ open, onClose, title, badge, children, footer }: Dialog
           <Icon name="close" size={20} label="Close dialog" />
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+      {/* relative: absolutely placed content (e.g. sr-only text) scrolls and clips
+          with the body instead of stretching the dialog. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
       {footer ? <footer className="flex flex-wrap justify-end gap-2 border-t border-outline-variant/60 px-5 py-4">{footer}</footer> : null}
     </dialog>
   );

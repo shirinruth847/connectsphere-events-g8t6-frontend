@@ -401,8 +401,11 @@ test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active an
   await page.getByLabel("End", { exact: true }).fill("14:00");
   await page.getByRole("button", { name: "Check period" }).click();
   await expect.poll(() => requests.at(-1)).toMatchObject({ checkStart: "2026-11-04T12:44:00+08:00", checkEnd: "2026-11-04T14:00:00+08:00" });
-  await expect(page.getByText("Requested period: Unavailable – booking")).toBeVisible();
-  await expect(page.getByText(/This period cannot be requested/)).toBeVisible();
+  // The period shows on the timeline (developer request of 24 October 2026):
+  // a labelled block whose hover detail gives the result, red where it overlaps.
+  const requested = calendarRegion(page).locator(".cal-overlay--request .cal-overlay-label");
+  await expect(requested).toHaveAttribute("aria-label", /^Requested period · 12:44–14:00\. .*Unavailable – booking/s);
+  await expect(calendarRegion(page).locator(".cal-overlay--conflict")).not.toHaveCount(0);
 });
 
 test("[SPM-74] the calendar's year view loads the whole year and its legend names venues", async ({ page }) => {
@@ -450,7 +453,10 @@ test("[SPM-74 TC8][TC14] blocks show reason and note; an empty range says the ve
   await expect(details.getByText("Reason: Maintenance")).toBeVisible();
   await expect(details.getByText("Note: Air-conditioning service")).toBeVisible();
   await details.getByRole("button", { name: "Close dialog" }).click();
-  await expect(page.getByText("No bookings, holds or blocks in this period. The venue is available for the whole range.")).toBeVisible();
+  // An empty range: the timeline shows no entry for the free venue, and there
+  // are no summary cards (developer request of 24 October 2026).
+  await expect(calendarRegion(page).getByLabel(/Synthetic Grand Hall/)).toHaveCount(0);
+  await expect(page.getByLabel("Venue summaries")).toHaveCount(0);
 });
 
 test("[SPM-74 TC13] a failed load shows an error and no calendar, with retry", async ({ page }) => {

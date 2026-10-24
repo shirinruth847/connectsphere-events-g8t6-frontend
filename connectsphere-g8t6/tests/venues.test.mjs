@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { availabilityQuery, catalogueQuery, managedVenueQuery, venueOptionsQuery } from '../components/venues/venue-queries.ts';
-import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, showMoreCount, suggestionBlocker, venueFilterChoices } from '../components/venues/event-venue-options/venue-option-model.ts';
+import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, parsePageSize, showMoreCount, suggestionBlocker, venueFilterChoices } from '../components/venues/event-venue-options/venue-option-model.ts';
 import { EMPTY_VENUE_FORM, parseList, validateVenueForm } from '../components/venue-staff/venue-management/venue-form-rules.ts';
 import { canViewPath } from '../lib/auth.ts';
 
@@ -127,4 +127,10 @@ test('[SPM-75] the filter dropdowns list every value the venues carry, once, and
   assert.deepEqual(first, { layouts: ['Banquet', 'CLASSROOM', 'THEATRE'], facilities: ['Projector', 'Stage'], accessibility: ['Ramp'] });
   // A filtered load returns fewer venues; the earlier choices stay.
   assert.deepEqual(venueFilterChoices([venue([], [], ['PA system'], [])], first).facilities, ['PA system', 'Projector', 'Stage']);
+});
+
+test('[SPM-75 TC-VS-006] "Show x results" takes whole numbers from 1 to 100', () => {
+  assert.equal(parsePageSize('7'), 7);
+  assert.equal(parsePageSize(' 100 '), 100);
+  for (const value of ['', '0', '101', '2.5', '-3', 'ten']) assert.equal(parsePageSize(value), null, value);
 });

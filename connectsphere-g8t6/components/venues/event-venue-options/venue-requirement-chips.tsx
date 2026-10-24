@@ -26,7 +26,8 @@ const chipText = (requirement: VenueRequirement) => {
   return requirement.key === "capacity" || requirement.key === "availability" ? requirement.label : requirement.detail;
 };
 
-export function RequirementChip({ requirement }: { requirement: VenueRequirement }) {
+// text replaces the chip's short wording, e.g. "Capacity 300".
+export function RequirementChip({ requirement, text }: { requirement: VenueRequirement; text?: string }) {
   const met = requirement.status === "MET";
   const full = `${requirement.label}: ${requirement.detail} (${requirementStatusWord(requirement)})`;
   return (
@@ -35,18 +36,21 @@ export function RequirementChip({ requirement }: { requirement: VenueRequirement
       title={full}
     >
       <Icon name={met ? "check" : requirement.status === "NOT_CHECKED" ? "info" : "close"} size={16} />
-      <span aria-hidden="true" className="truncate">{chipText(requirement)}</span>
+      <span aria-hidden="true" className="truncate">{text ?? chipText(requirement)}</span>
       <span className="sr-only">{full}</span>
     </li>
   );
 }
 
-export function RequirementRow({ requirement }: { requirement: VenueRequirement }) {
+// venueValue is what the venue has for this need, e.g. its layouts, so the
+// details need no separate rows for them.
+export function RequirementRow({ requirement, venueValue }: { requirement: VenueRequirement; venueValue?: string }) {
   return (
-    <li className={`flex items-start justify-between gap-3 rounded-control border px-3 py-2 text-sm ${REQUIREMENT_STYLES[requirement.status]}`}>
+    <li className={`flex items-start justify-between gap-3 rounded-control border px-3 py-1.5 text-sm ${REQUIREMENT_STYLES[requirement.status]}`}>
       <span className="min-w-0">
         <span className="font-semibold">{requirement.label}</span>
         <span className="block [overflow-wrap:anywhere]">{requirement.detail}</span>
+        {venueValue ? <span className="block text-xs [overflow-wrap:anywhere]">Venue has: {venueValue}</span> : null}
       </span>
       <span className="shrink-0 text-xs font-semibold uppercase tracking-label">{requirementStatusWord(requirement)}</span>
     </li>

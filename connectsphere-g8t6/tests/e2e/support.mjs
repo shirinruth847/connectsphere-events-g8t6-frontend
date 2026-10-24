@@ -256,6 +256,7 @@ export const venueOption = (overrides = {}) => ({
   supportedLayouts: ["THEATRE"],
   emergencyAccess: "Two exits on the north side",
   knownRestrictions: ["No open flames"],
+  relatedVenues: [],
   coverPhotoId: "6716f0c2a1b2c3d4e5f60718",
   availability: { status: "AVAILABLE", label: "Available", occupiedStart: "2026-11-20T01:30:00.000Z", occupiedEnd: "2026-11-20T04:45:00.000Z", conflicts: [], operatingHoursWarning: null },
   requirements: [

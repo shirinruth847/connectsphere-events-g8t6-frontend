@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { CalendarView, type CalendarViewMode } from "@/components/calendar/calendar-view";
 import { Dialog } from "@/components/shared/dialog";
-import { AlertBanner, Button, EmptyState, FormLabel, ReferenceIdTag, SectionCard, Skeleton, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, EmptyState, FormLabel, ReferenceIdTag, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { ApiError } from "@/lib/api";
 import { calendarDate } from "@/lib/coordinator-calendar";
@@ -15,12 +15,16 @@ import {
   type AvailabilityParams,
   type CalendarEntry,
   type VenueAvailability,
-  type VenueCalendar,
 } from "@/lib/api/venues";
-import { calendarRange, civilDate, toCalendarLanes, type CalendarEntryRef } from "./availability-calendar-model";
+import { availabilityOverlays, calendarRange, civilDate, toCalendarLanes, type CalendarEntryRef } from "./availability-calendar-model";
 import { useVenueOptions } from "./use-venue-options";
 
 const MAX_VENUES = 20;
+
+// "10:00–12:00" in Singapore time, for the request block's label: its column
+// already gives the date.
+const timeOfDay = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Singapore", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const formatTimes = (start: string, end: string) => `${timeOfDay.format(new Date(start))}–${timeOfDay.format(new Date(end))}`;
 
 type CalendarState =
   | { status: "idle" }
@@ -43,18 +47,6 @@ const entryStyleKey = (entry: CalendarEntry) => {
   return "BLOCK_ACTIVE";
 };
 const entryStyle = (entry: CalendarEntry) => ENTRY_STYLES[entryStyleKey(entry)] ?? "border-l-outline bg-surface-container-low";
-
-const SUMMARY_CHIPS: Record<string, string> = {
-  AVAILABLE: "bg-[#DCFCE7] text-[#166534]",
-  AVAILABLE_WITH_WARNING: "bg-[#FEF3C7] text-[#92400E]",
-};
-function SummaryChip({ value, label }: { value: string; label: string }) {
-  return (
-    <span className={`inline-flex rounded-chip px-2 py-1 text-[11px] font-semibold uppercase tracking-label ${SUMMARY_CHIPS[value] ?? "bg-[#FEE2E2] text-[#991B1B]"}`}>
-      {label}
-    </span>
-  );
-}
 
 function EntryRow({ entry }: { entry: CalendarEntry }) {
   const hasBuffers = entry.occupiedStart !== entry.start || entry.occupiedEnd !== entry.end;
@@ -90,58 +82,14 @@ function EntryRow({ entry }: { entry: CalendarEntry }) {
   );
 }
 
-function VenueSummaryCard({ venue }: { venue: VenueCalendar }) {
-  const entriesById = new Map(venue.entries.map((entry) => [entry.entryId, entry]));
-  const describe = (entryId: string) => entriesById.get(entryId)?.label ?? entryId;
-  return (
-    <SectionCard className="grid gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold text-on-surface">{venue.name}</h3>
-          <p className="text-sm text-on-surface-variant">
-            {venue.operatingHours ? `Open ${venue.operatingHours}` : "Operating hours not listed"}
-            {" · "}
-            {venue.buffersRecorded ? `${venue.setupMinutes} min setup, ${venue.turnaroundMinutes} min turnaround` : "Setup and turnaround not recorded"}
-          </p>
-        </div>
-        <SummaryChip value={venue.summary} label={venue.summaryLabel} />
-      </div>
-
-      {!venue.buffersRecorded ? (
-        <AlertBanner tone="warning" live={false}>
-          Venue Staff have not recorded setup and turnaround times, so bookings are shown without them and no hold or booking can be made yet.
-        </AlertBanner>
-      ) : null}
-
-      {venue.check ? (
-        <AlertBanner tone={venue.check.canRequest ? (venue.check.operatingHoursWarning ? "warning" : "success") : "error"} live={false} title={`Requested period: ${venue.check.availabilityLabel}`}>
-          Occupied {formatEventWindow(venue.check.occupiedStart, venue.check.occupiedEnd)} including setup and turnaround.
-          {venue.check.conflicts.length ? ` Conflicts with: ${venue.check.conflicts.map((conflict) => `${describe(conflict.entryId)} (${formatEventWindow(conflict.occupiedStart, conflict.occupiedEnd)})`).join("; ")}. This period cannot be requested.` : ""}
-          {venue.check.operatingHoursWarning ? ` ${venue.check.operatingHoursWarning.message}` : ""}
-        </AlertBanner>
-      ) : null}
-
-      {venue.overlaps.length ? (
-        <AlertBanner tone="error" live={false} title="Overlapping occupied periods">
-          {venue.overlaps.map((overlap) => overlap.entryIds.map(describe).join(" and ")).join("; ")}
-        </AlertBanner>
-      ) : null}
-
-      {!venue.entries.length ? (
-        <p className="rounded-control bg-[#F0FDF4] p-3 text-sm font-semibold text-[#166534]">
-          No bookings, holds or blocks in this period. The venue is available for the whole range.
-        </p>
-      ) : null}
-    </SectionCard>
-  );
-}
-
 // The venues an event's calendar shows, opened on the event's date with its
 // window checked (SPM-72/74 venue section); the venue picker is hidden.
 export interface FixedCalendarVenues {
   venueIds: number[];
   date: Date;
   check: AvailabilityParams["check"];
+  // Names the checked period on the calendar, e.g. the request ID.
+  label?: string;
 }
 
 // The venue availability calendar (SPM-74, SPM-181) in the shared calendar's
@@ -202,6 +150,14 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
     return (picker.venues ?? []).filter((venue) => !text || venue.name.toLowerCase().includes(text));
   }, [picker.venues, venueSearch]);
   const calendar = useMemo(() => (state.status === "ready" ? toCalendarLanes(state.data) : null), [state]);
+  const overlays = useMemo(
+    () => (state.status === "ready" ? availabilityOverlays(state.data, range, { label: fixed?.label ?? "Requested period", formatWindow: formatEventWindow, formatTimes }) : []),
+    // range is rebuilt each render; its fields are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, range.date, range.days, fixed?.label],
+  );
+  const missingBuffers = state.status === "ready" ? state.data.venues.filter((venue) => !venue.buffersRecorded) : [];
+  const overlapping = state.status === "ready" ? state.data.venues.filter((venue) => venue.overlaps.length) : [];
 
   const toggle = (venueId: number) =>
     setSelected((current) => (current.includes(venueId) ? current.filter((id) => id !== venueId) : current.length >= MAX_VENUES ? current : [...current, venueId]));
@@ -209,6 +165,9 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
   const applyCheck = (event: FormEvent) => {
     event.preventDefault();
     setCheck(checkOn ? { ...checkDraft } : null);
+    // Show the checked period: the calendar moves to its first day.
+    const [year, month, day] = checkDraft.date.split("-").map(Number);
+    if (checkOn && year && month && day) setCurrentDate(new Date(year, month - 1, day));
   };
 
   return (
@@ -289,8 +248,19 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
             {/* The shared calendar's styles are scoped to the .coordinator-shell
                 class (components/layout/coordinator-shell.css); this wrapper
                 reuses them without the shell's full-page sizing. */}
-            <section aria-label="Venue availability calendar" className="coordinator-shell overflow-hidden rounded-panel shadow-elevation-1" style={{ minHeight: 0, background: "transparent" }}>
+            {missingBuffers.length ? (
+              <AlertBanner tone="warning" live={false}>
+                {missingBuffers.map((venue) => venue.name).join(", ")}: Venue Staff have not recorded setup and turnaround times, so bookings are shown without them and no hold or booking can be made yet.
+              </AlertBanner>
+            ) : null}
+            {overlapping.length ? (
+              <AlertBanner tone="error" live={false} title="Overlapping occupied periods">
+                {overlapping.map((venue) => venue.name).join(", ")} already {overlapping.length === 1 ? "has" : "have"} entries that overlap. Click an entry for its details.
+              </AlertBanner>
+            ) : null}
+            <section aria-label="Venue availability calendar" className="coordinator-shell venue-calendar overflow-hidden rounded-panel shadow-elevation-1" style={{ minHeight: 0, background: "transparent" }}>
               <CalendarView
+                overlays={overlays}
                 coordinators={calendar.lanes}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
@@ -300,9 +270,11 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
                 onEventClick={(event) => setOpenEntry(calendar.refs.get(event.eventId) ?? null)}
               />
             </section>
-            <div className="grid gap-3 lg:grid-cols-2" aria-label="Venue summaries">
-              {state.data.venues.map((venue) => <VenueSummaryCard key={venue.venueId} venue={venue} />)}
-            </div>
+            <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-on-surface-variant" aria-label="Calendar key">
+              <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border-2 border-[#CA8A04] bg-[#FACC15]/30" />Requested period</span>
+              <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-[#DC2626]/35" />Overlaps existing time</span>
+              <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-outline/25" />Closed</span>
+            </p>
           </>
         ) : (
           <EmptyState title="No venues to show" description="The selected venues are not available in the catalogue." />

@@ -16,8 +16,9 @@ import {
 } from "@/lib/api/event-venues";
 import type { EventView, VenueSuggestion } from "@/lib/api/event-workspace";
 import { VenueBrowser } from "./venue-browser";
+import { VenueCalendarToggle } from "./venue-calendar-toggle";
 import { VenueBadge, VenueOptionCard } from "./venue-option-card";
-import { VenueOptionPanel } from "./venue-option-panel";
+import { VenueDetails } from "./venue-details";
 import { eventCalendarCheck, suggestionBlocker, venueById } from "./venue-option-model";
 
 type ChoicesState =
@@ -35,15 +36,17 @@ interface EventVenueSectionProps {
 
 // The venue section of an event request for the assigned coordinator and the
 // supervising Lead (SPM-72/74). It opens on the organiser's ranked venue
-// choices; "Find another venue" opens the search, filters, comparison,
-// availability calendar and venue list, where the coordinator can suggest a
-// different venue to the organiser.
+// choices and the coordinator's suggestion; "Find another venue" opens a popup
+// with the search, filters, comparison, availability calendar and venue list,
+// where the coordinator can suggest a different venue to the organiser.
 export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSectionProps) {
   const [choices, setChoices] = useState<ChoicesState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [canSuggest, setCanSuggest] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [viewId, setViewId] = useState<number | null>(null);
+  // A related venue (e.g. a room of a chosen hall), opened from Related venues.
+  const [relatedId, setRelatedId] = useState<number | null>(null);
   const [suggestion, setSuggestion] = useState<VenueSuggestion | null>(event.venueSuggestion ?? null);
   const [confirming, setConfirming] = useState<EventVenueOption | null>(null);
   const [saving, setSaving] = useState(false);
@@ -69,8 +72,14 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
   const preferred = choices.status === "ready" ? choices.data.preferredVenues ?? [] : [];
   const preferredOptions = preferred.flatMap((choice) => (choice.option ? [choice.option] : []));
   const rankOf = new Map(preferred.map((choice) => [choice.venueId, choice.rank]));
-  const viewing = venueById(preferredOptions, viewId);
+  // A suggested venue outside the organiser's choices gets its own card; one of
+  // their choices shows the Suggested badge on its card instead.
+  const suggestedElsewhere = suggestion && !rankOf.has(suggestion.venueId) ? suggestion : null;
+  const suggestedOption = suggestedElsewhere && choices.status === "ready" ? venueById(choices.data.venues, suggestedElsewhere.venueId) : null;
+  const allVenues = choices.status === "ready" ? choices.data.venues : [];
+  const related = venueById([...allVenues, ...preferredOptions], relatedId);
   const check = eventCalendarCheck(event.startDatetime, event.endDatetime);
+  const calendar = isCoordinator ? { date: event.startDatetime ? calendarDate(new Date(event.startDatetime)) : calendarDate(new Date()), check, label: event.requestId } : null;
   const load = useCallback((query: VenueOptionsQuery) => getEventVenueOptions(event.eventId, query), [event.eventId]);
 
   const badge = (venue: EventVenueOption) => {
@@ -113,6 +122,9 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
       setSuggestion(result.suggestion);
       setNotice(`${result.message} It is recorded in the event history.`);
       setConfirming(null);
+      // Back on the event page, where the cards now show the suggestion.
+      setSearchOpen(false);
+      setRelatedId(null);
       onSuggested?.(result.suggestion);
     } catch (caught) {
       const code = caught instanceof ApiError ? caught.code : undefined;
@@ -125,6 +137,16 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
       setSaving(false);
     }
   };
+
+  // A choice's card expands in place to these details (developer request of
+  // 24 October 2026); the coordinator also gets the availability calendar.
+  const details = (venue: EventVenueOption) => (
+    <div className="grid min-w-0 gap-3">
+      <VenueDetails venue={venue} badge={badge(venue)} onOpenVenue={setRelatedId} />
+      {calendar ? <VenueCalendarToggle calendar={calendar} venueIds={[venue.venueId]} /> : null}
+    </div>
+  );
+  const toggleView = (venueId: number) => setViewId((current) => (current === venueId ? null : venueId));
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
@@ -144,13 +166,28 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
         </p>
       ) : null}
 
-      <section aria-label="Organiser's venue choices" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
+      {suggestedElsewhere ? (
+        <section aria-label="Suggested venue" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
+          <h3 className="text-sm font-semibold text-on-surface">Suggested venue</h3>
+          {suggestedOption ? (
+            <VenueOptionCard layout="row" venue={suggestedOption} viewing={suggestedOption.venueId === viewId} badge={badge(suggestedOption)} details={details(suggestedOption)} onView={() => toggleView(suggestedOption.venueId)} />
+          ) : (
+            <article aria-label={suggestedElsewhere.name ?? `Venue ${suggestedElsewhere.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
+              <div><VenueBadge tone="success"><Icon name="check" size={16} />Suggested</VenueBadge></div>
+              <h3 className="font-semibold text-on-surface [overflow-wrap:anywhere]">{suggestedElsewhere.name ?? `Venue ${suggestedElsewhere.venueId}`}</h3>
+              {suggestedElsewhere.address ? <p className="text-sm text-on-surface-variant">{suggestedElsewhere.address}</p> : null}
+              <p className="text-sm text-on-surface-variant">Not in the current venue list.</p>
+            </article>
+          )}
+        </section>
+      ) : null}
+
+      <section aria-label="Organiser's venue choices" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
         <h3 className="text-sm font-semibold text-on-surface">Organiser&apos;s venue choices</h3>
         {choices.status === "loading" ? (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 @lg:grid-cols-2 @2xl:grid-cols-3" aria-busy="true" aria-label="Loading venues">
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-64 w-full" />
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3" aria-busy="true" aria-label="Loading venues">
+            <Skeleton className="h-36 w-full" />
+            <Skeleton className="h-36 w-full" />
           </div>
         ) : choices.status === "error" ? (
           <AlertBanner tone="error" title="Unable to load venues">
@@ -162,55 +199,56 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
         ) : preferred.length === 0 ? (
           <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">The organiser did not choose a venue.</p>
         ) : (
-          <>
-            {viewing ? (
-              <VenueOptionPanel
-                label="Venue details"
-                venue={viewing}
-                venues={preferredOptions}
-                onChoose={setViewId}
-                onClose={() => setViewId(null)}
-                badge={badge(viewing)}
-                action={action(viewing, "panel")}
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
+            {preferred.map((choice) => choice.option ? (
+              <VenueOptionCard
+                key={choice.venueId}
+                layout="row"
+                venue={choice.option}
+                viewing={choice.venueId === viewId}
+                badge={badge(choice.option)}
+                action={action(choice.option, "card")}
+                details={details(choice.option)}
+                onView={() => toggleView(choice.venueId)}
               />
-            ) : null}
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 @lg:grid-cols-2 @2xl:grid-cols-3">
-              {preferred.map((choice) => choice.option ? (
-                <VenueOptionCard
-                  key={choice.venueId}
-                  venue={choice.option}
-                  viewing={choice.venueId === viewId}
-                  badge={badge(choice.option)}
-                  action={action(choice.option, "card")}
-                  onView={() => setViewId(choice.venueId)}
-                />
-              ) : (
-                <article key={choice.venueId} aria-label={choice.name ?? `Venue ${choice.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
-                  <div><VenueBadge>Organiser&apos;s choice {choice.rank}</VenueBadge></div>
-                  <h3 className="font-semibold text-on-surface [overflow-wrap:anywhere]">{choice.name ?? `Venue ${choice.venueId}`}</h3>
-                  <p className="text-sm text-on-surface-variant">No longer available for new requests.</p>
-                </article>
-              ))}
-            </div>
-          </>
+            ) : (
+              <article key={choice.venueId} aria-label={choice.name ?? `Venue ${choice.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
+                <div><VenueBadge>Organiser&apos;s choice {choice.rank}</VenueBadge></div>
+                <h3 className="font-semibold text-on-surface [overflow-wrap:anywhere]">{choice.name ?? `Venue ${choice.venueId}`}</h3>
+                <p className="text-sm text-on-surface-variant">No longer available for new requests.</p>
+              </article>
+            ))}
+          </div>
         )}
       </section>
 
       <div>
-        <Button type="button" variant="secondary" aria-expanded={searchOpen} onClick={() => setSearchOpen((open) => !open)}>
-          <Icon name={searchOpen ? "close" : "venue"} size={16} />{searchOpen ? "Hide venue search" : "Find another venue"}
+        <Button type="button" variant="secondary" aria-haspopup="dialog" onClick={() => setSearchOpen(true)}>
+          <Icon name="venue" size={16} />Find another venue
         </Button>
       </div>
-      {searchOpen ? (
-        <VenueBrowser
-          load={load}
-          reloadKey={String(event.eventId)}
-          onLoaded={(data) => setCanSuggest(data.canSuggestVenue)}
-          calendar={isCoordinator ? { date: event.startDatetime ? calendarDate(new Date(event.startDatetime)) : calendarDate(new Date()), check } : null}
-          badge={badge}
-          action={action}
-        />
-      ) : null}
+      {/* The search loads only while its popup is open. */}
+      <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} title="Find another venue" size="wide">
+        {searchOpen ? (
+          <VenueBrowser
+            load={load}
+            reloadKey={String(event.eventId)}
+            onLoaded={(data) => setCanSuggest(data.canSuggestVenue)}
+            calendar={calendar}
+            badge={badge}
+            action={action}
+          />
+        ) : null}
+      </Dialog>
+
+      <Dialog open={related !== null} onClose={() => setRelatedId(null)} title="Venue details" size="wide">
+        {related ? (
+          <div className="grid min-w-0 gap-3">
+            <VenueDetails venue={related} badge={badge(related)} action={action(related, "panel")} onOpenVenue={setRelatedId} />
+            {calendar ? <VenueCalendarToggle key={related.venueId} calendar={calendar} venueIds={[related.venueId]} /> : null}
+          </div>
+        ) : null}
+      </Dialog>
 
       <Dialog
         open={confirming !== null}

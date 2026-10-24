@@ -4,13 +4,13 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { AlertBanner, Button, EmptyState, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
-import { VenueAvailabilityCalendar } from "@/components/venues/venue-availability";
-import { VENUE_OPTION_SORT_OPTIONS, type AvailabilityParams, type VenueOptionSort } from "@/components/venues/venue-queries";
+import { VENUE_OPTION_SORT_OPTIONS, type VenueOptionSort } from "@/components/venues/venue-queries";
 import { ApiError } from "@/lib/api";
 import type { EventVenueOption, VenueOptionsQuery, VenueOptionsResult } from "@/lib/api/event-venues";
+import { VenueCalendarToggle, type VenueCalendarWindow } from "./venue-calendar-toggle";
 import { VenueOptionCard } from "./venue-option-card";
 import { VenueOptionPanel } from "./venue-option-panel";
-import { DEFAULT_VENUE_PAGE_SIZE, EMPTY_FILTER_CHOICES, VENUE_PAGE_SIZES, showMoreCount, venueById, venueFilterChoices, type VenuePageSize } from "./venue-option-model";
+import { DEFAULT_VENUE_PAGE_SIZE, EMPTY_FILTER_CHOICES, MAX_VENUE_PAGE_SIZE, parsePageSize, showMoreCount, venueById, venueFilterChoices } from "./venue-option-model";
 
 type OptionsState<T> =
   | { status: "loading" }
@@ -36,11 +36,6 @@ const splitFacilities = (value: string) => value.split(",").map((term) => term.t
 // The shared field style without its full width, for the toolbar selects.
 const compactSelect = `${fieldClasses.replace("w-full", "w-auto")} py-2`;
 
-export interface VenueCalendarWindow {
-  date: Date;
-  check: AvailabilityParams["check"];
-}
-
 interface VenueBrowserProps<T extends VenueOptionsResult> {
   // Loads the venues for the applied filters; called again when reloadKey changes.
   load: (query: VenueOptionsQuery) => Promise<T>;
@@ -55,21 +50,21 @@ interface VenueBrowserProps<T extends VenueOptionsResult> {
 
 // Search, filter, sort, view, compare and (coordinator) check the calendar
 // for the available venues (SPM-72/74/75). Requirement matching comes from
-// the backend. The cards scroll inside a window two rows of three tall, so the
-// page stays short (developer request of 23 October 2026).
+// the backend. The cards scroll inside a window two rows of three tall
+// (developer request of 23 October 2026); the event page opens this in a popup.
 export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, onLoaded, calendar, badge, action }: VenueBrowserProps<T>) {
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<VenueOptionSort>("match");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
-  const [pageSize, setPageSize] = useState<VenuePageSize>(DEFAULT_VENUE_PAGE_SIZE);
-  const [shown, setShown] = useState<number>(DEFAULT_VENUE_PAGE_SIZE);
+  const [pageSize, setPageSize] = useState(DEFAULT_VENUE_PAGE_SIZE);
+  const [pageSizeText, setPageSizeText] = useState(String(DEFAULT_VENUE_PAGE_SIZE));
+  const [shown, setShown] = useState(DEFAULT_VENUE_PAGE_SIZE);
   const [state, setState] = useState<OptionsState<T>>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [viewId, setViewId] = useState<number | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareId, setCompareId] = useState<number | null>(null);
-  const [calendarOpen, setCalendarOpen] = useState(false);
   const [choices, setChoices] = useState(EMPTY_FILTER_CHOICES);
   const [rankOpen, setRankOpen] = useState(false);
   const rankRef = useRef<HTMLDivElement>(null);
@@ -103,14 +98,17 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
     return () => { alive = false; };
   }, [reloadKey, applied, sort, order, attempt]);
 
-  // The facility checklist closes on an outside click or Escape.
+  // The facility checklist closes on an outside click or Escape; that Escape
+  // must not also close a popup around the search.
   useEffect(() => {
     if (!rankOpen) return;
     const closeOutside = (pointer: PointerEvent) => {
       if (!rankRef.current?.contains(pointer.target as Node)) setRankOpen(false);
     };
     const closeOnEscape = (key: globalThis.KeyboardEvent) => {
-      if (key.key === "Escape") setRankOpen(false);
+      if (key.key !== "Escape") return;
+      key.preventDefault();
+      setRankOpen(false);
     };
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
@@ -145,6 +143,17 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
   const more = showMoreCount(shown, venues.length, pageSize);
   const fieldErrors = state.status === "error" ? state.fields : undefined;
   const scrollToPanels = () => panelsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // A related venue (e.g. a room of this hall) opens in the details panel. One
+  // the filters hide is shown after clearing them; every related venue the
+  // backend returns can be chosen.
+  const openVenue = (venueId: number) => {
+    if (!venues.some((venue) => venue.venueId === venueId)) {
+      setDraft(EMPTY_FILTERS);
+      reload({ applied: EMPTY_FILTERS });
+    }
+    setViewId(venueId);
+    scrollToPanels();
+  };
 
   // Labels are visually hidden (each placeholder says what its box is for) so
   // the box stays two lines tall.
@@ -164,7 +173,9 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
       />
     </div>
   );
-  // A chosen value stays listed even if no loaded venue still carries it.
+  // A chosen value stays listed even if no loaded venue still carries it. The
+  // field name is a greyed placeholder, not a choice; the first choice is
+  // blank, to clear the filter.
   const dropdown = (field: FilterField, values: string[]) => {
     const current = draft[field.key];
     const listed = current && !values.some((value) => value.toLowerCase() === current.toLowerCase()) ? [current, ...values] : values;
@@ -173,14 +184,15 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
         <label htmlFor={`venue-option-${field.key}`} className="sr-only">{field.label}</label>
         <select
           id={`venue-option-${field.key}`}
-          className={`${fieldClasses} py-2`}
+          className={`${fieldClasses} py-2 ${current ? "" : "text-outline"}`}
           value={current}
           title={field.label}
           aria-invalid={Boolean(fieldErrors?.[field.key])}
           onChange={(changeEvent) => setDraft((draftNow) => ({ ...draftNow, [field.key]: changeEvent.target.value }))}
         >
-          <option value="">{field.placeholder}</option>
-          {listed.map((value) => <option key={value} value={value}>{value}</option>)}
+          <option value="" disabled hidden>{field.placeholder}</option>
+          <option value="" className="text-on-surface" aria-label={`Any ${field.label.toLowerCase()}`}>&nbsp;</option>
+          {listed.map((value) => <option key={value} value={value} className="text-on-surface">{value}</option>)}
         </select>
       </div>
     );
@@ -263,19 +275,29 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
             {VENUE_OPTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <SortOrderToggle order={order} onChange={(next) => reload({ order: next })} />
+          {/* "Show x results": a typed number from 1 to 100; an unfinished or
+              invalid entry keeps the last size and is put back on blur. */}
           <label htmlFor="venue-option-page-size" className="text-xs font-semibold text-on-surface-variant">Show</label>
-          <select
+          <input
             id="venue-option-page-size"
-            className={compactSelect}
-            value={pageSize}
+            type="number"
+            min={1}
+            max={MAX_VENUE_PAGE_SIZE}
+            step={1}
+            inputMode="numeric"
+            className={`${fieldClasses.replace("w-full", "w-20")} py-2`}
+            value={pageSizeText}
+            aria-describedby="venue-option-page-size-unit"
             onChange={(changeEvent) => {
-              const size = Number(changeEvent.target.value) as VenuePageSize;
+              setPageSizeText(changeEvent.target.value);
+              const size = parsePageSize(changeEvent.target.value);
+              if (size === null) return;
               setPageSize(size);
               setShown(size);
             }}
-          >
-            {VENUE_PAGE_SIZES.map((size) => <option key={size} value={size}>{size} venues</option>)}
-          </select>
+            onBlur={() => setPageSizeText(String(pageSize))}
+          />
+          <span id="venue-option-page-size-unit" className="text-xs font-semibold text-on-surface-variant">results</span>
           {state.status === "ready" && venues.length ? (
             <Button type="button" variant="secondary" aria-pressed={compareOpen} onClick={() => { setCompareOpen((open) => !open); if (compareOpen) setCompareId(null); }}>
               <Icon name="layout" size={16} />{compareOpen ? "Hide comparison view" : "Show comparison view"}
@@ -293,7 +315,9 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                 venue={viewing}
                 venues={venues}
                 onChoose={setViewId}
-                onClose={compareOpen ? undefined : () => { setViewId(null); setCalendarOpen(false); }}
+                onClose={compareOpen ? undefined : () => setViewId(null)}
+                excludeId={compareOpen ? compareId : null}
+                onOpenVenue={openVenue}
                 badge={viewing ? badge?.(viewing) : undefined}
                 action={viewing ? action?.(viewing, "panel") : undefined}
               />
@@ -304,26 +328,15 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                   venues={venues}
                   onChoose={setCompareId}
                   onClose={() => { setCompareOpen(false); setCompareId(null); }}
+                  excludeId={viewId}
+                  onOpenVenue={(venueId) => (venues.some((venue) => venue.venueId === venueId) ? setCompareId(venueId) : openVenue(venueId))}
                   badge={comparing ? badge?.(comparing) : undefined}
                   action={comparing ? action?.(comparing, "panel") : undefined}
                 />
               ) : null}
             </div>
           ) : null}
-          {calendar && calendarVenueIds.length ? (
-            <div className="grid min-w-0 gap-3">
-              <div>
-                <Button type="button" variant="secondary" aria-pressed={calendarOpen} onClick={() => setCalendarOpen((open) => !open)}>
-                  <Icon name="calendar" size={16} />{calendarOpen ? "Hide availability calendar" : "Show availability calendar"}
-                </Button>
-              </div>
-              {calendarOpen ? (
-                <div className="min-w-0 overflow-x-auto">
-                  <VenueAvailabilityCalendar key={calendarVenueIds.join(",")} fixed={{ venueIds: calendarVenueIds, date: calendar.date, check: calendar.check }} />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+          {calendar ? <VenueCalendarToggle calendar={calendar} venueIds={calendarVenueIds} /> : null}
         </div>
       ) : null}
 
@@ -363,12 +376,14 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
             )
           ) : (
             // A window up to two rows of three cards tall, never taller than the
-            // screen below the sticky header; the cards scroll inside it.
+            // screen; the cards scroll inside it. relative: the cards' sr-only
+            // text is clipped with them; without it, text of cards scrolled out
+            // of the window stretched the page below the app frame.
             <div
               role="region"
               aria-label="Venue list"
               tabIndex={0}
-              className="max-h-[min(52rem,calc(100dvh-7rem))] overflow-y-auto overscroll-contain rounded-panel border border-outline-variant bg-surface-container-low p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="relative max-h-[min(52rem,calc(100dvh-7rem))] overflow-y-auto overscroll-contain rounded-panel border border-outline-variant bg-surface-container-low p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <div className="grid grid-cols-[minmax(0,1fr)] gap-3 @lg:grid-cols-2 @2xl:grid-cols-3">
                 {venues.slice(0, shown).map((venue) => (
@@ -381,7 +396,8 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                     badge={badge?.(venue)}
                     action={action?.(venue, "card")}
                     onView={() => { setViewId(venue.venueId); scrollToPanels(); }}
-                    onCompare={() => { setCompareId(venue.venueId); scrollToPanels(); }}
+                    // A venue is never compared with itself.
+                    onCompare={venue.venueId === viewId ? undefined : () => { setCompareId(venue.venueId); scrollToPanels(); }}
                   />
                 ))}
               </div>

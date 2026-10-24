@@ -38,6 +38,20 @@ export type CalendarEvent = {
 export type CalendarEntityLabel = { singular: string; plural: string };
 const COORDINATOR_LABEL: CalendarEntityLabel = { singular: "coordinator", plural: "coordinators" };
 
+// A shaded period in the week and day views, drawn over the timeline rather
+// than as an event (developer request of 24 October 2026): "request" is the
+// period being checked (translucent yellow, with label in the block and detail
+// in a hover window), "conflict" where it overlaps existing occupied time
+// (red), "closed" outside operating hours (grey, beneath everything).
+export type CalendarOverlay = {
+  id: string;
+  start: string;
+  end: string;
+  tone: "request" | "conflict" | "closed";
+  label?: string;
+  detail?: string;
+};
+
 export type CalendarCoordinator = {
   coordinatorId: number;
   name: string;
@@ -505,6 +519,39 @@ function EventBlock({
   );
 }
 
+// The overlays that fall on one day, placed like events: a percentage of the day.
+function OverlayBlocks({ overlays, day }: { overlays: CalendarOverlay[]; day: Date }) {
+  const bounds = calendarDayBounds(day);
+  const total = bounds.end - bounds.start;
+  return (
+    <>
+      {overlays
+        .filter((overlay) => overlapsCalendarDay(overlay.start, overlay.end, day))
+        .map((overlay) => {
+          const start = Math.max(new Date(overlay.start).getTime(), bounds.start);
+          const end = Math.min(new Date(overlay.end).getTime(), bounds.end);
+          const top = ((start - bounds.start) / total) * 100;
+          const height = ((end - start) / total) * 100;
+          const style: CSSProperties = { top: `${top}%`, height: `${height}%` };
+          if (overlay.tone !== "request") {
+            return <div key={overlay.id} className={`cal-overlay cal-overlay--${overlay.tone}`} style={style} aria-hidden="true" />;
+          }
+          // Only the label takes the pointer, so events under the block stay clickable.
+          return (
+            <div key={overlay.id} className="cal-overlay cal-overlay--request" style={style}>
+              {overlay.label ? (
+                <span className="cal-overlay-label" tabIndex={0} aria-label={[overlay.label, overlay.detail].filter(Boolean).join(". ")}>
+                  {overlay.label}
+                  {overlay.detail ? <span className="cal-overlay-tip" aria-hidden="true">{overlay.detail}</span> : null}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+    </>
+  );
+}
+
 function TimeGrid({
   hours,
   now,
@@ -559,6 +606,7 @@ function WeekView({
   onEventHover,
   onDayClick,
   selectedEvent,
+  overlays = [],
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
@@ -568,6 +616,7 @@ function WeekView({
   onEventHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
   onDayClick?: (date: Date) => void;
   selectedEvent?: CalendarEvent;
+  overlays?: CalendarOverlay[];
 }) {
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -637,6 +686,7 @@ function WeekView({
 
             return (
               <div key={day.getTime()} className="cal-day-column">
+                <OverlayBlocks overlays={overlays} day={day} />
                 {layouted.map((event) => (
                   <EventBlock
                     key={event.eventId}
@@ -676,6 +726,7 @@ function DayView({
   onEventClick,
   onEventHover,
   selectedEvent,
+  overlays = [],
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
@@ -684,6 +735,7 @@ function DayView({
   onEventClick?: (event: LayoutEvent) => void;
   onEventHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
   selectedEvent?: CalendarEvent;
+  overlays?: CalendarOverlay[];
 }) {
   const today = calendarDate(new Date());
   const isToday = isSameDay(currentDate, today);
@@ -732,6 +784,7 @@ function DayView({
           showNowLine={isToday}
         >
           <div className="cal-day-column">
+            <OverlayBlocks overlays={overlays} day={currentDate} />
             {layoutDayEvents(allEvents, currentDate, colorMap).map((event) => (
               <EventBlock
                 key={event.eventId}
@@ -1258,6 +1311,7 @@ export type CalendarViewProps = {
   currentDate?: Date;
   onCurrentDateChange?: (date: Date) => void;
   entityLabel?: CalendarEntityLabel;
+  overlays?: CalendarOverlay[];
 };
 
 export function CalendarView({
@@ -1272,6 +1326,7 @@ export function CalendarView({
   currentDate: controlledDate,
   onCurrentDateChange,
   entityLabel = COORDINATOR_LABEL,
+  overlays,
 }: CalendarViewProps) {
   const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
     defaultView,
@@ -1507,6 +1562,7 @@ export function CalendarView({
                   else setTooltipEvent(null);
                 }}
                 selectedEvent={selectedEvent}
+                overlays={overlays}
               />
             )}
             {effectiveViewMode === "day" && (
@@ -1527,6 +1583,7 @@ export function CalendarView({
                   else setTooltipEvent(null);
                 }}
                 selectedEvent={selectedEvent}
+                overlays={overlays}
               />
             )}
           </>

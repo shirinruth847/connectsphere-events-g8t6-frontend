@@ -25,11 +25,17 @@ export function suggestionBlocker(venue: EventVenueOption): string | null {
   return null;
 }
 
-// "Show" choices in the filter box; the list shows this many at first and
-// adds this many per "Show more venues" (developer request of 23 October 2026).
-export const VENUE_PAGE_SIZES = [10, 20, 50, 100] as const;
-export type VenuePageSize = (typeof VENUE_PAGE_SIZES)[number];
-export const DEFAULT_VENUE_PAGE_SIZE: VenuePageSize = 10;
+// "Show x results": the list shows this many at first and adds this many per
+// "Show more venues" (developer requests of 23 and 24 October 2026).
+export const DEFAULT_VENUE_PAGE_SIZE = 10;
+export const MAX_VENUE_PAGE_SIZE = 100;
+
+// The typed "Show" number, or null while it is not a whole number from 1 to 100.
+export function parsePageSize(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const size = Number(value);
+  return size >= 1 && size <= MAX_VENUE_PAGE_SIZE ? size : null;
+}
 
 // How many more venues "Show more venues" adds: a page, or what is left.
 export function showMoreCount(shown: number, total: number, pageSize: number) {
