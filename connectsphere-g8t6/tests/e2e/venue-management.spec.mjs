@@ -35,6 +35,12 @@ const details = (overrides = {}) => ({
   ...overrides,
 });
 
+// Events with bookings ahead at a venue being taken out of service (T31).
+const AFFECTED_EVENTS = [
+  { eventId: 442, requestId: "REQ-000442", title: "Synthetic planning forum", status: "CONFIRMED", firstStart: "2026-11-04T01:00:00.000Z", bookings: 1 },
+  { eventId: 443, requestId: "REQ-000443", title: "Synthetic product launch", status: "PLANNING", firstStart: "2026-11-09T02:00:00.000Z", bookings: 1 },
+];
+
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
 // A real 1x1 PNG, so the browser decodes and shows the photo.
@@ -110,10 +116,10 @@ async function routeManagement(page, state) {
     if (url.pathname === "/api/venues/7/status") {
       const body = request.postDataJSON();
       if (!body.confirmUpcomingBookings) {
-        return json(route, { error: "This venue has 2 upcoming bookings. Confirm to continue; existing bookings are kept.", code: "VENUE_HAS_UPCOMING_BOOKINGS", upcomingBookings: 2, firstStart: "2026-11-04T01:00:00.000Z" }, 409);
+        return json(route, { error: "This venue has 2 upcoming bookings. Confirm to continue; existing bookings and events are kept, and their coordinators and organisers are notified.", code: "VENUE_HAS_UPCOMING_BOOKINGS", upcomingBookings: 2, firstStart: "2026-11-04T01:00:00.000Z", affectedEvents: AFFECTED_EVENTS }, 409);
       }
       state.venues[0] = { ...state.venues[0], status: body.status, statusReason: body.reason ?? null, version: state.venues[0].version + 1 };
-      return json(route, { message: "Venue status updated.", venue: state.venues[0], changed: true, upcomingBookings: 2 });
+      return json(route, { message: "Venue status updated.", venue: state.venues[0], changed: true, upcomingBookings: 2, affectedEvents: AFFECTED_EVENTS });
     }
     if (url.pathname === "/api/venues/7/details") {
       const body = request.postDataJSON();
@@ -232,8 +238,12 @@ test("[SPM-73 TC6][TC8] Venue Staff edit a venue and confirm deactivation with u
   await confirm.getByRole("button", { name: "Confirm" }).click();
   await expect(confirm.getByText("This venue has upcoming bookings")).toBeVisible();
   await expect(confirm.getByText(/2 upcoming bookings/)).toBeVisible();
-  await confirm.getByRole("button", { name: "Confirm" }).click();
-  await expect(page.getByText(/Venue status updated\. 2 upcoming booking\(s\) were kept\./)).toBeVisible();
+  // T31: the warning names the affected events and says who will be told.
+  await expect(confirm.getByText(/coordinator and organiser are notified/)).toBeVisible();
+  await expect(confirm.getByText("Synthetic planning forum")).toBeVisible();
+  await expect(confirm.getByText("REQ-000443")).toBeVisible();
+  await confirm.getByRole("button", { name: "Proceed and notify" }).click();
+  await expect(page.getByText(/Venue status updated\. 2 upcoming booking\(s\) were kept\. The coordinators and organisers of 2 affected events were notified\./)).toBeVisible();
   expect(state.venues[0].status).toBe("INACTIVE");
 });
 
