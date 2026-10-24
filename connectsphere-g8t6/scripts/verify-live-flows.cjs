@@ -184,7 +184,7 @@ async function main() {
  users=check(await supabase.from('user').select('user_id,name,role,email,auth_user_id,is_active').like('email','dev-%@connectsphere.test')).filter(user=>user.name.startsWith('Seed ')&&user.is_active&&user.auth_user_id);
  assert(process.env.SEED_ACCOUNT_PASSWORD,'SEED_ACCOUNT_PASSWORD is missing');
  browser=await chromium.launch({channel:'chrome',headless:true});
- for(const [role,heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','Venue Staff dashboard'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','Event Discovery']]) {
+ for(const [role,heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','Event Discovery']]) {
   if(process.env.LIVE_ROLES&&!process.env.LIVE_ROLES.split(',').includes(role))continue;
   const user=users.find(user=>user.role===role);assert(user,'Missing synthetic seed for '+role);
   const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];

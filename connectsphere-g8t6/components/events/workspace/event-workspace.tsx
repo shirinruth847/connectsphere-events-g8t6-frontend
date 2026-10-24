@@ -7,6 +7,7 @@ import { EventRequestDetails } from "@/components/events/event-request-details";
 import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { homeForRole, ROUTES } from "@/lib/auth";
+import { VenueStaffEventView } from "@/components/venue-staff/booking-requests/venue-staff-event-view";
 import { CoordinatorEventView } from "./coordinator-event-view";
 import { useEventView } from "./use-event-view";
 
@@ -60,5 +61,8 @@ export function EventWorkspace({ eventId: rawEventId }: { eventId: string }) {
   const eventId = parseEventId(rawEventId);
   if (user?.role === "ATTENDEE") return <AttendeeEventDetailsPage eventId={eventId} />;
   const home = user ? homeForRole(user.role) : ROUTES.dashboard;
-  return eventId === null ? <EventUnavailable home={home} /> : <LoadedWorkspace key={eventId} eventId={eventId} home={home} />;
+  if (eventId === null) return <EventUnavailable home={home} />;
+  // Venue Staff reach events only through their venue bookings (SPM-181).
+  if (user?.role === "VENUE_STAFF") return <VenueStaffEventView key={eventId} eventId={eventId} />;
+  return <LoadedWorkspace key={eventId} eventId={eventId} home={home} />;
 }
