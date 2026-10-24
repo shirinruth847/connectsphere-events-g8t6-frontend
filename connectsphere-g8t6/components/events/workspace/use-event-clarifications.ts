@@ -20,7 +20,13 @@ export function useEventClarifications(eventId: number, refreshKey: number) {
     let alive = true;
     getEventClarifications(eventId)
       .then(({ clarifications }) => {
-        if (alive) setState({ status: "ready", rounds: clarifications });
+        if (!alive) return;
+        // A malformed response shows the panel's error state instead of breaking the page.
+        setState(
+          Array.isArray(clarifications)
+            ? { status: "ready", rounds: clarifications }
+            : { status: "error", message: "Could not load the clarification requests." },
+        );
       })
       .catch((caught: unknown) => {
         if (alive) setState({ status: "error", message: messageOf(caught) });
