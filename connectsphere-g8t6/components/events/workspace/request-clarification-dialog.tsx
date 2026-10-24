@@ -5,6 +5,7 @@ import { AlertBanner, Button, FormLabel, StatusChip, fieldClasses } from "@/comp
 import { Dialog } from "@/components/shared/dialog";
 import { Icon } from "@/components/shared/icon";
 import { ApiError } from "@/lib/api";
+import { eventDisplayStatus } from "@/lib/events";
 import {
   CLARIFICATION_TEXT_LIMIT,
   parseEventView,
@@ -119,7 +120,7 @@ export function RequestClarificationDialog({ event, onClose, onRequested, onEven
       open
       onClose={close}
       title="Request clarification"
-      badge={<StatusChip status={event.status} />}
+      badge={<StatusChip status={eventDisplayStatus(event)} />}
       footer={
         <>
           <Button type="button" variant="quiet" onClick={close} disabled={sending}>Cancel</Button>

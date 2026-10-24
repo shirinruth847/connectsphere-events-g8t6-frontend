@@ -88,6 +88,10 @@ Validation used Node.js 24.9.0.
 - `npm run test:e2e` builds a separate test configuration, starts port 3100 and
   runs Chrome with deterministic Auth/API mocks. Install Chrome first. Reports
   and traces are under ignored `playwright-report/` and `test-results/`.
+  Live-account browser checks may use `E2E_COORDINATOR_EMAIL`,
+  `E2E_COORDINATOR_PASSWORD`, `E2E_ATTENDEE_EMAIL`, and
+  `E2E_ATTENDEE_PASSWORD`; the venue catalogue tests do not require these
+  variables because they mock authentication and venue responses.
 - `npm run build` uses Webpack and performs TypeScript checks.
 - `npm run test:live` requires both real applications already running at
   localhost:3000/8000, the sibling backend repository and its existing synthetic
@@ -132,3 +136,25 @@ was introduced. The existing organiser wizard/details are the design reference.
 See [the frontend test plan](docs/test-plans/spm-36.md). Focused browser command:
 `npm run test:e2e -- --grep SPM-36`; the full `npm run test:e2e` includes a
 production build and type checks.
+
+## Lead assignment workspace (SPM-174)
+
+Leads assign submitted unassigned requests on `/events` and reassign their
+supervised or legacy unsupervised active events on `/assignments`. The shared
+shell, trusted session profile and Express API helpers remain in use. Assignment
+requires explicit confirmation; busy coordinators are disabled, the backend
+checks availability again, and success is shown only after its response. Stale
+or uncertain results require refreshing before another attempt. The calendar
+uses half-open Singapore scheduling windows and clamps month-end navigation.
+
+The backend must enable `ENABLE_COORDINATOR_WORKFLOWS=true` and deploy
+`20261020075714_spm174_lead_assignment_conflict_guard.sql` before this frontend.
+Existing legacy overlaps are preserved for Lead-controlled reassignment; the
+guard prevents new conflicts while the full exclusion constraint remains
+deferred. See the backend's `docs/test-plans/spm-174.md` for deployment,
+rollback and real hosted/browser verification commands.
+
+`npm run test:e2e -- --grep SPM-174` covers initial assignment, reassignment,
+stale rejection, role restrictions, queue resilience and calendar boundaries
+using mocked APIs. These journeys do not establish real backend/database
+integration; the backend's opt-in `leadAssignment.browser.cjs` runner does.

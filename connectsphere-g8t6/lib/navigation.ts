@@ -1,6 +1,6 @@
 import { ROUTES, type UserRole } from "@/lib/auth";
 
-export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings";
+export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "assignments" | "calendar";
 type NavigationItem = { id: string; title: string; icon: NavigationIcon; href?: string };
 type NavigationGroup = { title: string; items: NavigationItem[] };
 
@@ -15,11 +15,24 @@ const organiserItems: NavigationItem[] = [
 
 const mainItems: Record<UserRole, NavigationItem[]> = {
   ORGANISER: organiserItems,
-  COORDINATOR: [{ id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }],
-  COORDINATOR_LEAD: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
-  VENUE_STAFF: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
+  COORDINATOR: [
+    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }
+  ],
+  COORDINATOR_LEAD: [
+    { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
+    { id: "unassigned", title: "Unassigned Queue", icon: "event", href: "/events" },
+    { id: "assignments", title: "Assignments", icon: "assignments", href: ROUTES.assignments },
+    { id: "calendar", title: "Calendar", icon: "calendar", href: ROUTES.calendar },
+  ],
+  VENUE_STAFF: [
+    { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
+    { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
+  ],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
-  ATTENDEE: [{ id: "home", title: "My Registrations", icon: "registrations", href: ROUTES.registrations }],
+  ATTENDEE: [
+    { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
+    { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
+  ],
 };
 
 export function navigationForRole(role: UserRole): NavigationGroup[] {
@@ -31,7 +44,15 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
 }
 
 export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
-  if (role !== "ORGANISER") return "home";
+  if (role === "COORDINATOR_LEAD") {
+    if (pathname === "/events") return "unassigned";
+    if (pathname === "/assignments") return "assignments";
+    if (pathname === "/calendar") return "calendar";
+    return "home";
+  }
+  if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
+  const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
+  if (role !== "ORGANISER") return inVenues ? "venues" : "home";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
   return "requests";
 }

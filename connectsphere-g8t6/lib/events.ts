@@ -14,10 +14,12 @@ export const EVENT_STATUSES = [
 
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 
+// Organiser responses carry statusLabel but not the stored status (SPM-173 AC6);
+// staff responses carry both. Read the state through eventDisplayStatus.
 export interface EventRequest {
   eventId: number;
   requestId: string;
-  status: EventStatus;
+  status?: EventStatus;
   statusLabel: string;
   title: string;
   purpose?: string | null;
@@ -43,7 +45,7 @@ export interface EventRequest {
 export interface EventListItem {
   eventId: number;
   requestId: string;
-  status: EventStatus;
+  status?: EventStatus;
   statusLabel: string;
   title: string;
   startDatetime?: string | null;
@@ -158,7 +160,6 @@ export const STATUS_PRESENTATION: Record<
   },
 };
 
-export const displayEventStatus = (status: EventStatus, assigned = false): EventStatus => { void assigned; return status; };
 export const statusPresentation = (status: string) => STATUS_PRESENTATION[status as EventStatus] ?? { label: status.replaceAll("_", " "), chip: "bg-slate-100 text-slate-700", border: "border-t-slate-400" };
 
 // The eight organiser labels (Master section 3.5). The backend computes them;
@@ -177,10 +178,9 @@ export const ORGANISER_STATUS_LABELS: Record<EventStatus, string> = {
   CANCELLED: "Cancelled",
 };
 // A label equal to the raw state code means the backend had none to give.
-export const eventStatusLabel = (event: { status: string; statusLabel?: string | null }) =>
+export const eventStatusLabel = (event: { status?: string | null; statusLabel?: string | null }) =>
   (event.statusLabel && event.statusLabel !== event.status ? event.statusLabel : null)
-  ?? ORGANISER_STATUS_LABELS[event.status as EventStatus]
-  ?? statusPresentation(event.status).label;
+  ?? (event.status ? ORGANISER_STATUS_LABELS[event.status as EventStatus] ?? statusPresentation(event.status).label : "Unknown status");
 
 export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
 export function validateEventStep(values: EventFormValues, index: number, required = false, now = Date.now()) {
@@ -229,6 +229,20 @@ export const EVENT_STATUS_ORDER: EventStatus[] = [
 
 // Organiser labels in lifecycle order, each once, for the organiser's status filter.
 export const ORGANISER_LABEL_ORDER = [...new Set(EVENT_STATUS_ORDER.map(status => ORGANISER_STATUS_LABELS[status]))];
+
+// Each label's earliest state ("Approved & Planning" -> PLANNING). "Draft" is DRAFT only.
+const LABEL_STATUS = new Map<string, EventStatus>();
+for (const status of EVENT_STATUS_ORDER) {
+  if (!LABEL_STATUS.has(ORGANISER_STATUS_LABELS[status])) LABEL_STATUS.set(ORGANISER_STATUS_LABELS[status], status);
+}
+
+// The stored status when the response has one (staff), otherwise the state its
+// organiser label stands for. Picks chip colour, sort order and the next action;
+// "UNKNOWN" when neither is recognised.
+export const eventDisplayStatus = (event: { status?: string | null; statusLabel?: string | null }): string =>
+  event.status || LABEL_STATUS.get(event.statusLabel ?? "") || "UNKNOWN";
+export const isDraftEvent = (event: { status?: string | null; statusLabel?: string | null }) =>
+  eventDisplayStatus(event) === "DRAFT";
 
 export const EMPTY_EVENT_FORM: EventFormValues = {
   title: "",

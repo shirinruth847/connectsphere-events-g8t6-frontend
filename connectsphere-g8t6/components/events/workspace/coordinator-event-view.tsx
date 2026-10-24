@@ -8,7 +8,7 @@ import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
-import { statusPresentation } from "@/lib/events";
+import { eventDisplayStatus, statusPresentation } from "@/lib/events";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { canRequestClarification, editableIdentityFields } from "@/lib/permissions/event-workspace";
@@ -24,6 +24,7 @@ import {
 } from "./event-detail-rows";
 import { EventHistoryPanel } from "./event-history-panel";
 import { EventIdentityEditor } from "./event-identity-editor";
+import { LifecyclePanel } from "@/components/coordinator/lifecycle-panel";
 
 interface CoordinatorEventViewProps {
   event: EventView;
@@ -54,12 +55,14 @@ const significantPill = <PermissionPill tone="read-only">Change request only</Pe
 // outside the baseline).
 export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: CoordinatorEventViewProps) {
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  const [statusNotice, setStatusNotice] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
   const [clarificationKey, setClarificationKey] = useState(0);
   const [requesting, setRequesting] = useState(false);
   const clarifications = useEventClarifications(event.eventId, clarificationKey);
   const editable = editableIdentityFields(event.permissions);
-  const statusLabel = statusPresentation(event.status).label;
+  const status = eventDisplayStatus(event);
+  const statusLabel = statusPresentation(status).label;
   const attendance = event.expectedAttendance ?? 0;
   const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
 
@@ -75,7 +78,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         description={`Requested by ${event.organiser?.name ?? "the organiser"}${event.organisation ? ` · ${event.organisation.name}` : ""}`}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <StatusChip status={event.status} />
+            <StatusChip status={status} />
             {canRequestClarification(event.permissions) ? (
               <Button variant="secondary" onClick={() => setRequesting(true)}>
                 <Icon name="help" size={16} />Request Clarification
@@ -98,6 +101,9 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
       <div aria-live="polite" role="status">
         {notice ? (
           <AlertBanner tone="success" title={notice.title} live={false}>{notice.message}</AlertBanner>
+        ) : null}
+        {statusNotice ? (
+          <AlertBanner tone="success" title="Status updated" live={false}>{statusNotice}</AlertBanner>
         ) : null}
       </div>
 
@@ -157,6 +163,16 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         </div>
 
         <aside className="grid gap-5 xl:col-span-4" aria-label="Coordination and history">
+          <LifecyclePanel
+            event={event}
+            onEventChange={(updated, message) => {
+              onEventChange(updated);
+              setHistoryKey((value) => value + 1);
+              setNotice(null);
+              setStatusNotice(message ?? "");
+            }}
+            onAccessChanged={onAccessChanged}
+          />
           <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
             <SectionHeading id="coordination-heading" title="Coordination" />
             <KeyValuePanel
