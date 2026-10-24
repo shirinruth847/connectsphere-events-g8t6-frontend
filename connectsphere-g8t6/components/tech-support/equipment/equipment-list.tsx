@@ -19,7 +19,7 @@ import {
   type EquipmentStatus,
 } from "@/lib/api/equipment";
 import { EquipmentDetailFields, EquipmentRecordFields } from "./equipment-fields";
-import { EquipmentStatusChip, UnavailableBar } from "./equipment-parts";
+import { EquipmentStatusChip, UnavailableBar, errorText } from "./equipment-parts";
 
 type ListState =
   | { status: "loading" }
@@ -84,7 +84,7 @@ function CreateEquipmentDialog({ open, categories, onClose, onCreated }: {
     } catch (caught) {
       // Input is kept so the user can correct it (SPM-52 AC12).
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
-      setFormError(caught instanceof Error ? caught.message : "The equipment could not be created.");
+      setFormError(errorText(caught, "The equipment could not be created."));
     } finally {
       setSaving(false);
     }
@@ -186,7 +186,7 @@ export function EquipmentList() {
         if (!alive) return;
         setState({
           status: "error",
-          message: caught instanceof Error ? caught.message : "Equipment could not be loaded.",
+          message: errorText(caught, "Equipment could not be loaded."),
           forbidden: caught instanceof ApiError && caught.status === 403,
         });
       })
@@ -214,7 +214,7 @@ export function EquipmentList() {
         ? { ...current, equipment: [...current.equipment, ...next.equipment], nextOffset: next.nextOffset }
         : current);
     } catch (caught) {
-      if (requestId === listRequestId.current) setNotice({ tone: "warning", text: caught instanceof Error ? caught.message : "More equipment could not be loaded." });
+      if (requestId === listRequestId.current) setNotice({ tone: "warning", text: errorText(caught, "More equipment could not be loaded.") });
     } finally {
       if (requestId === listRequestId.current) setLoadingMore(false);
     }

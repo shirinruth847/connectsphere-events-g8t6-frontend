@@ -44,7 +44,7 @@ function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
   const initial = record ? unavailabilityForm(record) : EMPTY_UNAVAILABILITY_FORM;
   const [values, setValues] = useState<UnavailabilityFormValues>(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [formError, setFormError] = useState("");
+  const [formNotice, setFormNotice] = useState<{ tone: "warning" | "error"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const idPrefix = record ? `edit-unavailable-${record.unavailabilityId}` : "record-unavailable";
 
@@ -57,7 +57,7 @@ function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
     event.preventDefault();
     const found = validateUnavailabilityForm(values);
     setErrors(found);
-    setFormError("");
+    setFormNotice(null);
     if (Object.keys(found).length) return;
     const input = {
       quantity: values.quantity.trim(),
@@ -76,7 +76,7 @@ function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
             .map((key) => [key, input[key]]),
         );
         if (!Object.keys(changes).length) {
-          setFormError("No changes to save.");
+          setFormNotice({ tone: "warning", text: "No changes to save." });
           return;
         }
         const result = await updateUnavailability(equipment.equipmentId, record.unavailabilityId, { ...changes, version: record.version });
@@ -87,7 +87,7 @@ function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
       }
     } catch (caught) {
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
-      setFormError(errorText(caught, "The unavailable stock could not be saved."));
+      setFormNotice({ tone: "error", text: errorText(caught, "The unavailable stock could not be saved.") });
     } finally {
       setSaving(false);
     }
@@ -112,7 +112,7 @@ function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
       }
     >
       <form id={`${idPrefix}-form`} noValidate onSubmit={submit} className="grid gap-4">
-        {formError ? <AlertBanner tone={formError === "No changes to save." ? "warning" : "error"}>{formError}</AlertBanner> : null}
+        {formNotice ? <AlertBanner tone={formNotice.tone}>{formNotice.text}</AlertBanner> : null}
         <div className="grid gap-3 sm:grid-cols-2">
           {fields.map((field) => {
             const id = `${idPrefix}-${field.key}`;

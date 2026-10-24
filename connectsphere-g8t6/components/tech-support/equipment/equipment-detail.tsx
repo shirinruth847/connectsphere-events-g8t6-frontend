@@ -64,18 +64,42 @@ function ConflictBanner({ current, onLoad }: { current: Equipment; onLoad: () =>
   );
 }
 
-function RecordSection({ equipment, categories, onSaved }: { equipment: Equipment; categories: string[]; onSaved: Saved }) {
-  const [values, setValues] = useState(() => recordForm(equipment));
+type EquipmentKey = keyof EquipmentFormValues;
+
+// The record and details forms (SPM-52 AC6): only changed fields are checked and
+// sent with the loaded version. A stale save is shown with the current values and
+// nothing is overwritten; other refusals keep the input and show the backend's
+// field messages. formFor gives the saved values the form starts from.
+function useEquipmentForm({ equipment, formFor, keys, toValue, failure, successText, onSaved }: {
+  equipment: Equipment;
+  formFor: () => EquipmentFormValues;
+  keys: readonly EquipmentKey[];
+  toValue: (text: string) => string | null;
+  failure: string;
+  successText: (message: string, saved: Equipment) => string;
+  onSaved: Saved;
+}) {
+  const [values, setValues] = useState(formFor);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<Notice>(null);
   const [conflict, setConflict] = useState<Equipment | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const change = (key: EquipmentKey, value: string) => {
+    setValues({ ...values, [key]: value });
+    setErrors({ ...errors, [key]: undefined });
+  };
+
+  const reset = () => {
+    setValues(formFor());
+    setErrors({});
+    setMessage(null);
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const original = recordForm(equipment);
-    const changed = RECORD_KEYS.filter((key) => values[key].trim() !== original[key]);
-    // Rows from before SPM-52 may lack a storage location; only changed fields are checked.
+    const original = formFor();
+    const changed = keys.filter((key) => values[key].trim() !== original[key]);
     const found = validateEquipmentForm(values, changed);
     setErrors(found);
     setMessage(null);
@@ -88,39 +112,62 @@ function RecordSection({ equipment, categories, onSaved }: { equipment: Equipmen
     setSaving(true);
     try {
       const result = await updateEquipment(equipment.equipmentId, {
-        ...Object.fromEntries(changed.map((key) => [key, values[key].trim()])),
+        ...Object.fromEntries(changed.map((key) => [key, toValue(values[key].trim())])),
         version: equipment.version,
       });
-      onSaved(result.message, result.equipment);
+      onSaved(successText(result.message, result.equipment), result.equipment);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "EQUIPMENT_VERSION_CONFLICT" && caught.details.current) {
         setConflict(caught.details.current as Equipment);
       } else {
         if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
-        setMessage({ tone: "error", text: errorText(caught, "The equipment could not be saved.") });
+        setMessage({ tone: "error", text: errorText(caught, failure) });
       }
     } finally {
       setSaving(false);
     }
   };
 
+  return { values, errors, message, conflict, saving, change, reset, submit };
+}
+
+function FormBanners({ message, conflict, onSaved }: { message: Notice; conflict: Equipment | null; onSaved: Saved }) {
+  return (
+    <>
+      {message ? <AlertBanner tone={message.tone}>{message.text}</AlertBanner> : null}
+      {conflict ? <ConflictBanner current={conflict} onLoad={() => onSaved("The current values have been loaded.", conflict)} /> : null}
+    </>
+  );
+}
+
+function RecordSection({ equipment, categories, onSaved }: { equipment: Equipment; categories: string[]; onSaved: Saved }) {
+  // Rows from before SPM-52 may lack a storage location; only changed fields are checked.
+  const form = useEquipmentForm({
+    equipment,
+    formFor: () => recordForm(equipment),
+    keys: RECORD_KEYS,
+    toValue: (text) => text,
+    failure: "The equipment could not be saved.",
+    successText: (message) => message,
+    onSaved,
+  });
+
   return (
     <SectionCard className="grid gap-4">
       <SectionHeading step={1} title="Equipment record" description="Name, category, storage location and total stock. Lowering the total below stock already marked unavailable is refused." />
-      <form noValidate onSubmit={submit} className="grid gap-4">
-        {message ? <AlertBanner tone={message.tone}>{message.text}</AlertBanner> : null}
-        {conflict ? <ConflictBanner current={conflict} onLoad={() => onSaved("The current values have been loaded.", conflict)} /> : null}
+      <form noValidate onSubmit={form.submit} className="grid gap-4">
+        <FormBanners message={form.message} conflict={form.conflict} onSaved={onSaved} />
         <EquipmentRecordFields
           idPrefix="edit-equipment"
-          values={values}
-          errors={errors}
+          values={form.values}
+          errors={form.errors}
           categories={categories}
-          disabled={saving}
-          onChange={(key, value) => { setValues({ ...values, [key]: value }); setErrors({ ...errors, [key]: undefined }); }}
+          disabled={form.saving}
+          onChange={form.change}
         />
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save record"}</Button>
-          <Button type="button" variant="quiet" disabled={saving} onClick={() => { setValues(recordForm(equipment)); setErrors({}); setMessage(null); }}>Reset</Button>
+          <Button type="submit" disabled={form.saving}>{form.saving ? "Saving…" : "Save record"}</Button>
+          <Button type="button" variant="quiet" disabled={form.saving} onClick={form.reset}>Reset</Button>
         </div>
       </form>
     </SectionCard>
@@ -133,11 +180,16 @@ function DetailsSection({ equipment, details, detailsRead, onSaved }: {
   detailsRead: "OK" | "NOT_CHECKED";
   onSaved: Saved;
 }) {
-  const [values, setValues] = useState(() => detailForm(details));
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [message, setMessage] = useState<Notice>(null);
-  const [conflict, setConflict] = useState<Equipment | null>(null);
-  const [saving, setSaving] = useState(false);
+  // A cleared detail field is sent as null.
+  const form = useEquipmentForm({
+    equipment,
+    formFor: () => detailForm(details),
+    keys: DETAIL_KEYS,
+    toValue: (text) => text || null,
+    failure: "The details could not be saved.",
+    successText: (message, saved) => (saved.detailNotice ? `${message} The details are still being saved, so they may be out of date for a moment.` : message),
+    onSaved,
+  });
 
   if (detailsRead === "NOT_CHECKED") {
     return (
@@ -148,57 +200,24 @@ function DetailsSection({ equipment, details, detailsRead, onSaved }: {
     );
   }
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const original = detailForm(details);
-    const changed = DETAIL_KEYS.filter((key) => values[key].trim() !== original[key]);
-    const found = validateEquipmentForm(values, changed);
-    setErrors(found);
-    setMessage(null);
-    setConflict(null);
-    if (Object.keys(found).length) return;
-    if (!changed.length) {
-      setMessage({ tone: "warning", text: "No changes to save." });
-      return;
-    }
-    setSaving(true);
-    try {
-      const result = await updateEquipment(equipment.equipmentId, {
-        ...Object.fromEntries(changed.map((key) => [key, values[key].trim() || null])),
-        version: equipment.version,
-      });
-      onSaved(result.equipment.detailNotice ? `${result.message} The details are still being saved, so they may be out of date for a moment.` : result.message, result.equipment);
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.code === "EQUIPMENT_VERSION_CONFLICT" && caught.details.current) {
-        setConflict(caught.details.current as Equipment);
-      } else {
-        if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
-        setMessage({ tone: "error", text: errorText(caught, "The details could not be saved.") });
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <SectionCard className="grid gap-4">
       <SectionHeading step={2} title="Specifications and notes" description="Display information for planning. Quantities and availability never depend on it." />
-      <form noValidate onSubmit={submit} className="grid gap-4">
-        {message ? <AlertBanner tone={message.tone}>{message.text}</AlertBanner> : null}
-        {conflict ? <ConflictBanner current={conflict} onLoad={() => onSaved("The current values have been loaded.", conflict)} /> : null}
+      <form noValidate onSubmit={form.submit} className="grid gap-4">
+        <FormBanners message={form.message} conflict={form.conflict} onSaved={onSaved} />
         {equipment.detailNotice ? (
           <AlertBanner tone="warning" live={false}>{equipment.detailNotice}: a saved change has not reached the details store yet. It is retried automatically.</AlertBanner>
         ) : null}
         <EquipmentDetailFields
           idPrefix="edit-equipment"
-          values={values}
-          errors={errors}
-          disabled={saving}
-          onChange={(key, value) => { setValues({ ...values, [key]: value }); setErrors({ ...errors, [key]: undefined }); }}
+          values={form.values}
+          errors={form.errors}
+          disabled={form.saving}
+          onChange={form.change}
         />
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save details"}</Button>
-          <Button type="button" variant="quiet" disabled={saving} onClick={() => { setValues(detailForm(details)); setErrors({}); setMessage(null); }}>Reset</Button>
+          <Button type="submit" disabled={form.saving}>{form.saving ? "Saving…" : "Save details"}</Button>
+          <Button type="button" variant="quiet" disabled={form.saving} onClick={form.reset}>Reset</Button>
         </div>
       </form>
     </SectionCard>
