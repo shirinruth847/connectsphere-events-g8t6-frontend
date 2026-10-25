@@ -1,4 +1,4 @@
-export type UserRole = 'ORGANISER' | 'COORDINATOR' | 'COORDINATOR_LEAD' | 'VENUE_STAFF' | 'TECH_SUPPORT' | 'ATTENDEE';
+export type UserRole = 'ORGANISER' | 'COORDINATOR' | 'COORDINATOR_LEAD' | 'VENUE_STAFF' | 'TECH_SUPPORT' | 'SAFETY_OFFICER' | 'ATTENDEE';
 export type SessionUser = { user_id: number; name: string; email: string; role: UserRole; home_path?: string; authId?: string; avatarUrl?: string };
 
 export const ROUTES = {
@@ -22,6 +22,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   COORDINATOR_LEAD: 'Event Coordinator Lead',
   VENUE_STAFF: 'Venue Staff',
   TECH_SUPPORT: 'Technical Support',
+  SAFETY_OFFICER: 'Safety Officer',
   ATTENDEE: 'Attendee',
 };
 
@@ -50,9 +51,9 @@ export function canViewPath(role: UserRole, path: string) {
   // The inbox (SPM-155); organisers and coordinators join with SPM-192/193.
   if (pathname === ROUTES.notifications) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
-  // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
+  // The event workspace (SPM-33; Safety Officer reviews, SPM-243); the backend still answers "not found" for unrelated events.
   // Venue Staff open an event through its venue bookings (SPM-181).
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF" || role === "ATTENDEE";
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF" || role === "SAFETY_OFFICER" || role === "ATTENDEE";
   if (pathname === ROUTES.venues) return ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(role);
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
@@ -63,7 +64,7 @@ export function postLoginPath(user: SessionUser, next: string | null) {
   const path = safeNextPath(next);
   if (path && canViewPath(user.role, path)) return path;
   // Keep the SPM-174 lead workflow's queue as its landing page. Coordinators
-  // and other staff use main's role-aware dashboard; attendees go to registrations.
+  // and other staff use main's role-aware dashboard; attendees go to discovery.
   return user.role === "COORDINATOR_LEAD" ? "/events" : homeForRole(user.role);
 }
 

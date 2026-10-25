@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { AlertBanner, buttonClasses, PageHeader, ReferenceIdTag, StatusChip } from "@/components/shared/primitives";
 import { CapacityBar } from "@/components/shared/capacity-bar";
 import { Icon } from "@/components/shared/icon";
@@ -9,6 +9,10 @@ import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { ClarificationPanel } from "@/components/events/workspace/clarification-panel";
+import { ClarificationAmendmentForm } from "@/components/events/workspace/clarification-amendment-form";
+import { useEventClarifications } from "@/components/events/workspace/use-event-clarifications";
+import { SafetyReviewSection } from "@/components/events/workspace/safety-review-section";
 import {
   equipmentItems,
   registrationRows,
@@ -19,6 +23,7 @@ import {
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { eventDisplayStatus, eventStatusLabel, isDraftEvent } from "@/lib/events";
+import { canPostClarificationMessage, canSaveAmendments } from "@/lib/permissions/event-workspace";
 
 function Card({ labelledBy, children }: { labelledBy: string; children: ReactNode }) {
   return (
@@ -56,8 +61,37 @@ function AccessNotice({ event }: { event: EventView }) {
 }
 
 // The organiser's event view: the owner (draft or submitted) or a member of the
-// same organisation, who sees submitted requests read-only.
-export function EventRequestDetails({ event }: { event: EventView }) {
+// same organisation, who sees submitted requests read-only. While the request is
+// returned for clarification, the owner replies in the thread and amends the
+// request here; the coordinator marks the clarification complete (SPM-41).
+export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
+  event: EventView;
+  onEventChange?: (event: EventView) => void;
+  onAccessChanged?: () => void;
+}) {
+  const [historyKey, setHistoryKey] = useState(0);
+  const [clarificationKey, setClarificationKey] = useState(0);
+  const [saved, setSaved] = useState<string | null>(null);
+  const clarifications = useEventClarifications(event.eventId, clarificationKey);
+  // The owner of a returned request, who replies from the clarification list and amends here.
+  const responding = canPostClarificationMessage(event.permissions);
+  const clarificationPanel = (
+    <ClarificationPanel
+      event={event}
+      state={clarifications.state}
+      onRetry={clarifications.retry}
+      onThreadOpened={clarifications.refreshThread}
+      onThreadRead={clarifications.markRead}
+      onRoundUpdated={clarifications.replaceRound}
+      onCompleted={(updated) => {
+        onEventChange?.(updated);
+        setHistoryKey((value) => value + 1);
+        setClarificationKey((value) => value + 1);
+      }}
+      onEventReplaced={(latest) => onEventChange?.(latest)}
+      onAccessChanged={() => onAccessChanged?.()}
+    />
+  );
   const isMember = event.viewerRelationship === "ORGANISATION_MEMBER";
   const label = eventStatusLabel(event);
   const attendance = event.expectedAttendance ?? 0;
@@ -93,10 +127,36 @@ export function EventRequestDetails({ event }: { event: EventView }) {
         )}
       </div>
 
-      <AccessNotice event={event} />
+      <div aria-live="polite" role="status">
+        {saved ? (
+          <AlertBanner tone="success" title="Amendments saved" live={false}>
+            {saved} The request stays returned until your coordinator marks the clarification complete.
+          </AlertBanner>
+        ) : null}
+      </div>
+
+      {responding ? null : <AccessNotice event={event} />}
 
       <div className="grid items-start gap-5 xl:grid-cols-12">
         <div className="grid gap-5 xl:col-span-8">
+          {responding ? (
+            <AlertBanner tone="warning" title="Your coordinator needs more information">
+              Open the request under Clarification requests to reply, and amend the request below if needed. Your coordinator marks the clarification complete when they have what they need.
+            </AlertBanner>
+          ) : null}
+          {canSaveAmendments(event.permissions) ? (
+            <ClarificationAmendmentForm
+              event={event}
+              onSaved={(updated, message) => {
+                setSaved(message);
+                onEventChange?.(updated);
+                setHistoryKey((value) => value + 1);
+              }}
+              onEventReplaced={(latest) => onEventChange?.(latest)}
+              onAccessChanged={() => onAccessChanged?.()}
+            />
+          ) : null}
+
           <Card labelledBy="about-heading">
             <SectionHeading id="about-heading" title="About this event" />
             <dl className="grid gap-3">
@@ -147,7 +207,9 @@ export function EventRequestDetails({ event }: { event: EventView }) {
               ]}
             />
           </Card>
-          <EventHistoryPanel event={event} refreshKey={0} />
+          {event.status !== "DRAFT" ? clarificationPanel : null}
+          {isDraftEvent(event) ? null : <SafetyReviewSection eventId={event.eventId} />}
+          <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
       </div>
     </div>

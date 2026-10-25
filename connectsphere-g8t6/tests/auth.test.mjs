@@ -42,6 +42,14 @@ test('[SPM-33 AC1][SPM-181 AC4][SPM-44] event detail URLs are valid return paths
   assert.equal(canViewPath('ATTENDEE', '/events/new'), false);
   assert.equal(canViewPath('ATTENDEE', '/events/create'), false);
 });
+test('[SPM-243 AC1 / AC3] Safety Officers land on /dashboard and open events from it', () => {
+  assert.equal(postLoginPath({role:'SAFETY_OFFICER'}, null), '/dashboard');
+  assert.equal(canViewPath('SAFETY_OFFICER', '/dashboard'), true);
+  assert.equal(postLoginPath({role:'SAFETY_OFFICER'}, '/events/42'), '/events/42');
+  for (const path of ['/events', '/events/new', '/assignments', '/calendar', '/my-registrations', '/safety-reviews']) {
+    assert.equal(canViewPath('SAFETY_OFFICER', path), false, path);
+  }
+});
 test('[SPM-177/SPM-34] /events returns Leads to the queue, attendees to discovery', () => {
   assert.equal(canViewPath('COORDINATOR_LEAD', '/events'), true);
   assert.equal(postLoginPath({role:'COORDINATOR_LEAD'}, '/events'), '/events');

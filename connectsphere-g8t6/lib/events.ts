@@ -183,7 +183,7 @@ export const eventStatusLabel = (event: { status?: string | null; statusLabel?: 
   ?? (event.status ? ORGANISER_STATUS_LABELS[event.status as EventStatus] ?? statusPresentation(event.status).label : "Unknown status");
 
 export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
-export function validateEventStep(values: EventFormValues, index: number, required = false, now = Date.now()) {
+export function validateEventStep(values: EventFormValues, index: number, required = false, now = Date.now(), checkLeadTime = true) {
   const errors: Record<string, string> = {};
   if (index === 0) {
     if (!values.title.trim()) errors.title = "Event Title is required.";
@@ -197,7 +197,7 @@ export function validateEventStep(values: EventFormValues, index: number, requir
     const start = Date.parse(values.startDatetime); const end = Date.parse(values.endDatetime);
     if (required && !values.startDatetime) errors.startDatetime = "Event start date and time is required.";
     else if (values.startDatetime && !Number.isFinite(start)) errors.startDatetime = "Please enter a valid date and time.";
-    else if (required && start < now + 48 * 60 * 60 * 1000) errors.startDatetime = "Event date must be at least 48 hours in advance.";
+    else if (required && checkLeadTime && start < now + 48 * 60 * 60 * 1000) errors.startDatetime = "Event date must be at least 48 hours in advance.";
     if (required && !values.endDatetime) errors.endDatetime = "Event end date and time is required.";
     else if (values.endDatetime && !Number.isFinite(end)) errors.endDatetime = "Please enter a valid date and time.";
     else if (Number.isFinite(start) && end <= start) errors.endDatetime = "End time must be after start time.";
@@ -206,6 +206,10 @@ export function validateEventStep(values: EventFormValues, index: number, requir
   }
   if (index === 2 && required && !values.preferredLayoutType) errors.preferredLayoutType = "Preferred layout is required.";
   if (index === 3 && values.accessibilityNotes.split("\n").some(line => line.length > 200)) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
+  if (index === 4 && (values.equipmentRequirements.length > 20 || values.equipmentRequirements.some((item) =>
+    !Number.isInteger(item.equipmentId) || item.equipmentId < 1 ||
+    !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 2147483647
+  ))) errors.equipmentRequirements = "Choose up to 20 equipment items with positive whole quantities.";
   if (index === 5) {
     if (required && values.isRegistrationEnabled && !values.registrationCapacity.trim()) errors.registrationCapacity = "Registration capacity is required when registration is enabled.";
     else if (values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1 || Number(values.registrationCapacity) > 2147483647)) errors.registrationCapacity = "Registration capacity must be a positive whole number.";
@@ -288,6 +292,43 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   venuePreferences: [...values.venuePreferences],
   equipmentRequirements: values.equipmentRequirements.map(item => ({ ...item })),
 });
+
+// SPM-41: fields an owner may amend while a clarification thread is open.
+// Registration settings and organisation are not among them.
+export const AMENDABLE_FIELDS = [
+  "title",
+  "purpose",
+  "description",
+  "startDatetime",
+  "endDatetime",
+  "expectedAttendance",
+  "preferredLayoutType",
+  "venuePreferences",
+  "accessibilityNeeds",
+  "equipmentRequirements",
+] as const;
+export type AmendableField = (typeof AMENDABLE_FIELDS)[number];
+export type EventAmendments = Partial<Pick<EventRequestPayload, AmendableField>>;
+
+// Only the amendable fields whose submitted value differs from the event as loaded.
+export const amendedFields = (original: EventFormValues, current: EventFormValues): EventAmendments => {
+  const before = toPayload(original);
+  const after = toPayload(current);
+  const changes: EventAmendments = {};
+  for (const field of AMENDABLE_FIELDS) {
+    if (JSON.stringify(before[field]) !== JSON.stringify(after[field])) {
+      (changes as Record<string, unknown>)[field] = after[field];
+    }
+  }
+  return changes;
+};
+
+// SPM-41: a thread message is required and at most `limit` characters.
+export const clarificationMessageProblem = (text: string, limit = 2000) => {
+  if (!text.trim()) return "Write a message before sending.";
+  if (text.length > limit) return `Use ${limit.toLocaleString()} characters or fewer.`;
+  return null;
+};
 
 export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
   const savedNeeds = Array.isArray(event.accessibilityNeeds)
