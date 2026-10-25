@@ -59,7 +59,7 @@ function LoadedWorkspace({ eventId, home, reason }: { eventId: number; home: str
   if (state.event.viewerRelationship === "SAFETY_OFFICER") {
     return <SafetyReviewView event={state.event} onEventChanged={refresh} />;
   }
-  return <EventRequestDetails event={state.event} />;
+  return <EventRequestDetails event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
 }
 
 // /events/[eventId]: the role-aware event workspace (SPM-33). Render inside
