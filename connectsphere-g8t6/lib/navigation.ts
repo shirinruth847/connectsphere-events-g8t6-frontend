@@ -57,6 +57,8 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
   if (role === "ATTENDEE") {
     if (pathname === ROUTES.events) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
+    // Opened from the sidebar identity block, not a tab, so no tab is current.
+    if (pathname === ROUTES.attendeeProfile) return "profile";
     return "home";
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
