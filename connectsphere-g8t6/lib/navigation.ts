@@ -53,7 +53,7 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     return "home";
   }
   if (role === "ATTENDEE") {
-    if (pathname === ROUTES.events) return "discovery";
+    if (pathname === ROUTES.events || /^\/events\/[^/]+$/.test(pathname)) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
     return "home";
   }

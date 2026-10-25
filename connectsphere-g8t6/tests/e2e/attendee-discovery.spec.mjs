@@ -406,6 +406,13 @@ for (const [role, eventsSurface] of [
 
   test(`[SPM-44] should_use_the_staff_workspace_not_attendee_details_when_${role}_opens_an_event_url`, async ({ page }) => {
     const { state, requests } = await installDiscoveryMocks(page, { role, details: { 101: makeEvent() } });
+    const staffEndpoint = role === 'VENUE_STAFF' ? '/api/venues/bookings/events/101' : '/api/events/101';
+    if (role === 'VENUE_STAFF') {
+      await page.route('**/api/venues/bookings/events/101', (route) => {
+        state.requestLog.push({ pathname: staffEndpoint, method: route.request().method() });
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'Not found.' }) });
+      });
+    }
     await page.goto('/events/101');
     // An unrelated staff event is answered as not found (SPM-33); nothing from the
     // attendee view is requested or shown.
@@ -414,7 +421,7 @@ for (const [role, eventsSurface] of [
     await expect(page.getByRole('heading', { name: 'Event information', exact: true })).toHaveCount(0);
     expect(requests.detail).toEqual([]);
     expect(requests.list).toEqual([]);
-    expect(state.requestLog.some((entry) => entry.pathname === '/api/events/101' && entry.method === 'GET')).toBe(true);
+    expect(state.requestLog.some((entry) => entry.pathname === staffEndpoint && entry.method === 'GET')).toBe(true);
   });
 }
 

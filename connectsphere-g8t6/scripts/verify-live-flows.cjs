@@ -98,10 +98,11 @@ async function verifyAttendeeDiscovery(page,requests) {
  await page.goto(base+'/events/'+target.eventId);
  await page.getByRole('heading',{name:target.title,exact:true,level:1}).waitFor();
  record('SPM-44 live details via discovery/:id',{eventId:target.eventId});
- // Hidden events: one unpublished and one published but not CONFIRMED, chosen from the data.
+ // Hidden events: one unpublished and one published in an ineligible state.
+ // PREPARATION remains attendee-visible alongside CONFIRMED (Master 5.3).
  const hidden=[
   check(await supabase.from('event').select('event_id').eq('is_published',false).neq('status','DRAFT').limit(1)),
-  check(await supabase.from('event').select('event_id').eq('is_published',true).neq('status','CONFIRMED').limit(1)),
+  check(await supabase.from('event').select('event_id').eq('is_published',true).not('status','in','(CONFIRMED,PREPARATION)').limit(1)),
  ].flat().map(row=>row.event_id);
  for(const id of hidden) {
   const res=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/events/discovery/'+id);

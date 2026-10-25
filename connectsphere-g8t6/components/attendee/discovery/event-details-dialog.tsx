@@ -19,6 +19,8 @@ import type {
   AttendeeEventSummary,
 } from "@/lib/api/discovery";
 import type { AttendeeEventView } from "@/lib/api/my-events";
+import { discoveryErrorMessage } from "./discovery-state";
+import { DiscoveryIcon } from "./discovery-icon";
 import { DiscoveryDetailsPanel } from "./discovery-details-panel";
 import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
 import { formatEventDate, formatEventTime } from "./format-event-time";
@@ -190,7 +192,7 @@ function EventDetailsContent({
             id={titleId}
             className="text-2xl font-bold leading-tight tracking-[-0.025em] text-on-surface [overflow-wrap:anywhere] sm:text-[28px]"
           >
-            {event?.title ?? summary.title}
+            {state.status === "not-found" ? "Event unavailable" : event?.title ?? summary.title}
           </h2>
           {event && !withheld ? (
             <div className="flex flex-wrap gap-2">
@@ -218,12 +220,17 @@ function EventDetailsContent({
 
         {state.status === "not-found" ? (
           <AlertBanner tone="warning" title="This event is no longer available">
-            It may have been unpublished or rescheduled. It has been removed
-            from your list.
+            {notFoundDescription}
           </AlertBanner>
         ) : null}
 
-        {state.status === "error" ? (
+        {state.status === "error" && state.error.status === 401 ? (
+          <AlertBanner tone="info" title="Your session has ended">Taking you to sign in…</AlertBanner>
+        ) : state.status === "error" && state.error.status === 403 ? (
+          <AlertBanner tone="error" title="Attendee access required">
+            Event details are available to attendee accounts only.
+          </AlertBanner>
+        ) : state.status === "error" ? (
           <AlertBanner tone="error" title="Could not load the event details">
             {discoveryErrorMessage(state.error, "event details")}
             <div className="mt-3">
@@ -259,11 +266,25 @@ function EventDetailsContent({
 // The frame's abstract, then schedule and venue side by side.
 function EventSummaryBody({ event }: { event: AttendeeEventDetail }) {
   return (
-    <div className="flex flex-col gap-4">
-      <p className="max-w-[70ch] whitespace-pre-line text-sm leading-relaxed text-on-surface-variant [overflow-wrap:anywhere]">
-        {event.description?.trim() || "No description provided."}
-      </p>
-      <DiscoveryDetailsPanel rows={rows} />
-    </div>
+    <>
+      <section aria-labelledby="event-about-heading" className="flex flex-col gap-3">
+        <SectionLabel id="event-about-heading">About this event</SectionLabel>
+        <div className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
+          <p className="max-w-[70ch] whitespace-pre-line text-sm leading-relaxed text-on-surface-variant [overflow-wrap:anywhere]">
+            {event.description?.trim() || "No description provided."}
+          </p>
+        </div>
+      </section>
+      <div className="grid gap-6 md:grid-cols-12">
+        <section aria-labelledby="event-schedule-heading" className="flex flex-col gap-3 md:col-span-7">
+          <SectionLabel id="event-schedule-heading">Schedule</SectionLabel>
+          <DiscoveryDetailsPanel rows={scheduleRows(event)} />
+        </section>
+        <section aria-labelledby="event-venue-heading" className="flex flex-col gap-3 md:col-span-5">
+          <SectionLabel id="event-venue-heading">Venue and organiser</SectionLabel>
+          <DiscoveryDetailsPanel rows={placeRows(event)} />
+        </section>
+      </div>
+    </>
   );
 }
