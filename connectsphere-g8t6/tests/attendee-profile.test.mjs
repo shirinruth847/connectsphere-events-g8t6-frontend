@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
- PROFILE_TEXT_MAX, countedLength, fieldErrorsFromBackend, hasUnsavedChanges, toSaveBody, validateProfileText, validateProfileValues, valuesFromProfile,
+ PROFILE_RECOVERY_MAX_AGE_MS, PROFILE_TEXT_MAX, countedLength, fieldErrorsFromBackend, hasUnsavedChanges, parseProfileRecovery, profileRecoveryKey, toSaveBody, validateProfileText, validateProfileValues, valuesFromProfile,
 } from '../components/attendee/profile/profile-form.ts';
 import { canViewPath, postLoginPath } from '../lib/auth.ts';
 
@@ -56,4 +56,24 @@ test('[SPM-270] should_show_null_preferences_as_empty_fields_when_loading', () =
 });
 test('[SPM-270] should_keep_only_editable_field_messages_when_mapping_backend_errors', () => {
  assert.deepEqual(fieldErrorsFromBackend({ dietaryRestrictions: 'Too long', version: 'Bad version', name: 'This field cannot be set.' }), { dietaryRestrictions: 'Too long' });
+});
+test('[SPM-270 TC-PROFILE-010] should_restore_recent_well_formed_edits_when_reading_session_recovery', () => {
+ const now = 1_800_000_000_000;
+ const raw = JSON.stringify({ values: { dietaryRestrictions: 'Vegan 🌱', accessibilityRequirements: '' }, version: 2, at: now - 60_000 });
+ assert.deepEqual(parseProfileRecovery(raw, now), { values: { dietaryRestrictions: 'Vegan 🌱', accessibilityRequirements: '' }, version: 2, at: now - 60_000 });
+ assert.equal(parseProfileRecovery(JSON.stringify({ values: { dietaryRestrictions: 'x', accessibilityRequirements: 'y' }, version: null, at: now }), now).version, null);
+});
+test('[SPM-270] should_ignore_expired_future_or_malformed_recovery_when_reading_it', () => {
+ const now = 1_800_000_000_000;
+ const ok = { values: { dietaryRestrictions: 'x', accessibilityRequirements: 'y' }, version: 1 };
+ assert.equal(parseProfileRecovery(null, now), null);
+ assert.equal(parseProfileRecovery('not json', now), null);
+ assert.equal(parseProfileRecovery(JSON.stringify({ ...ok, at: now - PROFILE_RECOVERY_MAX_AGE_MS - 1 }), now), null);
+ assert.equal(parseProfileRecovery(JSON.stringify({ ...ok, at: now + 1000 }), now), null);
+ assert.equal(parseProfileRecovery(JSON.stringify({ ...ok, version: '2', at: now }), now), null);
+ assert.equal(parseProfileRecovery(JSON.stringify({ values: { dietaryRestrictions: 'x' }, version: 1, at: now }), now), null);
+});
+test('[SPM-270] should_scope_recovery_to_the_signed_in_user', () => {
+ assert.notEqual(profileRecoveryKey('auth-a'), profileRecoveryKey('auth-b'));
+ assert.match(profileRecoveryKey('auth-a'), /attendee-profile$/);
 });

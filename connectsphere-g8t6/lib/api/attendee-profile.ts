@@ -1,8 +1,8 @@
 import { apiRequest } from "@/lib/api";
 
-// The signed-in attendee's own profile (SPM-270). Name, email and phone come
-// from the user record and are read-only here; only the two preference fields
-// are written.
+// The signed-in attendee's own profile (SPM-270). Name and email come from the
+// user record and are read-only here; only the two preference fields are
+// written.
 
 export interface AttendeeProfile {
   // Null until the attendee first saves (no attendee_profile row yet).
@@ -10,6 +10,8 @@ export interface AttendeeProfile {
   userId: number;
   name: string;
   email: string;
+  // Returned by the backend but not shown: attendees sign up without a phone
+  // number and email is their contact (SPM-270 requirement correction).
   phone: string | null;
   dietaryRestrictions: string | null;
   accessibilityRequirements: string | null;

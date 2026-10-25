@@ -63,3 +63,31 @@ export function fieldErrorsFromBackend(fields: Record<string, string>): ProfileF
   }
   return errors;
 }
+
+// Unsaved edits kept across a session expiry, like the event request form:
+// stored on "connectsphere:session-expired" and restored once after sign-in.
+export const PROFILE_RECOVERY_MAX_AGE_MS = 30 * 60 * 1000;
+export const profileRecoveryKey = (userKey: string | number) => `connectsphere:recovery:${userKey}:attendee-profile`;
+
+export interface ProfileRecovery {
+  values: ProfileValues;
+  // The version the edits were based on, to tell whether the profile changed meanwhile.
+  version: number | null;
+  at: number;
+}
+
+// Returns the stored edits if they are well formed and recent enough, else null.
+export function parseProfileRecovery(raw: string | null, now: number): ProfileRecovery | null {
+  if (!raw) return null;
+  try {
+    const recovery = JSON.parse(raw);
+    const values = recovery?.values;
+    if (!values || PROFILE_FIELDS.some((field) => typeof values[field] !== "string")) return null;
+    if (typeof recovery.at !== "number" || now - recovery.at > PROFILE_RECOVERY_MAX_AGE_MS || now < recovery.at) return null;
+    const version = recovery.version === null || Number.isInteger(recovery.version) ? recovery.version : undefined;
+    if (version === undefined) return null;
+    return { values: { dietaryRestrictions: values.dietaryRestrictions, accessibilityRequirements: values.accessibilityRequirements }, version, at: recovery.at };
+  } catch {
+    return null;
+  }
+}

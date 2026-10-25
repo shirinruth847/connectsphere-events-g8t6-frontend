@@ -18,8 +18,12 @@ const SAVED = makeProfile({
 // replies: { status, body } or a function of the request body. Without one, a
 // PUT succeeds like the backend: 201 when version is null, otherwise 200 with
 // the next version.
-async function installProfileMocks(page, { role = 'ATTENDEE', profile = makeProfile(), saves = [], signedOut = false } = {}) {
-  const state = signedOut ? await installLoginMock(page, { role }) : await installConnectSphereMocks(page, { role });
+// `canSignInAgain` starts signed in with the login mock installed, for journeys
+// where the session expires and the attendee signs in again.
+async function installProfileMocks(page, { role = 'ATTENDEE', profile = makeProfile(), saves = [], signedOut = false, canSignInAgain = false } = {}) {
+  const state = signedOut || canSignInAgain
+    ? await installLoginMock(page, { role, authenticated: canSignInAgain })
+    : await installConnectSphereMocks(page, { role });
   const calls = { get: 0, put: [] };
   let current = profile;
   await page.route('**/api/attendee-profile/mine', async (route) => {
@@ -108,13 +112,12 @@ test('[SPM-270 TC-PROFILE-002] should_redirect_to_login_and_return_when_a_signed
   await expect(dietary(page)).toHaveValue('Vegetarian');
 });
 
-test('[SPM-270 AC2] should_show_name_email_and_phone_read_only_when_the_profile_loads', async ({ page }) => {
+test('[SPM-270 AC2] should_show_name_and_email_read_only_when_the_profile_loads', async ({ page }) => {
   await installProfileMocks(page, { profile: SAVED });
   await page.goto('/attendee-profile');
   const personal = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Personal information', exact: true }) });
   await expect(personal).toContainText('Test User');
   await expect(personal).toContainText('user@example.com');
-  await expect(personal).toContainText('+65 8123 4567');
   await expect(personal).toContainText('Read-only');
   await expect(personal.locator('input, textarea')).toHaveCount(0);
   await expect(dietary(page)).toHaveValue('Vegetarian');
@@ -122,11 +125,19 @@ test('[SPM-270 AC2] should_show_name_email_and_phone_read_only_when_the_profile_
   await expect(page.getByText(/^Last saved 21 Oct 2026/)).toBeVisible();
 });
 
-test('[SPM-270 AC2] should_say_not_provided_when_the_phone_is_missing', async ({ page }) => {
-  await installProfileMocks(page, { profile: makeProfile({ phone: null }) });
-  await page.goto('/attendee-profile');
-  await expect(page.getByText('Not provided', { exact: true })).toBeVisible();
-});
+// Requirement correction: attendees sign up without a phone, so the profile
+// shows none, even when the backend response still includes one.
+for (const [label, phone] of [['the_backend_returns_one', '+65 8123 4567'], ['the_backend_returns_none', null]]) {
+  test(`[SPM-270 AC2] should_not_show_a_phone_row_when_${label}`, async ({ page }) => {
+    await installProfileMocks(page, { profile: { ...SAVED, phone } });
+    await page.goto('/attendee-profile');
+    const personal = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Personal information', exact: true }) });
+    await expect(personal).toContainText('user@example.com');
+    await expect(personal.getByText('Phone', { exact: true })).toHaveCount(0);
+    await expect(personal).not.toContainText('+65 8123 4567');
+    await expect(page.getByText('Not provided', { exact: true })).toHaveCount(0);
+  });
+}
 
 test('[SPM-270 TC-PROFILE-004/008] should_create_the_profile_with_version_null_when_saving_blank_fields_the_first_time', async ({ page }) => {
   const { calls } = await installProfileMocks(page);
@@ -311,4 +322,59 @@ test('[SPM-270] should_fit_390px_and_close_the_drawer_after_opening_the_profile'
   const save = await saveButton(page).boundingBox();
   const form = await page.locator('form').boundingBox();
   expect(save.width).toBeGreaterThan(form.width * 0.9);
+});
+
+// Session expiry during a save (Master 3.4: input survives recoverable errors).
+async function signInAgain(page) {
+  await expect(page).toHaveURL(/\/login\?next=%2Fattendee-profile/);
+  await page.locator('#email').fill('user@example.com');
+  await page.locator('#password').fill('Valid-password9');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/attendee-profile$/);
+}
+
+test('[SPM-270 TC-PROFILE-010] should_restore_unsaved_edits_after_sign_in_when_the_session_expires_during_save', async ({ page }) => {
+  const { calls } = await installProfileMocks(page, {
+    profile: SAVED, canSignInAgain: true,
+    saves: [{ status: 401, body: { error: 'Please log in to continue.', code: 'UNAUTHENTICATED' } }],
+  });
+  await page.goto('/attendee-profile');
+  await dietary(page).fill('Typed before expiry 🌾');
+  await accessibility(page).fill('');
+  await saveButton(page).click();
+  await signInAgain(page);
+  await expect(page.getByText('Your unsaved changes were restored', { exact: true })).toBeVisible();
+  await expect(dietary(page)).toHaveValue('Typed before expiry 🌾');
+  await expect(accessibility(page)).toHaveValue('');
+  await expect(page.getByText('Profile saved', { exact: true })).toHaveCount(0);
+  await saveButton(page).click();
+  await expect(page.getByText('Profile saved', { exact: true })).toBeVisible();
+  expect(calls.put).toEqual([
+    { dietaryRestrictions: 'Typed before expiry 🌾', accessibilityRequirements: null, version: 3 },
+    { dietaryRestrictions: 'Typed before expiry 🌾', accessibilityRequirements: null, version: 3 },
+  ]);
+  await expect(page.getByText('Your unsaved changes were restored', { exact: true })).toHaveCount(0);
+  // Restored once only.
+  await page.reload();
+  await expect(page.getByText('Your unsaved changes were restored', { exact: true })).toHaveCount(0);
+});
+
+test('[SPM-270] should_warn_and_let_the_attendee_discard_restored_edits_when_the_profile_changed_while_signed_out', async ({ page }) => {
+  const newer = { ...SAVED, dietaryRestrictions: 'Saved elsewhere', version: 4 };
+  const mocks = await installProfileMocks(page, {
+    profile: SAVED, canSignInAgain: true,
+    saves: [{ status: 401, body: { error: 'Please log in to continue.', code: 'UNAUTHENTICATED' } }],
+  });
+  await page.goto('/attendee-profile');
+  await dietary(page).fill('My edit before expiry');
+  mocks.setProfile(newer);
+  await saveButton(page).click();
+  await signInAgain(page);
+  await expect(page.getByText('Your profile changed while you were signed out', { exact: true })).toBeVisible();
+  await expect(dietary(page)).toHaveValue('My edit before expiry');
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await expect(dietary(page)).toHaveValue('Saved elsewhere');
+  await expect(page.getByText('Your profile changed while you were signed out', { exact: true })).toHaveCount(0);
+  // Nothing was written after the expired save.
+  expect(mocks.calls.put).toHaveLength(1);
 });

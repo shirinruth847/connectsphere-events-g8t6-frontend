@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { useSessionUser } from "@/components/auth/auth-gate";
 import { PageContent } from "@/components/layout/page-content";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { useNavigationGuard } from "@/components/shared/navigation-guard";
@@ -11,12 +12,15 @@ import { ApiError } from "@/lib/api";
 import { getMyAttendeeProfile, saveMyAttendeeProfile, type AttendeeProfile } from "@/lib/api/attendee-profile";
 import { ROLE_LABELS } from "@/lib/auth";
 import { formatTimestamp } from "@/lib/datetime";
+import { SESSION_EXPIRED } from "@/lib/session";
 import {
   PROFILE_FIELDS,
   PROFILE_TEXT_MAX,
   countedLength,
   fieldErrorsFromBackend,
   hasUnsavedChanges,
+  parseProfileRecovery,
+  profileRecoveryKey,
   toSaveBody,
   validateProfileText,
   validateProfileValues,
@@ -25,6 +29,15 @@ import {
   type ProfileFieldErrors,
   type ProfileValues,
 } from "./profile-form";
+
+// sessionStorage can be unavailable (private mode, blocked storage); recovery is then skipped.
+function readProfileRecovery(key: string) {
+  try {
+    return parseProfileRecovery(sessionStorage.getItem(key), Date.now());
+  } catch {
+    return null;
+  }
+}
 
 const toApiError = (error: unknown) =>
   error instanceof ApiError ? error : new ApiError("The request could not be completed.", 0);
@@ -122,7 +135,6 @@ function PersonalInformation({ profile }: { profile: AttendeeProfile }) {
         rows={[
           { label: "Name", icon: "person", value: profile.name },
           { label: "Email", value: <span className="[overflow-wrap:anywhere]">{profile.email}</span> },
-          { label: "Phone", value: profile.phone?.trim() ? profile.phone : <span className="font-normal text-on-surface-variant">Not provided</span> },
         ]}
       />
     </SectionCard>
@@ -161,20 +173,50 @@ function PreferencesForm({
   onLoadLatest: () => void;
 }) {
   const guard = useNavigationGuard();
+  const user = useSessionUser();
+  const recoveryKey = profileRecoveryKey(user?.authId ?? user?.user_id ?? "anonymous");
+  // Edits kept when an earlier session expired, read once as the form starts.
+  const [restored, setRestored] = useState(() => readProfileRecovery(recoveryKey));
   // The last values the backend confirmed, and the version to send next.
   const [saved, setSaved] = useState(profile);
-  const [values, setValues] = useState<ProfileValues>(() => valuesFromProfile(profile));
+  const [values, setValues] = useState<ProfileValues>(() => restored?.values ?? valuesFromProfile(profile));
   const [fieldErrors, setFieldErrors] = useState<ProfileFieldErrors>({});
   const [save, setSave] = useState<SaveState>({ status: "idle" });
   const fieldRefs = useRef<Partial<Record<ProfileField, HTMLTextAreaElement | null>>>({});
   const dirty = hasUnsavedChanges(values, valuesFromProfile(saved));
   const saving = save.status === "saving";
+  const latest = useRef({ values, version: saved.version, dirty });
 
   // Warn before leaving with unsaved edits, using the app's shared guard.
   useEffect(() => {
     guard.setBlocked(dirty);
     return () => guard.setBlocked(false);
   }, [dirty, guard]);
+
+  useEffect(() => {
+    latest.current = { values, version: saved.version, dirty };
+  });
+
+  // Recovery is used once; it is removed as soon as the form has read it.
+  useEffect(() => {
+    try { sessionStorage.removeItem(recoveryKey); } catch { /* storage unavailable */ }
+  }, [recoveryKey]);
+
+  // When the session expires (apiRequest broadcasts it, then AuthGate sends the
+  // attendee to sign in), keep unsaved edits so they survive the round trip.
+  useEffect(() => {
+    const preserve = () => {
+      const current = latest.current;
+      if (current.dirty) {
+        try {
+          sessionStorage.setItem(recoveryKey, JSON.stringify({ values: current.values, version: current.version, at: Date.now() }));
+        } catch { /* storage unavailable: the edits cannot be kept */ }
+      }
+      guard.allowNavigation();
+    };
+    window.addEventListener(SESSION_EXPIRED, preserve);
+    return () => window.removeEventListener(SESSION_EXPIRED, preserve);
+  }, [guard, recoveryKey]);
 
   const update = (field: ProfileField, value: string) => {
     setValues((current) => ({ ...current, [field]: value }));
@@ -205,6 +247,7 @@ function PreferencesForm({
       setSaved(latest);
       setValues(valuesFromProfile(latest));
       guard.setBlocked(false);
+      setRestored(null);
       setSave({ status: "saved" });
     } catch (caught) {
       // The typed values stay in the form in every failure case (TC-PROFILE-010).
@@ -241,6 +284,7 @@ function PreferencesForm({
   const discard = () => {
     setValues(valuesFromProfile(saved));
     setFieldErrors({});
+    setRestored(null);
     setSave({ status: "idle" });
   };
 
@@ -256,6 +300,14 @@ function PreferencesForm({
       <p className="text-xs text-on-surface-variant">
         {saved.updatedAt ? `Last saved ${formatTimestamp(saved.updatedAt)}` : "Not saved yet. Your preferences are saved when you select Save preferences."}
       </p>
+
+      {restored && restored.version !== saved.version ? (
+        <AlertBanner tone="warning" title="Your profile changed while you were signed out">
+          Your unsaved edits are restored below, but your saved profile was updated in the meantime. Saving will replace the latest saved preferences with these edits; select Discard changes to keep the saved version.
+        </AlertBanner>
+      ) : restored ? (
+        <AlertBanner tone="info" title="Your unsaved changes were restored">Review them, then save.</AlertBanner>
+      ) : null}
 
       {reloadedAfterConflict && save.status === "idle" && !dirty ? (
         <AlertBanner tone="info" title="Latest profile loaded">Review these preferences, make your changes again if needed, then save.</AlertBanner>
