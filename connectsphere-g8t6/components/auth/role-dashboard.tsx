@@ -9,6 +9,7 @@ import { CoordinatorDashboard } from "@/components/coordinator/dashboard";
 import { CoordinatorLeadDashboard } from "@/components/coordinator-lead/dashboard";
 import { VenueStaffDashboard } from "@/components/venue-staff/dashboard";
 import { TechSupportDashboard } from "@/components/tech-support/dashboard";
+import { SafetyOfficerDashboard } from "@/components/safety-officer/dashboard";
 import { ROUTES, type UserRole } from "@/lib/auth";
 
 // Compatibility for feature branches; new pages use DashboardWorkspace.
@@ -20,6 +21,7 @@ const dashboards: Record<Exclude<UserRole, "ATTENDEE">, ComponentType> = {
   COORDINATOR_LEAD: CoordinatorLeadDashboard,
   VENUE_STAFF: VenueStaffDashboard,
   TECH_SUPPORT: TechSupportDashboard,
+  SAFETY_OFFICER: SafetyOfficerDashboard,
 };
 
 // Dispatch only. Role-specific features belong in their own component folders.

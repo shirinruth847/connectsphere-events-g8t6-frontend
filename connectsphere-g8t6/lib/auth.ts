@@ -1,4 +1,4 @@
-export type UserRole = 'ORGANISER' | 'COORDINATOR' | 'COORDINATOR_LEAD' | 'VENUE_STAFF' | 'TECH_SUPPORT' | 'ATTENDEE';
+export type UserRole = 'ORGANISER' | 'COORDINATOR' | 'COORDINATOR_LEAD' | 'VENUE_STAFF' | 'TECH_SUPPORT' | 'SAFETY_OFFICER' | 'ATTENDEE';
 export type SessionUser = { user_id: number; name: string; email: string; role: UserRole; home_path?: string; authId?: string; avatarUrl?: string };
 
 export const ROUTES = {
@@ -12,6 +12,7 @@ export const ROUTES = {
   newEvent: "/events/new",
   createEvent: "/events/create",
   drafts: "/dashboard?status=DRAFT#my-drafts",
+  notifications: "/notifications",
   venues: "/venues",
 } as const;
 
@@ -21,6 +22,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   COORDINATOR_LEAD: 'Event Coordinator Lead',
   VENUE_STAFF: 'Venue Staff',
   TECH_SUPPORT: 'Technical Support',
+  SAFETY_OFFICER: 'Safety Officer',
   ATTENDEE: 'Attendee',
 };
 
@@ -47,10 +49,12 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
   if (pathname === "/events") return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
+  // The inbox (SPM-155); organisers and coordinators join with SPM-192/193.
+  if (pathname === ROUTES.notifications) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
-  // The event workspace (SPM-33); the backend still answers "not found" for unrelated events.
+  // The event workspace (SPM-33; Safety Officer reviews, SPM-243); the backend still answers "not found" for unrelated events.
   // Venue Staff open an event through its venue bookings (SPM-181).
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF";
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF" || role === "SAFETY_OFFICER";
   if (pathname === ROUTES.venues) return ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(role);
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";

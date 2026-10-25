@@ -258,9 +258,7 @@ export function VenueManagementList() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setBusy(true);
     loadingMoreRef.current = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingMore(false);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ status: "loading" });
     listManagedVenues(filters)
       .then((result) => { if (alive) setState({ status: "ready", venues: result.venues, nextOffset: result.nextOffset, sortNotChecked: Boolean(result.sortNotChecked) }); })
