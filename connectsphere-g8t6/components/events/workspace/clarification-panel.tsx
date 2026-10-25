@@ -56,23 +56,30 @@ interface ThreadActions {
 // One request's messages in the shared Dialog, oldest first. The owner and the
 // assigned coordinator reply while it is open; only the coordinator marks it
 // complete, from the tick in the header. Everyone else reads.
-function ThreadDialog({ round, open, onClose, actions }: { round: ClarificationRound | null; open: boolean; onClose: () => void; actions: ThreadActions }) {
+function ThreadDialog({ round, open, loading, loadError, onRetry, onRead, onClose, actions }: {
+  round: ClarificationRound | null; open: boolean; loading: boolean; loadError: string;
+  onRetry: () => void; onRead: (round: ClarificationRound) => void; onClose: () => void; actions: ThreadActions;
+}) {
   const { event } = actions;
   const [confirming, setConfirming] = useState(false);
   const completedHere = useRef(false);
   const list = useRef<HTMLOListElement>(null);
   const completedNote = useRef<HTMLParagraphElement>(null);
   const isOpen = round?.status === "OPEN";
-  const canPost = isOpen && canPostClarificationMessage(event.permissions);
-  const canComplete = isOpen && canCompleteClarification(event.permissions);
+  const canPost = isOpen && !loading && !loadError && canPostClarificationMessage(event.permissions);
+  const canComplete = isOpen && !loading && !loadError && canCompleteClarification(event.permissions);
   const confirmId = `event-${event.eventId}-clarification-${round?.round ?? 0}-complete`;
   const messageCount = round?.messages.length ?? 0;
   const status = round?.status;
 
+  useEffect(() => {
+    if (open && !loading && !loadError && round) onRead(round);
+  }, [open, loading, loadError, round, onRead]);
+
   // Like a chat, the newest message is in view on opening and after a reply.
   useEffect(() => {
     if (open) list.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
-  }, [open, messageCount]);
+  }, [open, messageCount, loading]);
 
   // The header tick and the reply box go once the request is complete, so focus moves to the outcome.
   useEffect(() => {
@@ -134,7 +141,11 @@ function ThreadDialog({ round, open, onClose, actions }: { round: ClarificationR
         ) : undefined
       }
     >
-      {round ? (
+      {loading ? <Skeleton className="h-32 w-full" aria-label="Loading latest messages" /> : loadError ? (
+        <AlertBanner tone="error" title="Messages unavailable">
+          {loadError}<div className="mt-3"><Button variant="secondary" onClick={onRetry}>Try again</Button></div>
+        </AlertBanner>
+      ) : round ? (
         <div className="grid gap-3">
           <ol ref={list} className="grid gap-2" aria-label="Messages, oldest first">
             {messagesOf(round).map((message) => <Message key={message.messageId} message={message} />)}
@@ -156,8 +167,8 @@ function ThreadDialog({ round, open, onClose, actions }: { round: ClarificationR
 interface ClarificationPanelProps extends ThreadActions {
   state: ClarificationsState;
   onRetry: () => void;
-  // Opening a request marks it read.
-  onThreadOpened: (round: ClarificationRound) => void;
+  onThreadOpened: (round: ClarificationRound) => Promise<void>;
+  onThreadRead: (round: ClarificationRound) => void;
   // Given on the coordinator's view, where Request Clarification sits at the top of the list.
   onRequested?: (event: EventView) => void;
 }
@@ -168,11 +179,14 @@ interface ClarificationPanelProps extends ThreadActions {
 // same-organisation organisers, assigned coordinator) sees exactly these
 // messages; only the owner and the assigned coordinator write in the open
 // request, and only the coordinator marks it complete. No internal notes.
-export function ClarificationPanel({ state, onRetry, onThreadOpened, onRequested, ...actions }: ClarificationPanelProps) {
+export function ClarificationPanel({ state, onRetry, onThreadOpened, onThreadRead, onRequested, ...actions }: ClarificationPanelProps) {
   const { event } = actions;
   const headingId = `event-${event.eventId}-clarifications`;
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [viewing, setViewing] = useState(false);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState("");
+  const openAttempt = useRef(0);
   const [requesting, setRequesting] = useState(false);
   const requestButton = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLOListElement>(null);
@@ -198,10 +212,19 @@ export function ClarificationPanel({ state, onRetry, onThreadOpened, onRequested
     }
   }, [newestId]);
 
-  const openThread = (round: ClarificationRound) => {
+  const openThread = async (round: ClarificationRound) => {
+    const attempt = ++openAttempt.current;
     setSelectedId(round.clarificationId);
     setViewing(true);
-    onThreadOpened(round);
+    setThreadLoading(true);
+    setThreadError("");
+    try {
+      await onThreadOpened(round);
+    } catch (caught) {
+      if (openAttempt.current === attempt) setThreadError(caught instanceof Error ? caught.message : "Could not load the latest messages.");
+    } finally {
+      if (openAttempt.current === attempt) setThreadLoading(false);
+    }
   };
 
   return (
@@ -243,7 +266,7 @@ export function ClarificationPanel({ state, onRetry, onThreadOpened, onRequested
                 <button
                   type="button"
                   aria-haspopup="dialog"
-                  onClick={() => openThread(round)}
+                  onClick={() => void openThread(round)}
                   className="flex min-h-11 w-full items-center justify-between gap-3 rounded-control bg-surface-container-low px-3 py-2.5 text-left text-sm font-semibold text-on-surface transition-colors duration-150 hover:bg-primary-fixed/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
                   <span>Request {round.round}</span>
@@ -257,7 +280,10 @@ export function ClarificationPanel({ state, onRetry, onThreadOpened, onRequested
       <p className="mt-4 text-xs text-on-surface-variant">Visible to the organiser, their organisation and the assigned coordinator.</p>
 
       {/* Stays mounted so closing returns focus to the row that opened it; keyed so each request starts fresh. */}
-      <ThreadDialog key={selectedId ?? 0} round={selected} open={viewing && selected !== null} onClose={() => setViewing(false)} actions={actions} />
+      <ThreadDialog key={selectedId ?? 0} round={selected} open={viewing && selected !== null}
+        loading={threadLoading} loadError={threadError} onRead={onThreadRead}
+        onRetry={() => { if (selected) void openThread(selected); }}
+        onClose={() => { openAttempt.current += 1; setViewing(false); }} actions={actions} />
 
       {requesting && onRequested ? (
         <RequestClarificationDialog

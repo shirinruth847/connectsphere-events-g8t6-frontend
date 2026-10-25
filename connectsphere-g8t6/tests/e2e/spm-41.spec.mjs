@@ -87,8 +87,8 @@ const returnedForOwner = (permissions = returnedOwnerPermissions, overrides = {}
 const PATH = /\/api\/events\/42(\/(history(\/viewed)?|clarifications(\/\d+\/(messages|read|complete))?|amendments))?(\?.*)?$/;
 
 // One mutable fake backend for event 42; the shared support mocks handle the rest.
-async function routeClarifications(page, { event, rounds = [], roundsStatus = 200, history = [], lastViewedAt = null, onRequest, onMessage, onAmend, onComplete }) {
-  const state = { event, rounds, roundsStatus, requests: [], messages: [], amendments: [], completions: [], reads: [], historyViews: 0 };
+async function routeClarifications(page, { event, rounds = [], roundsStatus = 200, history = [], lastViewedAt = null, onRequest, onMessage, onAmend, onComplete, onGet }) {
+  const state = { event, rounds, roundsStatus, requests: [], messages: [], amendments: [], completions: [], reads: [], readBodies: [], roundsGets: 0, historyViews: 0 };
   await page.route(PATH, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
@@ -101,6 +101,8 @@ async function routeClarifications(page, { event, rounds = [], roundsStatus = 20
       return route.fulfill({ json: { lastViewedAt: "2026-10-24T03:00:00.000Z" } });
     }
     if (pathname.endsWith("/clarifications") && method === "GET") {
+      state.roundsGets += 1;
+      if (onGet) return onGet(route, state);
       if (state.roundsStatus !== 200) return route.fulfill({ status: state.roundsStatus, json: { error: "Internal Server Error" } });
       return route.fulfill({ json: { clarifications: state.rounds } });
     }
@@ -111,7 +113,8 @@ async function routeClarifications(page, { event, rounds = [], roundsStatus = 20
     }
     if (pathname.endsWith("/read")) {
       state.reads.push(pathname);
-      return route.fulfill({ status: 204, body: "" });
+      state.readBodies.push(request.postDataJSON());
+      return route.fulfill({ json: { read: true } });
     }
     if (pathname.endsWith("/messages")) {
       const sent = call();
@@ -605,4 +608,124 @@ test("[SPM-41] the coordinator dialog fits a mobile screen", async ({ page }) =>
   const box = await dialog.boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(390);
+});
+
+test("[SPM-41 regression] opening a cached request fetches and acknowledges the latest displayed reply", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "ORGANISER" });
+  const state = await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound] });
+  await page.goto("/events/42");
+  await expect(clarificationList(page).getByRole("button", { name: "Request 2" })).toBeVisible();
+  state.rounds = [{ ...openRound, messages: [...openRound.messages, message(44, coordinator, "Reply posted after the page loaded", "2026-10-25T10:00:00Z")] }];
+  const thread = await openThread(page, 2);
+  await expect(thread.getByText("Reply posted after the page loaded", { exact: true })).toBeVisible();
+  await expect.poll(() => state.readBodies).toEqual([{ lastMessageId: 44 }]);
+  expect(state.roundsGets).toBe(2);
+});
+
+test("[SPM-41 regression] failed thread refresh shows a retry without acknowledging stale messages", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "ORGANISER" });
+  const state = await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound] });
+  await page.goto("/events/42");
+  await expect(clarificationList(page).getByRole("button", { name: "Request 2" })).toBeVisible();
+  state.roundsStatus = 500;
+  const thread = await openThread(page, 2);
+  await expect(thread.getByText("Messages unavailable", { exact: true })).toBeVisible();
+  await expect(thread.getByLabel("Your message")).toHaveCount(0);
+  expect(state.reads).toEqual([]);
+  state.roundsStatus = 200;
+  await thread.getByRole("button", { name: "Try again" }).click();
+  await expect(thread.getByText(openRound.message, { exact: true })).toBeVisible();
+  await expect.poll(() => state.readBodies).toEqual([{ lastMessageId: 3 }]);
+});
+
+test("[SPM-41 regression] attendance and end changes preserve an unchanged start inside 48 hours", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-10-25T10:00:00Z") });
+  await installConnectSphereMocks(page, { role: "ORGANISER" });
+  const state = await routeClarifications(page, {
+    event: returnedForOwner(returnedOwnerPermissions, { startDatetime: "2026-10-26T10:00:00Z", endDatetime: "2026-10-26T12:00:00Z" }),
+    rounds: [openRound],
+    onAmend: (route, sent, current) => {
+      current.event = { ...current.event, ...sent.body.changes, version: current.event.version + 1 };
+      return route.fulfill({ json: { message: "Amendments saved.", event: current.event } });
+    },
+  });
+  await page.goto("/events/42");
+  const region = page.getByRole("region", { name: "Amend your request" });
+  await region.getByRole("button", { name: "Amend request", exact: true }).click();
+  await region.getByLabel("Expected attendance").fill("121");
+  await region.getByRole("button", { name: "Save amendments", exact: true }).click();
+  await expect.poll(() => state.amendments.length).toBe(1);
+  expect(state.amendments[0].body.changes).toEqual({ expectedAttendance: 121 });
+  await region.getByRole("button", { name: "Amend request", exact: true }).click();
+  await region.getByLabel(/^End\b/).fill("2026-10-26T23:00");
+  await region.getByRole("button", { name: "Save amendments", exact: true }).click();
+  await expect.poll(() => state.amendments.length).toBe(2);
+  expect(Object.keys(state.amendments[1].body.changes)).toEqual(["endDatetime"]);
+});
+
+for (const width of [1280, 390]) {
+  test(`[SPM-41 regression] equipment can be amended at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    const state = await routeClarifications(page, {
+      event: returnedForOwner(returnedOwnerPermissions, { equipmentRequirements: [{ equipmentId: 1, quantity: 2 }] }),
+      rounds: [openRound],
+      onAmend: (route, sent, current) => {
+        current.event = { ...current.event, ...sent.body.changes, version: current.event.version + 1 };
+        return route.fulfill({ json: { message: "Amendments saved.", event: current.event } });
+      },
+    });
+    await page.goto("/events/42");
+    const region = page.getByRole("region", { name: "Amend your request" });
+    await region.getByRole("button", { name: "Amend request", exact: true }).click();
+    await region.getByLabel("Quantity 1", { exact: true }).fill("0");
+    await region.getByRole("button", { name: "Save amendments", exact: true }).click();
+    await expect(region.getByText("Choose up to 20 equipment items with positive whole quantities.")).toBeVisible();
+    expect(state.amendments).toHaveLength(0);
+    await region.getByLabel("Quantity 1", { exact: true }).fill("4");
+    await region.getByRole("button", { name: "Add equipment", exact: true }).click();
+    await expect(region.getByLabel("Equipment 2", { exact: true })).toHaveValue("2");
+    await region.getByLabel("Quantity 2", { exact: true }).fill("3");
+    await region.getByRole("button", { name: "Remove equipment 1", exact: true }).click();
+    await expect(region.getByLabel("Equipment 1", { exact: true })).toHaveValue("2");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await region.getByRole("group", { name: "Equipment", exact: true }).screenshot({ path: testInfo.outputPath(`equipment-${width}.png`) });
+    await region.getByRole("button", { name: "Save amendments", exact: true }).click();
+    await expect.poll(() => state.amendments.length).toBe(1);
+    expect(state.amendments[0].body.changes).toEqual({ equipmentRequirements: [{ equipmentId: 2, quantity: 3 }] });
+    await expect(page.getByRole("region", { name: "Requirements", exact: true }).getByText("Equipment #2 × 3")).toBeVisible();
+  });
+}
+
+test("[SPM-41 regression] an older opening response cannot replace a newly reopened thread", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "ORGANISER" });
+  let releaseOld;
+  const oldGate = new Promise((resolve) => { releaseOld = resolve; });
+  let oldFinished = false;
+  const latest = { ...openRound, messages: [...openRound.messages, message(45, coordinator, "Latest reply survives an older response", "2026-10-25T10:00:00Z")] };
+  const state = await routeClarifications(page, {
+    event: returnedForOwner(), rounds: [openRound],
+    onGet: async (route, current) => {
+      if (current.roundsGets === 2) {
+        await oldGate;
+        await route.fulfill({ json: { clarifications: [openRound] } });
+        oldFinished = true;
+        return;
+      }
+      return route.fulfill({ json: { clarifications: [current.roundsGets >= 3 ? latest : openRound] } });
+    },
+  });
+  await page.goto("/events/42");
+  await expect(clarificationList(page).getByRole("button", { name: "Request 2" })).toBeVisible();
+  const first = await openThread(page, 2);
+  await expect.poll(() => state.roundsGets).toBe(2);
+  await first.getByRole("button", { name: "Close dialog", exact: true }).click();
+  const reopened = await openThread(page, 2);
+  await expect(reopened.getByText("Latest reply survives an older response", { exact: true })).toBeVisible();
+  await expect.poll(() => state.readBodies).toEqual([{ lastMessageId: 45 }]);
+  releaseOld();
+  await expect.poll(() => oldFinished).toBe(true);
+  await reopened.getByLabel("Your message").fill("Reply draft");
+  await expect(reopened.getByText("Latest reply survives an older response", { exact: true })).toBeVisible();
+  expect(state.readBodies.every((entry) => entry.lastMessageId === 45)).toBe(true);
 });

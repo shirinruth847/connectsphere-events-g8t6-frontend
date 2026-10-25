@@ -69,7 +69,8 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
       event={event}
       state={clarifications.state}
       onRetry={clarifications.retry}
-      onThreadOpened={clarifications.markRead}
+      onThreadOpened={clarifications.refreshThread}
+      onThreadRead={clarifications.markRead}
       onRoundUpdated={clarifications.replaceRound}
       onCompleted={(updated, message) => {
         onEventChange(updated);

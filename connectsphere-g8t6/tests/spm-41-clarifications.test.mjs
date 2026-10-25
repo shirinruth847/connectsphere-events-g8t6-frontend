@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AMENDABLE_FIELDS, amendedFields, clarificationMessageProblem, formValuesFromEvent } from "../lib/events.ts";
+import { AMENDABLE_FIELDS, amendedFields, clarificationMessageProblem, formValuesFromEvent, validateEventStep } from "../lib/events.ts";
 import { isNewHistoryEntry } from "../lib/event-history.ts";
 
 const returned = {
@@ -22,6 +22,40 @@ const returned = {
 test("[SPM-41 AC3] nothing counts as amended until a field changes", () => {
   const values = formValuesFromEvent(returned);
   assert.deepEqual(amendedFields(values, { ...values }), {});
+});
+
+test("[SPM-41 AC3] unchanged starts inside 48 hours still allow attendance/end amendments", () => {
+  const now = Date.parse("2026-10-25T10:00:00Z");
+  const values = formValuesFromEvent({ ...returned, startDatetime: "2026-10-26T10:00:00Z", endDatetime: "2026-10-26T12:00:00Z" });
+  values.expectedAttendance = "250";
+  assert.deepEqual(validateEventStep(values, 1, true, now, false), {});
+  values.endDatetime = "2026-10-26T13:00:00Z";
+  assert.deepEqual(validateEventStep(values, 1, true, now, false), {});
+  values.expectedAttendance = "";
+  assert.ok(validateEventStep(values, 1, true, now, false).expectedAttendance);
+  values.endDatetime = values.startDatetime;
+  assert.ok(validateEventStep(values, 1, true, now, false).endDatetime);
+});
+
+test("[SPM-41 AC3] amended starts retain the exact 48-hour boundary", () => {
+  const now = Date.parse("2026-10-25T10:00:00Z");
+  const values = formValuesFromEvent(returned);
+  values.startDatetime = "2026-10-27T10:00:00Z";
+  values.endDatetime = "2026-10-27T12:00:00Z";
+  assert.deepEqual(validateEventStep(values, 1, true, now, true), {});
+  values.startDatetime = "2026-10-27T09:59:59.999Z";
+  assert.ok(validateEventStep(values, 1, true, now, true).startDatetime);
+});
+
+test("[SPM-41 AC3] equipment amendments retain quantities and reject invalid quantities", () => {
+  const original = formValuesFromEvent(returned);
+  const values = { ...original, equipmentRequirements: [{ equipmentId: 8, quantity: 5 }] };
+  assert.deepEqual(amendedFields(original, values), { equipmentRequirements: [{ equipmentId: 8, quantity: 5 }] });
+  assert.deepEqual(validateEventStep(values, 4, true), {});
+  for (const quantity of [0, -1, 1.5, 2147483648]) {
+    values.equipmentRequirements[0].quantity = quantity;
+    assert.ok(validateEventStep(values, 4, true).equipmentRequirements);
+  }
 });
 
 test("[SPM-41 AC3] only the changed submission fields are sent, with their submitted values", () => {

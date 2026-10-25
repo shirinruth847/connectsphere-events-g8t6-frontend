@@ -301,10 +301,12 @@ export function postClarificationMessage(
   );
 }
 
-// POST /api/events/:id/clarifications/:round/read — lets the next message notify
-// this viewer again. Stored only for the owner and the assigned coordinator.
-export function markClarificationRead(eventId: number, round: number): Promise<void> {
-  return apiRequest<void>(`/events/${eventId}/clarifications/${round}/read`, { method: "POST" });
+// Acknowledge the last displayed message. False preserves reads when another
+// reply arrived after the GET; only the owner/assigned coordinator track reads.
+export function markClarificationRead(eventId: number, round: number, lastMessageId: number): Promise<{ read: boolean }> {
+  return apiRequest<{ read: boolean }>(`/events/${eventId}/clarifications/${round}/read`, {
+    method: "POST", body: JSON.stringify({ lastMessageId }),
+  });
 }
 
 // POST /api/events/:id/amendments — owner, open thread only; the event stays

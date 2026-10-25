@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getEventClarifications, markClarificationRead, type ClarificationRound } from "@/lib/api/event-workspace";
 
 export type ClarificationsState =
@@ -15,6 +15,7 @@ const messageOf = (caught: unknown) => (caught instanceof Error ? caught.message
 export function useEventClarifications(eventId: number, refreshKey: number) {
   const [state, setState] = useState<ClarificationsState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const threadAttempt = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -50,16 +51,27 @@ export function useEventClarifications(eventId: number, refreshKey: number) {
     );
   }, []);
 
-  // Opening a thread marks it read for the owner and the assigned coordinator
-  // (whose unreadCount is a number), so their next message notification is not
-  // held back. Best effort: a failure only delays that.
-  const markRead = useCallback((round: ClarificationRound) => {
-    if (typeof round.unreadCount !== "number") return;
-    markClarificationRead(eventId, round.round).catch(() => {});
-    if (round.unreadCount) replaceRound({ ...round, unreadCount: 0 });
+  // Reopening a request must fetch replies posted since the event page loaded.
+  const refreshThread = useCallback(async (round: ClarificationRound) => {
+    const attempt = ++threadAttempt.current;
+    const { clarifications } = await getEventClarifications(eventId);
+    const latest = Array.isArray(clarifications)
+      ? clarifications.find((entry) => entry.clarificationId === round.clarificationId)
+      : null;
+    if (!latest) throw new Error("This clarification request is no longer available. Refresh the event to see its current status.");
+    if (threadAttempt.current === attempt) replaceRound(latest);
   }, [eventId, replaceRound]);
 
-  return { state, retry, replaceRound, markRead };
+  // Acknowledge only a rendered snapshot. The database returns false when a
+  // newer reply arrived meanwhile; failed acknowledgements keep their unread state.
+  const markRead = useCallback((round: ClarificationRound) => {
+    if (typeof round.unreadCount !== "number") return;
+    const lastMessageId = Math.max(0, ...round.messages.map((message) => message.messageId));
+    // The next GET supplies authoritative unread counts, including raced replies.
+    markClarificationRead(eventId, round.round, lastMessageId).catch(() => {});
+  }, [eventId]);
+
+  return { state, retry, replaceRound, refreshThread, markRead };
 }
 
 export const openRound = (state: ClarificationsState) =>
