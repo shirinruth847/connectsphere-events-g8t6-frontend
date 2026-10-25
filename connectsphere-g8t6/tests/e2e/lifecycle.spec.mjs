@@ -54,7 +54,9 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
     const request = route.request();
     if (request.method() === "OPTIONS") return route.fallback();
     const { pathname } = new URL(request.url());
-    if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
+    if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null, lastViewedAt: null } });
+    // Recording a history view (SPM-41) is not a lifecycle action.
+    if (pathname.endsWith("/history/viewed")) return route.fulfill({ json: { lastViewedAt: "2026-10-24T03:00:00.000Z" } });
     if (pathname.endsWith("/safety-reviews")) return route.fulfill({ json: { reviews: [] } });
     if (pathname.endsWith("/readiness")) {
       await readinessGate;

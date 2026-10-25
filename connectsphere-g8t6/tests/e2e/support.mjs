@@ -125,7 +125,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     // The Updates button on attendee pages (SPM-155); its spec mocks the inbox itself.
     if (pathname === "/api/notifications/unread-count") return json({ unreadCount: 0 });
-    if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
+    if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"], equipment: [{ equipmentId: 1, name: "Projector" }, { equipmentId: 2, name: "Microphone" }] });
 
     if (pathname === "/api/events/mine" && method === "GET") {
       return json({ events: state.events.map(organiserView), nextCursor: null });
@@ -141,6 +141,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
 
     if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
+    if (/^\/api\/events\/\d+\/clarifications$/.test(pathname) && method === "GET") return json({ clarifications: [] });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
       const event = state.events.find(event => event.eventId === Number(eventMatch[1]));
