@@ -2,6 +2,12 @@ import { expect } from "@playwright/test";
 
 const FIXED_SAVED_AT = "2026-10-13T12:00:00.000Z";
 
+export const emptyOrganiserArrangements = () => ({
+  venues: { status: "READY", holdsStatus: "READY", availabilityStatus: "READY", primaryVenueStatus: "NOT_DESIGNATED", bookings: [], holds: [] },
+  technical: { status: "READY", supportStatus: "READY", requirements: [], requests: [] },
+  safety: { status: "READY", reviews: [] },
+});
+
 export const makeDraft = (overrides = {}) => ({
   eventId: 43,
   requestId: "REQ-000043",
@@ -52,6 +58,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     failure: null,
     delay: 0,
     requestLog: [],
+    arrangements: emptyOrganiserArrangements(),
     assignments: [],
     queueEvents: null,
     coordinatorChanges: [],
@@ -141,6 +148,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
 
     if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
+    if (/^\/api\/events\/\d+\/arrangements$/.test(pathname) && method === "GET") return json({ arrangements: state.arrangements });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
       const event = state.events.find(event => event.eventId === Number(eventMatch[1]));

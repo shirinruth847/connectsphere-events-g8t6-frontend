@@ -9,7 +9,7 @@ import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
-import { SafetyReviewSection } from "@/components/events/workspace/safety-review-section";
+import { EventArrangements } from "@/components/organiser/event-arrangements";
 import {
   equipmentItems,
   registrationRows,
@@ -128,11 +128,12 @@ export function EventRequestDetails({ event }: { event: EventView }) {
                 <RequirementList items={event.accessibilityNeeds} empty="None provided" />
               </div>
               <div>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-on-surface"><Icon name="equipment" size={16} className="text-primary" />Equipment</h3>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-on-surface"><Icon name="equipment" size={16} className="text-primary" />Requested equipment</h3>
                 <RequirementList items={equipmentItems(event)} empty="None selected" />
               </div>
             </div>
           </Card>
+          {!isDraftEvent(event) ? <EventArrangements key={event.eventId} eventId={event.eventId} /> : null}
         </div>
 
         <aside className="grid gap-5 xl:col-span-4" aria-label="Coordination and history">
@@ -148,7 +149,6 @@ export function EventRequestDetails({ event }: { event: EventView }) {
               ]}
             />
           </Card>
-          {isDraftEvent(event) ? null : <SafetyReviewSection eventId={event.eventId} />}
           <EventHistoryPanel event={event} refreshKey={0} />
         </aside>
       </div>

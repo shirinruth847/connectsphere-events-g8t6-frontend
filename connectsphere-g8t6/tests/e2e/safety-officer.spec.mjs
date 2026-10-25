@@ -656,11 +656,17 @@ test("[SPM-243 AC15 / TC-23 / TC-24] the coordinator sees every round with full 
 });
 
 test("[SPM-243 AC15 / TC-23] the organiser sees outcomes and their comments only", async ({ page }) => {
-  await installConnectSphereMocks(page, { role: "ORGANISER" });
+  const state = await installConnectSphereMocks(page, { role: "ORGANISER" });
   const organiserRounds = decidedRounds.map(({ roundNumber, status, decidedAt, organiserComment }) => ({ roundNumber, status, decidedAt, organiserComment }));
+  state.arrangements.safety.reviews = organiserRounds.map((review, index) => ({
+    reviewId: index + 1, round: review.roundNumber, status: review.status,
+    decidedAt: review.decidedAt, organiserComment: review.organiserComment,
+    submittedAt: "2026-10-20T01:00:00Z", isCurrent: index === organiserRounds.length - 1,
+  }));
   await page.route(/\/api\/events\/42(\/[^?]*)?(\?.*)?$/, (route) => {
     const { pathname } = new URL(route.request().url());
     if (route.request().method() === "OPTIONS") return route.fallback();
+    if (pathname.endsWith("/arrangements")) return route.fulfill({ json: { arrangements: state.arrangements } });
     if (pathname.endsWith("/safety-reviews")) return route.fulfill({ json: { reviews: organiserRounds } });
     if (pathname.endsWith("/history")) return route.fulfill({ json: { history: [], nextCursor: null } });
     return route.fulfill({ json: { event: eventView("PLANNING", { statusLabel: "Approved & Planning", viewerRelationship: "OWNER", isOwner: true, permissions: { canEdit: false, editableFields: [], canViewDraftHistory: false, canViewStaffHistory: false } }) } });
