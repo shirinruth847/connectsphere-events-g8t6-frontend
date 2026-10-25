@@ -24,6 +24,7 @@ import {
 import { EventHistoryPanel } from "./event-history-panel";
 import { EventIdentityEditor } from "./event-identity-editor";
 import { LifecyclePanel } from "@/components/coordinator/lifecycle-panel";
+import { SafetyReviewSection } from "./safety-review-section";
 
 interface CoordinatorEventViewProps {
   event: EventView;
@@ -191,6 +192,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             onAccessChanged={onAccessChanged}
           />
           {clarificationPanel}
+          <SafetyReviewSection eventId={event.eventId} refreshKey={historyKey} />
           <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
             <SectionHeading id="coordination-heading" title="Coordination" />
             <KeyValuePanel

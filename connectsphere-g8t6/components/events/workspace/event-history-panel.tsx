@@ -26,6 +26,13 @@ const ACTION_LABELS: Record<string, string> = {
   CLARIFICATION_AMENDED: "Request amended during clarification",
   CLARIFICATION_COMPLETED: "Clarification marked complete",
   EVENT_RESUBMITTED: "Request resubmitted",
+  // SPM-243 safety review rounds.
+  SAFETY_REVIEW_CLAIMED: "Safety review claimed",
+  SAFETY_REVIEW_HANDED_BACK: "Safety review handed back",
+  SAFETY_REVIEW_APPROVED: "Safety review approved",
+  SAFETY_CHANGES_REQUESTED: "Safety review requested changes",
+  SAFETY_VENUES_REJECTED: "Safety review rejected venue bookings",
+  SAFETY_REVIEW_SUPERSEDED: "Safety review closed after an arrangement change",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -34,6 +41,7 @@ const ROLE_LABELS: Record<string, string> = {
   COORDINATOR_LEAD: "Coordinator Lead",
   VENUE_STAFF: "Venue Staff",
   TECH_SUPPORT: "Technical Support",
+  SAFETY_OFFICER: "Safety Officer",
   ATTENDEE: "Attendee",
   SYSTEM: "System",
 };
@@ -51,6 +59,9 @@ const formatValue = (field: string, value: unknown) => {
 };
 
 function describeHistory(event: EventView) {
+  if (event.viewerRelationship === "SAFETY_OFFICER") {
+    return "Changes to attendance, timing, venues, layout, access and equipment, and every safety review record.";
+  }
   if (event.permissions.canViewDraftHistory) return "Includes your draft saves, which only you can see.";
   if (event.permissions.canViewStaffHistory) return "Includes staff-only assignment records.";
   return "Changes made since the request was submitted.";
@@ -65,7 +76,7 @@ function HistoryItem({ entry, isNew }: { entry: EventHistoryEntry; isNew: boolea
   return (
     <li className={`relative pl-7 ${isNew ? UNSEEN_LINE : ""}`} data-unseen={isNew ? "true" : undefined}>
       <span aria-hidden="true" className="absolute left-0 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-primary-fixed text-primary">
-        <Icon name={entry.action.startsWith("COORDINATOR_") ? "person" : entry.action.startsWith("CLARIFICATION_") ? "forum" : entry.action === "EVENT_SUBMITTED" ? "check" : "edit"} size={16} />
+        <Icon name={entry.action.startsWith("COORDINATOR_") ? "person" : entry.action.startsWith("CLARIFICATION_") ? "forum" : entry.action.startsWith("SAFETY_") ? "shield" : entry.action === "EVENT_SUBMITTED" ? "check" : "edit"} size={16} />
       </span>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <p className="text-sm font-semibold text-on-surface">{actionLabel(entry)}</p>

@@ -12,6 +12,7 @@ import { EventHistoryPanel } from "@/components/events/workspace/event-history-p
 import { ClarificationPanel } from "@/components/events/workspace/clarification-panel";
 import { ClarificationAmendmentForm } from "@/components/events/workspace/clarification-amendment-form";
 import { useEventClarifications } from "@/components/events/workspace/use-event-clarifications";
+import { SafetyReviewSection } from "@/components/events/workspace/safety-review-section";
 import {
   equipmentItems,
   registrationRows,
@@ -206,6 +207,7 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
             />
           </Card>
           {event.status !== "DRAFT" ? clarificationPanel : null}
+          {isDraftEvent(event) ? null : <SafetyReviewSection eventId={event.eventId} />}
           <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
       </div>
