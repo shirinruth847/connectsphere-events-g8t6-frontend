@@ -9,6 +9,7 @@ import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { SafetyReviewSection } from "@/components/events/workspace/safety-review-section";
 import {
   equipmentItems,
   registrationRows,
@@ -147,6 +148,7 @@ export function EventRequestDetails({ event }: { event: EventView }) {
               ]}
             />
           </Card>
+          {isDraftEvent(event) ? null : <SafetyReviewSection eventId={event.eventId} />}
           <EventHistoryPanel event={event} refreshKey={0} />
         </aside>
       </div>

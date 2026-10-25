@@ -23,6 +23,8 @@ const PATHS = {
   "arrow-forward": <path d="M5 12h14M13 6l6 6-6 6" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   refresh: <><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 5v6h-6" /></>,
+  shield: <><path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-4" /></>,
+  add: <path d="M12 5v14M5 12h14" />,
   notifications: <><path d="M6 10a6 6 0 1 1 12 0c0 5 2 7 2 7H4s2-2 2-7Z" /><path d="M10 20a2 2 0 0 0 4 0" /></>,
   document: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
   "chevron-right": <path d="m9 6 6 6-6 6" />,

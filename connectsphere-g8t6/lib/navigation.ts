@@ -33,6 +33,8 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
     // Equipment catalogue (SPM-52).
     { id: "equipment", title: "Equipment", icon: "equipment", href: ROUTES.equipment },
   ],
+  // SPM-243 AC1: the only tab; a review opens on the event's /events/[eventId] page.
+  SAFETY_OFFICER: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   ATTENDEE: [
     { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
     { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },

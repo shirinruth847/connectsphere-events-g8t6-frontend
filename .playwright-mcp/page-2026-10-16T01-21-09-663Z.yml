@@ -1,7 +1,0 @@
-- generic [active] [ref=e1]:
-  - main [ref=e2]:
-    - generic [ref=e4]:
-      - text: ConnectSphere
-      - heading "Loading" [level=1] [ref=e5]
-      - paragraph [ref=e6]: Checking your authenticated session.
-  - button "Open Next.js Dev Tools" [ref=e12] [cursor=pointer]
