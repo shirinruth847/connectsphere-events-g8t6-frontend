@@ -15,6 +15,7 @@ export const ROUTES = {
   drafts: "/dashboard?status=DRAFT#my-drafts",
   notifications: "/notifications",
   venues: "/venues",
+  attendeeProfile: "/attendee-profile",
 } as const;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -51,6 +52,8 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   // The inbox (SPM-155); organisers and coordinators join with SPM-192/193.
   if (pathname === ROUTES.notifications) return role === "ATTENDEE";
+  // The attendee's own profile (SPM-270), opened from the sidebar identity block.
+  if (pathname === ROUTES.attendeeProfile) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33; Safety Officer reviews, SPM-243; the
   // supervising Lead's read-only view, SPM-72 AC2; attendee details, SPM-44);

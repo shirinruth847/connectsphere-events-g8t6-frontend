@@ -53,7 +53,19 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
   const activeId = activeNavigationId(profile.role, pathname, params.get("status"), params.get("scope"));
   const home = homeForRole(profile.role);
   const closeMenu = () => setOpen(false);
-  const sidebar = <div className="flex min-h-full flex-col">
+  const identity = <>
+    <div
+      aria-label={`${profile.name} profile picture`}
+      className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-white/70 bg-[#c7d2fe] text-sm font-bold uppercase text-[#3730a3]"
+      role="img"
+      style={profile.avatarUrl ? { backgroundImage: `url(${JSON.stringify(profile.avatarUrl)})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
+    >{profile.avatarUrl ? null : profile.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</div>
+    <div className="min-w-0">
+      <p className="truncate text-sm font-semibold text-white">{profile.name}</p>
+      <p className="truncate text-xs text-white/65">{profile.email || ROLE_LABELS[profile.role]}</p>
+    </div>
+  </>;
+  const sidebar =<div className="flex min-h-full flex-col">
     <Link href={home} onClick={closeMenu} className="mb-8 flex items-center gap-3 px-2 pt-2 text-white">
       <span className="grid h-9 w-9 place-items-center rounded-xl border border-white/30 bg-white/10"><span className="h-3.5 w-3.5 rounded-full border-[3px] border-white" /></span>
       <span className="text-[21px] font-extrabold tracking-tight">ConnectSphere</span>
@@ -76,18 +88,19 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
     </section>)}
     <button onClick={() => guard.navigate(() => { void logout(); })} className="mt-1 flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-white/80 transition hover:bg-white/10 hover:text-white"><NavIcon name="logout" />Logout</button>
     <div className="mt-auto border-t border-white/20 pt-5">
-      <div className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-2" title={`${profile.email} · ${ROLE_LABELS[profile.role]}`}>
-        <div
-          aria-label={`${profile.name} profile picture`}
-          className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-white/70 bg-[#c7d2fe] text-sm font-bold uppercase text-[#3730a3]"
-          role="img"
-          style={profile.avatarUrl ? { backgroundImage: `url(${JSON.stringify(profile.avatarUrl)})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
-        >{profile.avatarUrl ? null : profile.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">{profile.name}</p>
-          <p className="truncate text-xs text-white/65">{profile.email || ROLE_LABELS[profile.role]}</p>
-        </div>
-      </div>
+      {/* Attendees open their Attendee Profile from here (SPM-270); every other role keeps a static identity block. */}
+      {profile.role === "ATTENDEE"
+        ? <Link
+            href={ROUTES.attendeeProfile}
+            onClick={closeMenu}
+            aria-current={pathname === ROUTES.attendeeProfile ? "page" : undefined}
+            className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${pathname === ROUTES.attendeeProfile ? "bg-white/15" : ""}`}
+            aria-label={`Attendee Profile for ${profile.name}`}
+            title={`${profile.email} · ${ROLE_LABELS[profile.role]}`}
+          >
+            {identity}
+          </Link>
+        : <div className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-2" title={`${profile.email} · ${ROLE_LABELS[profile.role]}`}>{identity}</div>}
     </div>
   </div>;
 
