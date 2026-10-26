@@ -136,7 +136,7 @@ test("[SPM-189 AC1][AC2][AC3][AC5][AC6] rejecting needs a reason, which may sugg
   await expect(page.getByRole("complementary", { name: "Coordination and related bookings" }).getByText("Pending")).toBeVisible();
 });
 
-test("[T31] an approved booking can be rejected when the venue can no longer host it", async ({ page }) => {
+test("[T32] an approved booking can be rejected when the venue can no longer host it", async ({ page }) => {
   const state = decisionState([booking(110, "APPROVED", 45, "Synthetic Hall", {
     reviewedAt: "2026-10-20T03:00:00.000Z", reviewedByName: "Synthetic Venue Staff", actions: { canApprove: false, canReject: true },
   })]);
@@ -168,14 +168,15 @@ test("a booking whose event is not in planning cannot be approved yet", async ({
   await expect(panel(page, 110).getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
 });
 
-test("My Requests shows the pending count at the top right", async ({ page }) => {
+test("[SPM-186] My Requests shows the pending and approved counts at the top right", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
-  await page.route("**/api/venues/bookings?**", (route) => json(route, { bookings: [], hasMore: false, pendingCount: 3 }));
-  await page.route("**/api/venues/bookings", (route) => json(route, { bookings: [], hasMore: false, pendingCount: 3 }));
+  await page.route("**/api/venues/bookings?**", (route) => json(route, { bookings: [], hasMore: false, pendingCount: 3, approvedCount: 7 }));
+  await page.route("**/api/venues/bookings", (route) => json(route, { bookings: [], hasMore: false, pendingCount: 3, approvedCount: 7 }));
   await page.goto("/dashboard");
 
   const header = page.locator("header").filter({ has: page.getByRole("heading", { name: "My Requests", exact: true }) });
   const tile = header.locator("span").filter({ hasText: /^\d+Pending$/ });
   await expect(tile).toHaveText("3Pending");
   await expect(tile.locator("strong")).toHaveText("3");
+  await expect(header.locator("span").filter({ hasText: /^\d+Approved$/ })).toHaveText("7Approved");
 });

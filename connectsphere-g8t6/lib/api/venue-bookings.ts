@@ -55,7 +55,7 @@ export interface VenueBookingDetail extends VenueBookingSummary {
   // Who decided the booking and when (SPM-186 AC1); null while pending.
   reviewedAt?: string | null;
   reviewedByName?: string | null;
-  // Which decisions the backend allows now (SPM-186 AC4, SPM-189 AC6, T31).
+  // Which decisions the backend allows now (SPM-186 AC4, SPM-189 AC6, T32).
   actions?: { canApprove: boolean; canReject: boolean };
 }
 
@@ -82,6 +82,7 @@ export interface VenueBookingList {
   bookings: VenueBookingListItem[];
   hasMore: boolean;
   pendingCount: number;
+  approvedCount: number;
 }
 
 export interface EventVenueBookings {

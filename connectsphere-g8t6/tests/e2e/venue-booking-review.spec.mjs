@@ -92,7 +92,7 @@ const OPTIONS = [
   { venueId: 47, name: "Synthetic Room C", status: "UNDER_MAINTENANCE" },
 ];
 
-const card = (page, bookingId) => page.getByRole("article").filter({ hasText: `Booking #${bookingId}` });
+const card = (page, bookingId) => page.locator(`article[data-booking-id="${bookingId}"]`);
 
 test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests and can filter it", async ({ page }) => {
   const requests = [];
@@ -106,7 +106,8 @@ test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests an
   await expect(nav.getByRole("link", { name: "My Venues", exact: true })).toHaveAttribute("href", "/venues");
 
   const first = card(page, 110);
-  for (const text of ["Synthetic Hall · Plenary hall", "Synthetic planning forum", "REQ-000442", "Seminar", "120 people", "Pending"]) {
+  await expect(first.getByRole("heading", { level: 3 })).toHaveText("Synthetic planning forum");
+  for (const text of ["Synthetic Hall · Plenary hall", "REQ-000442", "120 people", "Pending"]) {
     await expect(first.getByText(text, { exact: false }).first()).toBeVisible();
   }
   await expect(page.getByRole("article")).toHaveCount(3);
@@ -114,7 +115,7 @@ test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests an
 
   await page.getByLabel("Status").selectOption("REJECTED");
   await expect(page.getByRole("article")).toHaveCount(1);
-  await expect(page.getByRole("article").getByText("Booking #112")).toBeVisible();
+  await expect(card(page, 112)).toBeVisible();
 
   await page.getByLabel("Date (SGT)").fill("2026-11-04");
   await expect.poll(() => requests.at(-1)).toEqual({ status: "REJECTED", from: "2026-11-04T00:00:00+08:00", to: "2026-11-05T00:00:00+08:00" });
@@ -137,7 +138,7 @@ test("[SPM-181 AC2][AC3][AC4] a booking opens in the coordinator layout with onl
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeBookings(page);
   await page.goto("/dashboard");
-  await card(page, 110).getByRole("link", { name: "Review booking" }).click();
+  await card(page, 110).getByRole("link", { name: "Review", exact: true }).click();
 
   await expect(page).toHaveURL(/\/events\/442\?booking=110$/);
   await expect(page.getByRole("heading", { name: "Synthetic planning forum", exact: true })).toBeVisible();
@@ -178,7 +179,7 @@ test("[SPM-181] the review page works at mobile width", async ({ page }) => {
 
 // ---------- SPM-181 follow-up: booking ID, search, sort, live venue filter ----------
 
-test("[TC-VENUE-181-50] each card shows the booking ID and only a Review booking action", async ({ page }) => {
+test("[TC-VENUE-181-50][SPM-186] each card hides the booking ID and has only a Review action", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeBookings(page);
   await page.goto("/dashboard");
@@ -186,10 +187,11 @@ test("[TC-VENUE-181-50] each card shows the booking ID and only a Review booking
   await expect(page.getByRole("article")).toHaveCount(3);
   for (const id of [110, 111, 112]) {
     await expect(card(page, id).getByRole("link")).toHaveCount(1);
-    await expect(card(page, id).getByRole("link", { name: "Review booking" })).toBeVisible();
+    await expect(card(page, id).getByRole("link", { name: "Review", exact: true })).toBeVisible();
   }
   await expect(page.getByRole("link", { name: "Event view" })).toHaveCount(0);
   await expect(page.getByText(/VB-0/)).toHaveCount(0);
+  await expect(page.getByRole("article").getByText(/Booking #/)).toHaveCount(0);
 });
 
 test("[TC-VENUE-181-51] pending requests come first by default", async ({ page }) => {
@@ -255,17 +257,19 @@ test("[TC-VENUE-181-54] should_sort_by_last_accessed_when_opened_or_edited_most_
 
   await expect(page.getByLabel("Sort by").locator("option")).toHaveText(["Pending first", "Date/time", "Venue attendance", "Last accessed", "Alphabetical (event)"]);
   await page.getByLabel("Sort by").selectOption({ label: "Last accessed" });
-  const order = () => page.getByRole("article").evaluateAll((cards) => cards.map((node) => node.textContent.match(/Booking #(\d+)/)[1]));
+  const order = () => page.getByRole("article").evaluateAll((cards) => cards.map((node) => node.getAttribute("data-booking-id")));
   await expect.poll(order).toEqual(["110", "112", "111"]);
   // Sorted in the browser: the backend is asked for its default order.
   expect(requests.at(-1)).toEqual({});
-  await expect(card(page, 110).getByText("25 Oct 2026", { exact: false })).toBeVisible();
+  // Only this viewer's own opening is shown, as "Opened …" (SPM-186).
+  await expect(card(page, 112).getByText(/^Opened 20 Oct 2026/)).toBeVisible();
+  await expect(card(page, 110).getByText(/^Opened/)).toHaveCount(0);
 
   await page.getByRole("button", { name: "Descending order. Switch to ascending" }).click();
   await expect.poll(order).toEqual(["111", "112", "110"]);
 
   // Opening a booking records it as the most recent access.
-  await card(page, 111).getByRole("link", { name: "Review booking" }).click();
+  await card(page, 111).getByRole("link", { name: "Review", exact: true }).click();
   await expect(page).toHaveURL(/booking=111$/);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("connectsphere:venue-bookings-opened:11")));
   expect(stored["111"]).toBeGreaterThan(Date.parse("2026-10-20T00:00:00Z"));

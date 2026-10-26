@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageContent } from "@/components/layout/page-content";
-import { AlertBanner, Button, buttonClasses, EmptyState, ReferenceIdTag, Skeleton, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
-import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { useDebouncedValue } from "@/components/venues/use-debounced-value";
 import { useVenueOptions } from "@/components/venues/use-venue-options";
@@ -17,13 +16,13 @@ import {
   type VenueBookingFilters,
   type VenueBookingListItem,
 } from "@/lib/api/venue-bookings";
-import { BOOKING_SORT_OPTIONS, formatBookingId, lastAccessedAt, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
+import { BOOKING_SORT_OPTIONS, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
 import { BOOKING_BORDERS, BookingStatusChip } from "./booking-status-chip";
 import { useOpenedBookings } from "./use-opened-bookings";
 
 type ListState =
   | { status: "loading" }
-  | { status: "ready"; bookings: VenueBookingListItem[]; hasMore: boolean; pendingCount: number }
+  | { status: "ready"; bookings: VenueBookingListItem[]; hasMore: boolean; pendingCount: number; approvedCount: number }
   | { status: "error"; message: string; fields?: Record<string, string> };
 
 type Option = { value: string; label: string };
@@ -44,44 +43,48 @@ const compactField = fieldClasses.replace("w-full", "");
 
 const bookingHref = (booking: VenueBookingListItem) => `/events/${booking.event.eventId}?booking=${booking.bookingId}`;
 
-function BookingRequestCard({ booking, accessedAt, onOpen }: { booking: VenueBookingListItem; accessedAt: number | null; onOpen: () => void }) {
+// Compact card (SPM-186): headed by the event, without the booking ID; the
+// viewer's own last opening sits bottom right.
+function BookingRequestCard({ booking, openedAt, onOpen }: { booking: VenueBookingListItem; openedAt: number | null; onOpen: () => void }) {
   const titleId = `booking-${booking.bookingId}-title`;
+  const venue = `${booking.venueName}${booking.label ? ` · ${booking.label}` : ""}`;
   return (
     <article
       aria-labelledby={titleId}
-      className={`flex flex-col gap-4 rounded-panel border-t-4 ${BOOKING_BORDERS[booking.status] ?? "border-t-slate-400"} bg-surface-container-lowest p-5 shadow-elevation-1 transition-shadow duration-150 hover:shadow-elevation-2`}
+      data-booking-id={booking.bookingId}
+      className={`flex flex-col gap-3 rounded-panel border-t-4 ${BOOKING_BORDERS[booking.status] ?? "border-t-slate-400"} bg-surface-container-lowest p-4 shadow-elevation-1 transition-shadow duration-150 hover:shadow-elevation-2`}
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <h3 id={titleId} className="line-clamp-2 text-base font-bold leading-snug text-on-surface">{booking.event.title}</h3>
         <BookingStatusChip status={booking.status} label={booking.statusLabel} />
-        <ReferenceIdTag value={formatBookingId(booking.bookingId)} />
       </div>
-      <div>
-        <h3 id={titleId} className="line-clamp-2 text-base font-bold leading-snug text-on-surface">
-          {booking.venueName}{booking.label ? ` · ${booking.label}` : ""}
-        </h3>
-        <p className="mt-1 text-xs text-on-surface-variant">
-          {booking.event.title} · <span className="font-mono">{booking.event.requestId}</span>
-        </p>
-      </div>
-      <KeyValuePanel
-        rows={[
-          { icon: "registration", label: "Event type", value: booking.event.eventTypeLabel ?? "Not specified" },
-          { icon: "calendar", label: "Date & time", value: formatEventWindow(booking.startDatetime, booking.endDatetime) },
-          {
-            icon: "attendees",
-            label: "Venue attendance",
-            value: booking.expectedAttendance ? `${booking.expectedAttendance.toLocaleString()} people` : "Not provided",
-          },
-          { icon: "history", label: "Submitted", value: formatTimestamp(booking.submittedAt) },
-          ...(accessedAt ? [{ icon: "history" as const, label: "Last accessed", value: formatTimestamp(new Date(accessedAt).toISOString()) }] : []),
-        ]}
-      />
-      <div className="mt-auto">
+      <p className="-mt-2 text-xs text-on-surface-variant">
+        {venue} · <span className="font-mono">{booking.event.requestId}</span>
+      </p>
+      <ul className="grid gap-1 text-sm text-on-surface">
+        <li className="flex items-center gap-2"><Icon name="calendar" size={16} />{formatEventWindow(booking.startDatetime, booking.endDatetime)}</li>
+        <li className="flex items-center gap-2">
+          <Icon name="attendees" size={16} />
+          {booking.expectedAttendance ? `${booking.expectedAttendance.toLocaleString()} people` : "Attendance not provided"}
+        </li>
+      </ul>
+      <div className="mt-auto flex items-end justify-between gap-3">
         <Link href={bookingHref(booking)} onClick={onOpen} className={buttonClasses("primary")} aria-describedby={titleId}>
-          Review booking<Icon name="arrow-forward" size={16} />
+          Review<Icon name="arrow-forward" size={16} />
         </Link>
+        {openedAt ? (
+          <span className="text-xs italic text-slate-400">Opened {formatTimestamp(new Date(openedAt).toISOString())}</span>
+        ) : null}
       </div>
     </article>
+  );
+}
+
+function CountTile({ count, label }: { count: number; label: string }) {
+  return (
+    <span className="rounded-control bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
+      <strong className="block text-xl font-bold text-primary">{count}</strong>{label}
+    </span>
   );
 }
 
@@ -173,9 +176,10 @@ export function BookingRequestList() {
       description="Venue booking requests from event coordinators. Open a request to review its venue requirements, approve or reject it."
       action={
         state.status === "ready" ? (
-          <span className="rounded-control bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
-            <strong className="block text-xl font-bold text-primary">{state.pendingCount}</strong>Pending
-          </span>
+          <div className="flex flex-wrap gap-2">
+            <CountTile count={state.pendingCount} label="Pending" />
+            <CountTile count={state.approvedCount} label="Approved" />
+          </div>
         ) : null
       }
     >
@@ -225,7 +229,7 @@ export function BookingRequestList() {
 
       {state.status === "loading" ? (
         <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading booking requests">
-          {[0, 1, 2].map((key) => <Skeleton key={key} className="h-72 w-full" />)}
+          {[0, 1, 2].map((key) => <Skeleton key={key} className="h-48 w-full" />)}
         </div>
       ) : null}
 
@@ -251,7 +255,7 @@ export function BookingRequestList() {
               <BookingRequestCard
                 key={booking.bookingId}
                 booking={booking}
-                accessedAt={lastAccessedAt(booking, opened)}
+                openedAt={opened[String(booking.bookingId)] ?? null}
                 onOpen={() => markOpened(booking.bookingId)}
               />
             ))}
