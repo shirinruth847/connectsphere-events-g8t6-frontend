@@ -43,14 +43,17 @@ export function safeNextPath(value: string | null): string | null {
   }
 }
 
+// Roles the backend serves /api/notifications to; every other role gets 403.
+export const NOTIFICATION_ROLES: readonly UserRole[] = ["ATTENDEE", "ORGANISER"];
+
 export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
   if (pathname === ROUTES.events) return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
-  // The inbox (SPM-155); organisers and coordinators join with SPM-192/193.
-  if (pathname === ROUTES.notifications) return role === "ATTENDEE";
+  // The inbox (attendees SPM-155, organisers SPM-192); coordinators join with SPM-193.
+  if (pathname === ROUTES.notifications) return NOTIFICATION_ROLES.includes(role);
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
   // The event workspace (SPM-33; Safety Officer reviews, SPM-243); the backend still answers "not found" for unrelated events.
   // Venue Staff open an event through its venue bookings (SPM-181).

@@ -6,6 +6,6 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import type { UserRole } from "@/lib/auth";
 
 /** Apply once per protected page, or once in a shared route layout. */
-export function DashboardWorkspace({ children, role }: { children: ReactNode; role?: UserRole }) {
+export function DashboardWorkspace({ children, role }: { children: ReactNode; role?: UserRole | readonly UserRole[] }) {
   return <AuthGate role={role}><DashboardShell>{children}</DashboardShell></AuthGate>;
 }

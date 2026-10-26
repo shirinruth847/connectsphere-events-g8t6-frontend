@@ -9,7 +9,8 @@ const organiserItems: NavigationItem[] = [
   { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
   { id: "requests", title: "My Requests", icon: "event", href: ROUTES.requests },
   { id: "registrations-unavailable", title: "Registrations", icon: "registrations" },
-  { id: "notifications", title: "Notifications", icon: "notifications" },
+  // The same inbox attendees use (SPM-192); the Updates panel's See more leads here too.
+  { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
 ];
 
 const mainItems: Record<UserRole, NavigationItem[]> = {
@@ -60,6 +61,7 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";
+  if (pathname === ROUTES.notifications) return "notifications";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "requests";
   if (pathname === ROUTES.dashboard && scope !== "MINE") return "home";
   return "requests";
