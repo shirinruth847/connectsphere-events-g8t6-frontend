@@ -99,6 +99,16 @@ Validation used Node.js 24.9.0.
   users. It removes only this run's event data; audit entries remain under the
   existing seed users. LIVE_FRONTEND_URL/LIVE_BACKEND_URL may override hosts;
   LIVE_ROLES may select a comma-separated subset for focused checks.
+- The Technical Support run walks the SPM-52 equipment catalogue end to end:
+  create (Details pending until the MongoDB detail is applied), search and
+  filters, edit, a two-tab conflict, unavailable stock with its Singapore-time
+  refusals, and deactivate/reactivate. Every other role is checked for no
+  Equipment tab, "Access denied" on `/equipment` and `403` from the API. It
+  needs MongoDB Atlas reachable from the backend and `TEST_DATABASE_URL` in
+  the backend `.env`: the run's items are named with its run ID and removed
+  afterwards (their `equipment_details` documents first, then unavailable
+  stock, outbox entries and the items). Run only this part with
+  `LIVE_ROLES=TECH_SUPPORT npm run test:live`.
 
 The live checker reads the backend's private environment only in its Node.js
 process; no private key is bundled into the browser. Rebuild/restart the normal
