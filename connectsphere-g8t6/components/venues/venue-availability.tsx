@@ -12,6 +12,7 @@ import { calendarDate } from "@/lib/coordinator-calendar";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import {
   getVenueAvailability,
+  VENUE_STATUS_LABELS,
   type AvailabilityParams,
   type CalendarEntry,
   type VenueAvailability,
@@ -159,6 +160,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
   );
   const missingBuffers = state.status === "ready" ? state.data.venues.filter((venue) => !venue.buffersRecorded) : [];
   const overlapping = state.status === "ready" ? state.data.venues.filter((venue) => venue.overlaps.length) : [];
+  const outOfService = state.status === "ready" ? state.data.venues.filter((venue) => venue.status !== "ACTIVE") : [];
 
   const toggle = (venueId: number) =>
     setSelected((current) => (current.includes(venueId) ? current.filter((id) => id !== venueId) : current.length >= MAX_VENUES ? current : [...current, venueId]));
@@ -252,6 +254,17 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
             {missingBuffers.length ? (
               <AlertBanner tone="warning" live={false}>
                 {missingBuffers.map((venue) => venue.name).join(", ")}: Venue Staff have not recorded setup and turnaround times, so bookings are shown without them and no hold or booking can be made yet.
+              </AlertBanner>
+            ) : null}
+            {outOfService.length ? (
+              <AlertBanner tone="warning" live={false} title="Out of service">
+                <ul className="grid gap-1">
+                  {outOfService.map((venue) => (
+                    <li key={venue.venueId}>
+                      {venue.name}: {VENUE_STATUS_LABELS[venue.status] ?? venue.status}{venue.statusReason ? ` (${venue.statusReason})` : ""}. Its existing bookings are kept and shown below; it takes no new requests.
+                    </li>
+                  ))}
+                </ul>
               </AlertBanner>
             ) : null}
             {overlapping.length ? (

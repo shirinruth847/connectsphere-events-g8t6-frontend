@@ -129,7 +129,7 @@ export const createVenue = (input: VenueInput & { status: VenueStatus; statusRea
 export const updateVenue = (venueId: number, input: Partial<VenueInput> & { version: number }) =>
   apiRequest<{ message: string; venue: ManagedVenue; changed: boolean }>(`/venues/${venueId}`, { method: "PUT", body: JSON.stringify(input) });
 
-// An event with bookings ahead at a venue being taken out of service (T31).
+// An event with bookings ahead at a venue being taken out of service (T32).
 export type AffectedEvent = {
   eventId: number;
   requestId: string;
@@ -257,6 +257,8 @@ export type VenueCalendar = {
   name: string;
   address: string;
   status: VenueStatus;
+  // Why the venue is out of service (maintenance etc.), or null.
+  statusReason?: string | null;
   operatingHours: string | null;
   setupMinutes: number | null;
   turnaroundMinutes: number | null;

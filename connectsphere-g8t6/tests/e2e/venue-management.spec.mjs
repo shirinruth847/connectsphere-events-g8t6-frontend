@@ -35,7 +35,7 @@ const details = (overrides = {}) => ({
   ...overrides,
 });
 
-// Events with bookings ahead at a venue being taken out of service (T31).
+// Events with bookings ahead at a venue being taken out of service (T32).
 const AFFECTED_EVENTS = [
   { eventId: 442, requestId: "REQ-000442", title: "Synthetic planning forum", status: "CONFIRMED", firstStart: "2026-11-04T01:00:00.000Z", bookings: 1 },
   { eventId: 443, requestId: "REQ-000443", title: "Synthetic product launch", status: "PLANNING", firstStart: "2026-11-09T02:00:00.000Z", bookings: 1 },
@@ -238,7 +238,7 @@ test("[SPM-73 TC6][TC8] Venue Staff edit a venue and confirm deactivation with u
   await confirm.getByRole("button", { name: "Confirm" }).click();
   await expect(confirm.getByText("This venue has upcoming bookings")).toBeVisible();
   await expect(confirm.getByText(/2 upcoming bookings/)).toBeVisible();
-  // T31: the warning names the affected events and says who will be told.
+  // T32: the warning names the affected events and says who will be told.
   await expect(confirm.getByText(/coordinator and organiser are notified/)).toBeVisible();
   await expect(confirm.getByText("Synthetic planning forum")).toBeVisible();
   await expect(confirm.getByText("REQ-000443")).toBeVisible();
