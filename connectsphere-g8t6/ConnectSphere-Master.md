@@ -712,7 +712,17 @@ Payments, pricing, full reporting/export suites, general document management, re
 | `VENUE_STAFF` | Venue Staff | `/dashboard` |
 | `TECH_SUPPORT` | Technical Support | `/dashboard` |
 | `SAFETY_OFFICER` | Safety Officer | `/dashboard` |
-| `ATTENDEE` | Attendee | `/my-registrations` |
+| `ATTENDEE` | Attendee | `/events` |
+
+Frontend synchronization note, 25 October 2026 (SPM-44): the attendee home
+above reflects `homeForRole` in this frontend. Event Discovery cards open the
+shared dialog, and direct `/events/[eventId]` URLs render the attendee-safe
+discovery detail page. My Events and notification links retain the
+registration-backed dialog at `/my-registrations?eventId=<id>`. Staff keep their
+role-specific event workspaces. Publication and lifecycle eligibility remain
+as defined in section 5.3. This frontend clarification must be carried into the
+canonical backend Master on its next synchronization; it does not change the
+backend business rules or claim that Jira's older criteria have been edited.
 
 `/dashboard` renders the signed-in role's dashboard. A URL in the first table appears in navigation only once its page and access rules are implemented; until then the item renders disabled. A role landing page is an extension point for that role's tickets, not a claim that its workflows exist.
 
