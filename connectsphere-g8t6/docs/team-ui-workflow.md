@@ -74,7 +74,7 @@ are available to other members; attaching the prompt alone does not add them.
 
 | Role value | Display label | Home | Current main navigation |
 | --- | --- | --- | --- |
-| `ORGANISER` | Event Organiser | `/dashboard` | Dashboard, My Requests, My Drafts |
+| `ORGANISER` | Event Organiser | `/dashboard` | Dashboard, My Requests |
 | `COORDINATOR` | Event Coordinator | `/dashboard` | Assigned Events |
 | `COORDINATOR_LEAD` | Event Coordinator Lead | `/dashboard` | Dashboard |
 | `VENUE_STAFF` | Venue Staff | `/dashboard` | Dashboard |
@@ -121,6 +121,18 @@ with a text label. Do not add global `nav`, `label`, `button`,
 `h1` or `.page-header` rules: they can override other members' layouts.
 Avoid another `main` element inside the shell's existing `main` element.
 
+The organiser Dashboard at `/dashboard` shows events submitted by anyone in
+their verified organisations, across all statuses, plus the organiser's own
+private drafts. The existing `/api/events/mine` endpoint provides this scope;
+the backend excludes other organisations and colleagues' drafts. Colleagues'
+events open read-only. Cards show the organisation and ownership. My Requests
+uses `/dashboard?scope=MINE` for personally created events and drafts. There is
+no separate My Drafts navigation tab; the draft status filter and existing
+`/dashboard?status=DRAFT#my-drafts` URL remain available under My Requests.
+Search also matches organisation names. Changes to these destinations touch
+`lib/auth.ts`, `lib/navigation.ts`
+and the active-tab call in `dashboard-shell.tsx`, requiring shared UI review.
+
 ## Adding a tab or route
 
 1. Agree the ticket ACs, URL, allowed roles and API request/response contract
@@ -129,7 +141,7 @@ Avoid another `main` element inside the shell's existing `main` element.
    for valid login return paths. Keep `/events/create` as the existing alias.
 3. Add the item only to appropriate roles in `lib/navigation.ts`. Give it a
    stable ID, label and icon. Update `activeNavigationId` so exactly one tab
-   is current, including query-driven tabs such as My Drafts.
+   is current, including query-driven views such as My Requests.
 4. Implement the guarded page with `DashboardWorkspace` and its API with
    backend role/resource checks. Reuse the existing login and API client.
 5. Extend the journey test for its destination, denied roles, direct URL,
