@@ -36,6 +36,8 @@ test("[SPM-199 TC01/02] owned event details, backend label and coordinator survi
   await expect(page.getByText("120 people", { exact: true })).toBeVisible();
   await expect(page.getByText("Alex Coordinator", { exact: true })).toBeVisible();
   await expect(page.getByText("Approved & Planning", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Clarification requests", exact: true })).toHaveCount(1);
+  await expect(safety(page)).toHaveCount(1);
   state.events[0] = event({ coordinatorName: "Sam Coordinator", statusNote: "Reconfirmation pending" });
   await page.reload();
   await expect(page.getByText("Sam Coordinator", { exact: true })).toBeVisible();

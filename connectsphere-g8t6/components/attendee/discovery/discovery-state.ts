@@ -34,6 +34,15 @@ export const initialDiscoveryState: DiscoveryState = {
   loadMoreError: null,
 };
 
+// The message shown for a failed discovery request. The network message is
+// written by apiRequest itself; any backend body (a 400 "highlighted fields"
+// message, a 5xx or an unexpected status) is replaced by safe wording, since
+// these read-only views have no fields to correct (SPM-44).
+export function discoveryErrorMessage(error: Pick<ApiError, "status" | "code" | "message">, subject: string) {
+  if (error.status === 0 && error.code === "NETWORK_ERROR") return error.message;
+  return `The ${subject} could not be loaded right now. Please try again.`;
+}
+
 // Keyset pages are ordered by start_datetime, then event_id, so an event
 // rescheduled between two page requests can come back twice. Keep the first copy.
 export const appendUnique = (current: AttendeeEventSummary[], next: AttendeeEventSummary[]) => {

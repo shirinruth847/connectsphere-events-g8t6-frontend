@@ -29,7 +29,7 @@ async function fillSignup(page, { accountType = 'ATTENDEE', name = 'New User', e
 }
 const submit = (page) => page.getByRole('button', { name: 'Create account', exact: true }).click();
 
-for (const [accountType, role, url, heading] of [['ATTENDEE', 'ATTENDEE', /\/my-registrations$/, 'My Registrations'], ['ORGANISER', 'ORGANISER', /\/dashboard$/, 'My Requests']]) {
+for (const [accountType, role, url, heading] of [['ATTENDEE', 'ATTENDEE', /\/events$/, 'Event Discovery'], ['ORGANISER', 'ORGANISER', /\/dashboard$/, 'Organisation Events']]) {
   test(`[SPM-123] ${accountType} signs up and is signed in automatically`, async ({ page }) => {
     await installLoginMock(page, { role });
     const requests = await mockSignup(page);
@@ -146,7 +146,7 @@ test('[SPM-123] rapid repeated submits send one sign-up request', async ({ page 
   const requests = await mockSignup(page, async (body) => { await new Promise((resolve) => setTimeout(resolve, 600)); return created(body.email); });
   await fillSignup(page);
   await page.locator('form[aria-label="Create your account"]').evaluate((form) => { form.requestSubmit(); form.requestSubmit(); form.requestSubmit(); });
-  await expect(page).toHaveURL(/\/my-registrations$/);
+  await expect(page).toHaveURL(/\/events$/);
   expect(requests).toHaveLength(1);
   expect(page.url()).not.toContain('password');
 });
