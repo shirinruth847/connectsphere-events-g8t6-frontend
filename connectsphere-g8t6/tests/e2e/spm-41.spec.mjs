@@ -458,7 +458,7 @@ test.describe("organiser: reply and amend", () => {
   });
 
   test("[SPM-41 TC-04] the owner saves amendments and the request stays returned", async ({ page }) => {
-    await installConnectSphereMocks(page, { role: "ORGANISER" });
+    const api = await installConnectSphereMocks(page, { role: "ORGANISER" });
     const state = await routeClarifications(page, {
       event: returnedForOwner(),
       rounds: [openRound],
@@ -470,6 +470,8 @@ test.describe("organiser: reply and amend", () => {
     await page.goto("/events/42");
 
     const form = page.getByRole("region", { name: "Amend your request" });
+    await expect(page.getByRole("region", { name: "Safety review", exact: true })).toHaveCount(1);
+    await expect.poll(() => api.requestLog.filter(({ pathname }) => pathname.endsWith("/arrangements")).length).toBe(1);
     await form.getByRole("button", { name: "Amend request" }).click();
     await expect(form.getByText("Registration settings cannot be changed while responding to a clarification request.")).toBeVisible();
     await form.getByLabel("Expected attendance").fill("250");
@@ -480,6 +482,7 @@ test.describe("organiser: reply and amend", () => {
     expect(state.amendments).toHaveLength(1);
     expect(state.amendments[0].body).toEqual({ changes: { expectedAttendance: 250 }, version: 3 });
     expect(state.amendments[0].key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
+    await expect.poll(() => api.requestLog.filter(({ pathname }) => pathname.endsWith("/arrangements")).length).toBe(2);
     // Still returned: the thread and the amendment form stay available.
     await expect(page.getByRole("region", { name: "Amend your request" })).toBeVisible();
     await expect((await openThread(page, 2)).getByLabel("Your message")).toBeVisible();

@@ -9,10 +9,10 @@ import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { EventArrangements } from "@/components/organiser/event-arrangements";
 import { ClarificationPanel } from "@/components/events/workspace/clarification-panel";
 import { ClarificationAmendmentForm } from "@/components/events/workspace/clarification-amendment-form";
 import { useEventClarifications } from "@/components/events/workspace/use-event-clarifications";
-import { SafetyReviewSection } from "@/components/events/workspace/safety-review-section";
 import {
   equipmentItems,
   registrationRows,
@@ -187,11 +187,12 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
                 <RequirementList items={event.accessibilityNeeds} empty="None provided" />
               </div>
               <div>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-on-surface"><Icon name="equipment" size={16} className="text-primary" />Equipment</h3>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-on-surface"><Icon name="equipment" size={16} className="text-primary" />Requested equipment</h3>
                 <RequirementList items={equipmentItems(event)} empty="None selected" />
               </div>
             </div>
           </Card>
+          {!isDraftEvent(event) ? <EventArrangements key={`${event.eventId}:${event.version}`} eventId={event.eventId} /> : null}
         </div>
 
         <aside className="grid gap-5 xl:col-span-4" aria-label="Coordination and history">
@@ -208,7 +209,6 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
             />
           </Card>
           {event.status !== "DRAFT" ? clarificationPanel : null}
-          {isDraftEvent(event) ? null : <SafetyReviewSection eventId={event.eventId} />}
           <EventHistoryPanel event={event} refreshKey={historyKey} />
         </aside>
       </div>
