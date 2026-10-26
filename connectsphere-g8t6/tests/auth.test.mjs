@@ -32,7 +32,8 @@ test('[SPM-33 AC1][SPM-181 AC4][SPM-44] event detail URLs are valid return paths
   assert.equal(canViewPath('ATTENDEE', '/events/42'), true);
 
   // These roles still cannot use the event-detail return path.
-  for (const role of ['COORDINATOR_LEAD', 'TECH_SUPPORT']) {
+  // The supervising Lead opens events read-only (SPM-72 AC2, master 3.4).
+  for (const role of ['TECH_SUPPORT']) {
     assert.equal(canViewPath(role, '/events/42'), false);
   }
 
