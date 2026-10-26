@@ -31,6 +31,7 @@ const PATHS = {
   notifications: <><path d="M6 10a6 6 0 1 1 12 0c0 5 2 7 2 7H4s2-2 2-7Z" /><path d="M10 20a2 2 0 0 0 4 0" /></>,
   document: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></>,
   "chevron-right": <path d="m9 6 6 6-6 6" />,
+  zoom: <><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.4-4.4M11 8v6M8 11h6" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;

@@ -510,6 +510,121 @@ async function cleanupEquipment() {
  record('live equipment cleanup', { removedEquipment: idList.length });
 }
 
+// SPM-270 Attendee Profile. Uses a run-owned attendee and organiser from the
+// backend's Auth fixtures (Auth Admin accounts, trusted profile rows, a manifest
+// and verified cleanup), so no seed user's profile is changed. Passwords stay in
+// memory. The profile goes with its owner (ON DELETE CASCADE).
+async function attendeeProfileLive() {
+ const {newRunId,createAuthFixtures,cleanupAuthFixtures}=require(path.join(backendRoot,'tests/fixtures/authFixtures'));
+ const profileRun=newRunId();let fixtures;
+ const profileUrl=base+'/attendee-profile';
+ const signInAs=async(page,account,pathname)=>{await page.locator('#email').fill(account.email);await page.locator('#password').fill(account.password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL(url=>url.pathname===pathname);};
+ const accessToken=(page)=>page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>/^sb-.*-auth-token$/.test(key));return key?JSON.parse(localStorage.getItem(key)).access_token:null;});
+ // Reads through the backend model Event Registration also uses (AC10).
+ const {findAttendeeProfile}=require(path.join(backendRoot,'model/attendeeProfileModel'));
+ const stored=(userId)=>findAttendeeProfile(userId);
+ const putResponse=(page)=>page.waitForResponse(r=>r.url()===api+'/api/attendee-profile/mine'&&r.request().method()==='PUT');
+ const field=(page,label)=>page.getByLabel(label,{exact:true});
+ const save=async(page)=>{const response=putResponse(page);await page.getByRole('button',{name:'Save preferences',exact:true}).click();return response;};
+ try {
+  fixtures=await createAuthFixtures(profileRun);
+  const attendee={...fixtures.accounts.attendee};const organiser=fixtures.accounts.organiserA;
+  const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  try {
+   // TC-PROFILE-002: signed out, then back to the profile after login.
+   await page.goto(profileUrl);await page.waitForURL(url=>url.pathname==='/login');
+   assert(new URL(page.url()).searchParams.get('next')==='/attendee-profile','Login lost the profile return path');
+   await signInAs(page,attendee,'/attendee-profile');
+   await page.getByRole('heading',{name:'Attendee Profile',exact:true,level:1}).waitFor();
+   record('SPM-270 TC-PROFILE-002 signed-out profile URL returns after login');
+   // TC-PROFILE-001 / AC2: user details and blank first-time fields.
+   await field(page,'Dietary restrictions').waitFor();
+   const main=page.locator('main');
+   assert((await main.innerText()).includes(attendee.email),'Profile does not show the account email');
+   assert(await field(page,'Dietary restrictions').inputValue()===''&&await field(page,'Accessibility requirements').inputValue()==='','First-time profile is not blank');
+   await page.getByText(/^Not saved yet/).waitFor();
+   assert((await stored(attendee.userId)).attendeeId===null,'Fixture attendee already had a profile');
+   record('SPM-270 TC-PROFILE-001 first-time profile shows account details and blank fields');
+   // TC-PROFILE-004 / TC-PROFILE-008: first save sends version null, gets 201; blank field stored as null.
+   const unicode='Gluten-free 🌾, 素食, café';
+   await field(page,'Dietary restrictions').fill(unicode);
+   const created=await save(page);
+   assert(created.status()===201,'First save returned '+created.status());
+   assert(created.request().postDataJSON().version===null,'First save did not send version null');
+   await page.getByText('Profile saved',{exact:true}).waitFor();
+   let row=await stored(attendee.userId);
+   assert(row.attendeeId&&row.version===1&&row.dietaryRestrictions===unicode&&row.accessibilityRequirements===null,'First save not persisted as sent');
+   record('SPM-270 TC-PROFILE-004/008 first save creates the profile with version null',{version:row.version});
+   // TC-PROFILE-006/007: update one field and clear the other; the loaded version is sent.
+   await field(page,'Dietary restrictions').fill('');await field(page,'Accessibility requirements').fill('Step-free access');
+   const updated=await save(page);
+   assert(updated.status()===200&&updated.request().postDataJSON().version===1,'Update did not send the loaded version');
+   await page.getByText('Profile saved',{exact:true}).waitFor();
+   row=await stored(attendee.userId);
+   assert(row.version===2&&row.dietaryRestrictions===null&&row.accessibilityRequirements==='Step-free access','Update or clear not persisted');
+   // TC-PROFILE-011: shown again on the next visit.
+   await page.reload();await field(page,'Accessibility requirements').waitFor();
+   assert(await field(page,'Accessibility requirements').inputValue()==='Step-free access'&&await field(page,'Dietary restrictions').inputValue()==='','Saved values not shown after reload');
+   record('SPM-270 TC-PROFILE-006/007/011 update, clear and revisit',{version:row.version});
+   // 409 STALE_PROFILE: another session saves first; the edit is kept and nothing is overwritten.
+   const token=await accessToken(page);
+   const other=await fetch(api+'/api/attendee-profile/mine',{method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({dietaryRestrictions:'Saved in another tab',accessibilityRequirements:'Step-free access',version:2})});
+   assert(other.status===200,'Second-session save returned '+other.status);
+   await field(page,'Dietary restrictions').fill('Edit from the older page');
+   const stale=await save(page);
+   assert(stale.status()===409,'Stale save returned '+stale.status());
+   await page.getByText('Your profile changed since you opened it',{exact:true}).waitFor();
+   assert(await field(page,'Dietary restrictions').inputValue()==='Edit from the older page','Stale save discarded the typed value');
+   row=await stored(attendee.userId);
+   assert(row.version===3&&row.dietaryRestrictions==='Saved in another tab','Stale save changed the stored profile');
+   await page.getByRole('button',{name:'Load latest profile',exact:true}).click();
+   await page.getByText('Latest profile loaded',{exact:true}).waitFor();
+   assert(await field(page,'Dietary restrictions').inputValue()==='Saved in another tab','Latest profile not loaded');
+   record('SPM-270 STALE_PROFILE keeps the edit, changes nothing and reloads on request');
+   // TC-PROFILE-010: a failed save shows an error and keeps the typed text (network failure on the PUT).
+   await page.route('**/api/attendee-profile/mine',route=>route.request().method()==='PUT'?route.abort():route.fallback(),{times:1});
+   await field(page,'Dietary restrictions').fill('Kept after failure');
+   await page.getByRole('button',{name:'Save preferences',exact:true}).click();
+   await page.getByText('Your preferences were not saved',{exact:true}).waitFor();
+   assert(await field(page,'Dietary restrictions').inputValue()==='Kept after failure','Failed save discarded the typed value');
+   assert(await page.getByText('Profile saved',{exact:true}).count()===0,'Success shown for a failed save');
+   const retried=await save(page);assert(retried.status()===200&&retried.request().postDataJSON().version===3,'Retry did not send the current version');
+   await page.getByText('Profile saved',{exact:true}).waitFor();
+   record('SPM-270 TC-PROFILE-010 failed save keeps input and retry saves');
+   // Sidebar identity block by keyboard.
+   await page.goto(base+'/my-registrations');await page.getByRole('button',{name:'Logout',exact:true}).focus();await page.keyboard.press('Tab');
+   const identity=page.getByRole('link',{name:/^Attendee Profile for /});
+   assert(await identity.evaluate(element=>element===document.activeElement),'Identity block not reached by Tab');
+   await page.keyboard.press('Enter');await page.waitForURL(url=>url.pathname==='/attendee-profile');
+   // Mobile drawer at 390px.
+   await page.setViewportSize({width:390,height:844});await page.goto(base+'/my-registrations');
+   await page.getByRole('button',{name:'Open menu',exact:true}).click();await identity.click();await page.waitForURL(url=>url.pathname==='/attendee-profile');
+   await field(page,'Dietary restrictions').waitFor();
+   assert(await page.getByRole('button',{name:'Open menu',exact:true}).getAttribute('aria-expanded')==='false','Drawer stayed open');
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)===0,'Profile overflows at 390px');
+   assert(errors.length===0,'Browser runtime error: '+errors.join('; '));
+   record('SPM-270 sidebar identity block by keyboard and mobile drawer');
+  } finally {await context.close();}
+  // TC-PROFILE-003: another role keeps a static identity block and is denied.
+  const staffContext=await browser.newContext({timezoneId:'Asia/Singapore'});const staff=await staffContext.newPage();
+  try {
+   await staff.goto(base+'/login');await signInAs(staff,organiser,'/dashboard');
+   assert(await staff.locator('#dashboard-sidebar a[href="/attendee-profile"]').count()===0,'Organiser sidebar links to the Attendee Profile');
+   await staff.goto(profileUrl);await staff.getByText('This page is not available for your role.',{exact:false}).waitFor();
+   const res=await fetch(api+'/api/attendee-profile/mine',{headers:{Authorization:'Bearer '+await accessToken(staff)}});
+   assert(res.status===403,'Organiser profile API returned '+res.status);
+   record('SPM-270 TC-PROFILE-003 organiser denied in UI and API',{api:res.status});
+  } finally {await staffContext.close();}
+ } finally {
+  if(fixtures) {
+   await cleanupAuthFixtures(profileRun);
+   const left=await supabase.from('user').select('user_id',{count:'exact',head:true}).like('email',`spm32-${profileRun}-%`);if(left.error)throw left.error;
+   assert(left.count===0,'SPM-270 fixture users left behind');
+   assert(check(await supabase.rpc('get_attendee_profile',{p_user_id:fixtures.accounts.attendee.userId}))===null,'SPM-270 fixture profile left behind');
+   record('SPM-270 fixture cleanup',{runId:profileRun,usersLeft:left.count});
+  }
+ }
+}
 async function main() {
  users=check(await supabase.from('user').select('user_id,name,role,email,auth_user_id,is_active').like('email','dev-%@connectsphere.test')).filter(user=>user.name.startsWith('Seed ')&&user.is_active&&user.auth_user_id);
  assert(process.env.SEED_ACCOUNT_PASSWORD,'SEED_ACCOUNT_PASSWORD is missing');
@@ -580,6 +695,7 @@ async function main() {
    assert(errors.length===0,'Browser runtime error: '+errors.join('; '));record('real logout and token revocation',{role});
   } finally {await Promise.allSettled(tracked);await context.close();}
  }
+ if(!process.env.LIVE_ROLES||process.env.LIVE_ROLES.split(',').includes('ATTENDEE'))await attendeeProfileLive();
  const attendee=users.find(user=>user.role==='ATTENDEE');
  if(attendee)await verifySignedOutRedirectBack(attendee);
 }

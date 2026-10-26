@@ -105,7 +105,7 @@ export function AssignedEventsList() {
       <section aria-labelledby="assigned-heading" className="grid gap-4">
         <SectionHeading id="assigned-heading" title="Assigned events" description="Only events currently assigned to you appear here." />
         {state.status === "loading" ? (
-          <div className="grid gap-4 md:grid-cols-2" aria-busy="true" aria-label="Loading assigned events">
+          <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading assigned events">
             <Skeleton className="h-64" />
             <Skeleton className="h-64" />
           </div>
@@ -117,7 +117,7 @@ export function AssignedEventsList() {
         ) : events.length === 0 ? (
           <EmptyState title="No events assigned yet" description="When a Coordinator Lead assigns an event to you, it appears here." />
         ) : (
-          <ul className="grid gap-4 md:grid-cols-2">
+          <ul className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">
             {events.map((event) => (
               <li key={event.eventId} className="grid"><AssignedEventCard event={event} /></li>
             ))}

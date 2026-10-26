@@ -8,7 +8,7 @@
 
 import { apiRequest } from "@/lib/api";
 
-export type ViewerRelationship = "OWNER" | "ORGANISATION_MEMBER" | "ASSIGNED_COORDINATOR" | "SAFETY_OFFICER";
+export type ViewerRelationship = "OWNER" | "ORGANISATION_MEMBER" | "ASSIGNED_COORDINATOR" | "SAFETY_OFFICER" | "SUPERVISING_LEAD";
 
 export type HistoryAudience = "OWNER_ONLY" | "ORGANISER_SAFE" | "STAFF_ONLY";
 
@@ -28,6 +28,20 @@ export interface EventPermissions {
   canPostClarificationMessage?: boolean;
   canSaveAmendments?: boolean;
   canCompleteClarification?: boolean;
+  // The assigned coordinator, while the event is under review or in planning.
+  canSuggestVenue?: boolean;
+}
+
+// The coordinator's suggested venue (SPM-72/74). Advice to the organiser, not
+// a hold or booking.
+export interface VenueSuggestion {
+  venueId: number;
+  name: string | null;
+  address: string | null;
+  maxCapacity: number | null;
+  suggestedAt: string;
+  suggestedBy: string | null;
+  version: number;
 }
 
 export interface EventView {
@@ -74,6 +88,7 @@ export interface EventView {
   // and the review round to open (null when none is in their scope).
   registeredCount?: number;
   safetyReviewId?: number | null;
+  venueSuggestion?: VenueSuggestion | null;
 }
 
 export interface EventHistoryChange {

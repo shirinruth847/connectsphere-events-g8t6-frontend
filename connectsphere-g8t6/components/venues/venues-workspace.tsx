@@ -8,19 +8,16 @@ import { AlertBanner } from "@/components/shared/primitives";
 import { VenueManagementList } from "@/components/venue-staff/venue-management/venue-management-list";
 import { ROLE_LABELS, type UserRole } from "@/lib/auth";
 import { VenueAvailabilityCalendar } from "./venue-availability";
-import { VenueCatalogue } from "./venue-catalogue";
 
-type View = "catalogue" | "manage" | "availability";
+type View = "manage" | "availability";
 
+// Venue Staff only. Coordinators and Leads browse venues, details and
+// availability inside each event's venue section (SPM-72/74).
 const VIEWS: Partial<Record<UserRole, { id: View; label: string }[]>> = {
   VENUE_STAFF: [{ id: "manage", label: "Manage venues" }, { id: "availability", label: "Availability" }],
-  COORDINATOR: [{ id: "catalogue", label: "Catalogue" }, { id: "availability", label: "Availability" }],
-  // SPM-74 limits the calendar to Event Coordinators and Venue Staff.
-  COORDINATOR_LEAD: [{ id: "catalogue", label: "Catalogue" }],
 };
 
 const TITLES: Record<View, { title: string; description: string }> = {
-  catalogue: { title: "Venue Catalogue", description: "Review venues currently available for event planning. Search by name or location and filter by capacity, layout, facilities or accessibility." },
   manage: { title: "My Venues", description: "Manage venue records, status, details and setup/turnaround times." },
   availability: { title: "Venue Availability", description: "Bookings, active holds, operational blocks and setup/turnaround time for the venues and dates you choose." },
 };
@@ -35,8 +32,8 @@ export function VenuesWorkspace() {
   if (!user) return null;
   if (!views) {
     return (
-      <PageContent title="Catalogue access required" eyebrow="VENUE PLANNING">
-        <AlertBanner tone="error">Your account does not have permission to view venues.</AlertBanner>
+      <PageContent title="Venue access required" eyebrow="VENUE PLANNING">
+        <AlertBanner tone="error">Your account does not have permission to view this page. Coordinators find venues in each event&apos;s venue section.</AlertBanner>
       </PageContent>
     );
   }
@@ -61,7 +58,6 @@ export function VenuesWorkspace() {
           ))}
         </nav>
       ) : null}
-      {view === "catalogue" ? <VenueCatalogue /> : null}
       {view === "manage" ? <VenueManagementList /> : null}
       {view === "availability" ? <VenueAvailabilityCalendar key={venueId ?? "all"} /> : null}
     </PageContent>

@@ -55,11 +55,15 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
     if (pathname === "/calendar") return "calendar";
+    // A supervised event is opened from Assignments (SPM-72/74).
+    if (pathname.startsWith("/events/")) return "assignments";
     return "home";
   }
   if (role === "ATTENDEE") {
     if (pathname === ROUTES.events || /^\/events\/[^/]+$/.test(pathname)) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
+    // Opened from the sidebar identity block, not a tab, so no tab is current.
+    if (pathname === ROUTES.attendeeProfile) return "profile";
     return "home";
   }
   if (role === "TECH_SUPPORT") {

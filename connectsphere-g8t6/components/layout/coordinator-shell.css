@@ -1733,3 +1733,113 @@
   .coordinator-shell .cal-event-block .cal-event-time { font-size: 10px; }
   .coordinator-shell .cal-event-block .cal-event-title { font-size: 11px; }
 }
+
+/* A shorter calendar (developer request of 24 October 2026): the week and day
+   hours scroll inside a short window, and the year view shows six months a
+   row on wide screens, so the calendar and its toolbar fit on one screen. */
+.coordinator-shell .cal-week-time-grid-wrap,
+.coordinator-shell .cal-day-time-grid-wrap { min-height: 14rem; max-height: min(24rem, calc(100dvh - 22rem)); }
+@media (min-width: 1280px) {
+  .coordinator-shell .cal-year-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+}
+
+/* Dashboard cards sit three to a row on desktop and two on tablets, like the
+   other roles' dashboards (developer request of 24 October 2026). A card is
+   then narrow, so its details stack and its footer wraps. */
+@media (min-width: 768px) {
+  .coordinator-shell .request-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .coordinator-shell .request-card { display: flex; flex-direction: column; min-width: 0; }
+  .coordinator-shell .request-card .request-main { flex-direction: column; gap: 8px; }
+  .coordinator-shell .request-card .details-panel { grid-template-columns: 1fr; }
+  .coordinator-shell .request-card .card-footer { flex-wrap: wrap; margin-top: auto; padding-top: 16px; }
+}
+@media (min-width: 66rem) {
+  .coordinator-shell .request-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Calendar overlays (developer request of 24 October 2026): closed hours sit
+   beneath the events; the checked request and its overlaps sit over them,
+   translucent, and let clicks through except on the request's label. */
+.coordinator-shell .cal-overlay { position: absolute; left: 0; right: 0; pointer-events: none; }
+.coordinator-shell .cal-overlay--closed {
+  z-index: 0;
+  background: repeating-linear-gradient(135deg, rgb(119 117 135 / 10%) 0 6px, rgb(119 117 135 / 20%) 6px 12px);
+}
+.coordinator-shell .cal-overlay--request {
+  z-index: 3;
+  border: 2px solid rgb(202 138 4 / 75%);
+  border-radius: 6px;
+  background: rgb(250 204 21 / 28%);
+}
+.coordinator-shell .cal-overlay--conflict { z-index: 4; border-radius: 4px; background: rgb(220 38 38 / 34%); }
+.coordinator-shell .cal-overlay-label {
+  position: relative;
+  z-index: 5;
+  display: block;
+  margin: 2px 4px;
+  color: #713f12;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  pointer-events: auto;
+  cursor: help;
+}
+.coordinator-shell .cal-overlay-label:focus-visible { outline: 2px solid #3525cd; outline-offset: 2px; }
+.coordinator-shell .cal-overlay-tip {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 12;
+  display: none;
+  width: max-content;
+  max-width: 20rem;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0d1c2e;
+  font-weight: 400;
+  white-space: pre-line;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+.coordinator-shell .cal-overlay-label:hover .cal-overlay-tip,
+.coordinator-shell .cal-overlay-label:focus-visible .cal-overlay-tip { display: block; }
+.coordinator-shell .cal-overlay--request:hover { z-index: 11; }
+
+/* Venue calendars sit in narrower boxes (an event's venue card, a popup):
+   the seven days shrink to fit instead of losing Saturday, and scroll
+   together, header included, only below 560px. */
+.coordinator-shell.venue-calendar .cal-week-view { overflow-x: auto; }
+.coordinator-shell.venue-calendar .cal-week-header-row { grid-template-columns: 60px repeat(7, minmax(0, 1fr)); min-width: 560px; }
+.coordinator-shell.venue-calendar .cal-time-grid { min-width: 560px; }
+.coordinator-shell.venue-calendar .cal-day-column { min-width: 0; }
+/* Hover windows of the last days open leftwards, inside the calendar. */
+.coordinator-shell .cal-day-column:nth-last-child(-n+3) .cal-overlay-tip { right: 0; left: auto; }
+
+/* Month bars (developer request of 25 October 2026): an entry is a labelled
+   bar; a multi-day entry continues edge to edge across the week. */
+.coordinator-shell .cal-month-day--bars { min-width: 0; padding: 4px 0; cursor: default; align-items: stretch; gap: 2px; }
+.coordinator-shell .cal-month-day--bars .cal-month-day-number { align-self: center; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.coordinator-shell .cal-month-day--bars .cal-month-day-number:hover { background: var(--surface-container-high); }
+.coordinator-shell .cal-month-bar,
+.coordinator-shell .cal-month-bar-spacer { display: block; height: 20px; min-width: 0; }
+.coordinator-shell .cal-month-bar {
+  overflow: hidden;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.coordinator-shell .cal-month-bar.is-start { margin-left: 4px; border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
+.coordinator-shell .cal-month-bar.is-end { margin-right: 4px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
+.coordinator-shell .cal-month-bar--request { background: rgb(250 204 21 / 35%); color: #713f12; box-shadow: inset 0 0 0 1.5px rgb(202 138 4 / 75%); cursor: default; }
+.coordinator-shell .cal-month-bar--request.has-conflict { background: rgb(220 38 38 / 30%); color: #7f1d1d; }
+.coordinator-shell .cal-month-day--bars .cal-month-dot-more { padding: 0 6px; }
+.coordinator-shell .cal-year-day.is-requested { box-shadow: inset 0 0 0 2px rgb(202 138 4 / 85%); background: rgb(250 204 21 / 35%) !important; }
+.coordinator-shell .cal-year-day.has-conflict { box-shadow: inset 0 0 0 2px rgb(220 38 38 / 85%); background: rgb(220 38 38 / 25%) !important; }

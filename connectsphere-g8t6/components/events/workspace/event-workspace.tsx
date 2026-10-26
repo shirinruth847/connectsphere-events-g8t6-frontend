@@ -9,6 +9,7 @@ import { Icon } from "@/components/shared/icon";
 import { homeForRole, ROUTES } from "@/lib/auth";
 import { SafetyReviewView } from "@/components/safety-officer/review-view";
 import { VenueStaffEventView } from "@/components/venue-staff/booking-requests/venue-staff-event-view";
+import { SupervisedEventView } from "@/components/coordinator-lead/supervised-event-view";
 import { CoordinatorEventView } from "./coordinator-event-view";
 import { useEventView } from "./use-event-view";
 
@@ -60,6 +61,7 @@ function LoadedWorkspace({ eventId, home, reason }: { eventId: number; home: str
   if (state.event.viewerRelationship === "SAFETY_OFFICER") {
     return <SafetyReviewView event={state.event} onEventChanged={refresh} />;
   }
+  if (state.event.viewerRelationship === "SUPERVISING_LEAD") return <SupervisedEventView event={state.event} />;
   return <EventRequestDetails event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
 }
 
