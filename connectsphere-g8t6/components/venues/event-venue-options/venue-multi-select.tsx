@@ -9,6 +9,7 @@ interface VenueMultiSelectProps {
   selected: string[];
   onChange: (selected: string[]) => void;
   invalid?: boolean;
+  errorId?: string;
 }
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -17,7 +18,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 // October 2026). Its name shows greyed until something is chosen; a chosen
 // value stays listed even if no loaded venue still carries it. It closes on
 // an outside click or Escape, and that Escape does not close a popup around it.
-export function VenueMultiSelect({ label, values, selected, onChange, invalid = false }: VenueMultiSelectProps) {
+export function VenueMultiSelect({ label, values, selected, onChange, invalid = false, errorId }: VenueMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const listId = useId();
@@ -50,6 +51,7 @@ export function VenueMultiSelect({ label, values, selected, onChange, invalid = 
         type="button"
         className={`${fieldClasses} flex items-center justify-between gap-2 py-2 text-left ${invalid ? "border-error" : ""}`}
         aria-label={selected.length ? `${label}: ${selected.join(", ")}` : label}
+        aria-describedby={errorId}
         aria-expanded={open}
         aria-controls={listId}
         title={label}

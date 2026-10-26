@@ -116,7 +116,7 @@ async function routeVenueSection(page, { event = eventView(), venueOptions = opt
     return route.fulfill({ status: 501, json: { error: `Unmocked ${url.pathname}` } });
   });
   await routeVenuePhotos(page);
-  await page.route((url) => url.pathname === "/api/venues/availability", (route) => {
+  await page.route((url) => url.pathname === "/api/events/42/venue-availability", (route) => {
     sent.availability.push(Object.fromEntries(new URL(route.request().url()).searchParams));
     return route.fulfill({ json: { from: "2026-11-01T16:00:00.000Z", to: "2026-12-08T16:00:00.000Z", generatedAt: "2026-10-23T04:00:00.000Z", venues: [{ venueId: 45, name: "Synthetic Grand Hall", address: "1 Harbourfront Walk", status: "ACTIVE", operatingHours: "08:00-22:00", setupMinutes: 30, turnaroundMinutes: 45, buffersRecorded: true, entries: [], overlaps: [], freePeriods: [], summary: "AVAILABLE", summaryLabel: "Available", check: null }] } });
   });
@@ -775,7 +775,7 @@ test("[SPM-74 TC16][SPM-72 AC6] the calendar shows the request as a yellow block
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await routeVenueSection(page);
   const booking = { entryId: "booking-9", type: "BOOKING", status: "APPROVED", label: "Confirmed booking", blocking: true, start: "2026-11-20T01:00:00.000Z", end: "2026-11-20T02:00:00.000Z", occupiedStart: "2026-11-20T00:30:00.000Z", occupiedEnd: "2026-11-20T02:30:00.000Z", bookingId: 9, eventId: 7, requestId: "REQ-000007", eventTitle: "Synthetic breakfast", holdExpiresAt: null, reason: null, reasonLabel: null, note: null, operatingHoursWarning: null };
-  await page.route((url) => url.pathname === "/api/venues/availability", (route) => route.fulfill({ json: {
+  await page.route((url) => url.pathname === "/api/events/42/venue-availability", (route) => route.fulfill({ json: {
     from: "2026-10-25T16:00:00.000Z", to: "2026-12-08T16:00:00.000Z",
     venues: [{
       venueId: 45, name: "Synthetic Grand Hall", address: "1 Harbourfront Walk", status: "ACTIVE", operatingHours: "08:00-22:00", setupMinutes: 30, turnaroundMinutes: 45, buffersRecorded: true,
@@ -821,7 +821,7 @@ test("[SPM-74][SPM-72 AC6] the month view shows entries as labelled bars and the
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await routeVenueSection(page);
   const booking = { entryId: "booking-9", type: "BOOKING", status: "APPROVED", label: "Confirmed booking", blocking: true, start: "2026-11-17T01:00:00.000Z", end: "2026-11-19T09:00:00.000Z", occupiedStart: "2026-11-17T00:30:00.000Z", occupiedEnd: "2026-11-19T09:30:00.000Z", bookingId: 9, eventId: 7, requestId: "REQ-000007", eventTitle: "Synthetic summit", holdExpiresAt: null, reason: null, reasonLabel: null, note: null, operatingHoursWarning: null };
-  await page.route((url) => url.pathname === "/api/venues/availability", (route) => route.fulfill({ json: {
+  await page.route((url) => url.pathname === "/api/events/42/venue-availability", (route) => route.fulfill({ json: {
     from: "2026-10-25T16:00:00.000Z", to: "2026-12-08T16:00:00.000Z",
     venues: [{
       venueId: 45, name: "Synthetic Grand Hall", address: "1 Harbourfront Walk", status: "ACTIVE", operatingHours: "08:00-22:00", setupMinutes: 30, turnaroundMinutes: 45, buffersRecorded: true,
@@ -864,4 +864,44 @@ test("[SPM-72 AC11] an unexpected venue reply shows no venues and never breaks t
   await expect(page.getByRole("button", { name: "Select" })).toHaveCount(0);
   await openSearch(page);
   await expect(page.getByText("No venues are currently available")).toBeVisible();
+});
+
+
+test("[SPM-75 regression] empty and repeated Apply always finish loading", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const sent = await routeVenueSection(page);
+  await page.goto("/events/42");
+  await openSearch(page);
+  await expect(search(page).getByRole("article")).toHaveCount(3);
+  for (let i = 0; i < 2; i += 1) {
+    const before = sent.options.length;
+    await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+    await expect.poll(() => sent.options.length).toBe(before + 1);
+    await expect(search(page).getByRole("article")).toHaveCount(3);
+    await expect(search(page).getByLabel("Loading venues")).toHaveCount(0);
+  }
+});
+
+test("[SPM-75 regression] rejected filters retain results and comparison with field errors", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeVenueSection(page);
+  await page.goto("/events/42");
+  await openSearch(page);
+  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "View details" }).click();
+  await page.getByRole("button", { name: "Show comparison view" }).click();
+  await card(page, "Synthetic Rooftop").getByRole("button", { name: "Compare", exact: true }).click();
+  await page.route((url) => url.pathname.endsWith("/venue-options") && url.searchParams.has("minCapacity"), (route) => route.fulfill({
+    status: 400, json: { code: "VALIDATION_FAILED", fields: { minCapacity: "Minimum capacity must be a positive whole number." } },
+  }));
+  await page.getByLabel("Minimum capacity").fill("0");
+  await page.getByLabel("Minimum capacity").press("Enter");
+  await expect(page.getByLabel("Minimum capacity")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByLabel("Minimum capacity")).toHaveAccessibleDescription("Minimum capacity must be a positive whole number.");
+  await expect(search(page).getByRole("article")).toHaveCount(3);
+  await expect(page.getByRole("region", { name: "Venue details", exact: true })).toContainText("Synthetic Grand Hall");
+  await expect(page.getByRole("region", { name: "Compare with", exact: true })).toContainText("Synthetic Rooftop");
+  await expect(search(page)).toContainText("3 venues available");
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await expect(page.getByLabel("Minimum capacity")).toHaveAttribute("aria-invalid", "false");
+  await expect(search(page).getByRole("article")).toHaveCount(3);
 });

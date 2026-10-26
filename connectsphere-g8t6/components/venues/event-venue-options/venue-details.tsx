@@ -12,6 +12,7 @@ import { VenuePhotoCarousel } from "./venue-photo-carousel";
 
 // The event window the coordinator's availability calendar opens on (SPM-74).
 export interface VenueCalendarWindow {
+  eventId: number;
   date: Date;
   check: AvailabilityParams["check"];
   // Names the event's period on the calendar, e.g. its request ID.
@@ -130,7 +131,7 @@ export function useVenueCalendar(calendar: VenueCalendarWindow | null | undefine
     ),
     panel: open ? (
       <div className="col-span-full min-w-0 overflow-x-auto">
-        <VenueAvailabilityCalendar key={venueId} fixed={{ venueIds: [venueId], date: calendar.date, check: calendar.check, label: calendar.label }} />
+        <VenueAvailabilityCalendar key={venueId} fixed={{ eventId: calendar.eventId, venueIds: [venueId], date: calendar.date, check: calendar.check, label: calendar.label }} />
       </div>
     ) : null,
   };

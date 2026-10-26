@@ -30,6 +30,7 @@ export interface ManagedVenueFilters {
 }
 
 export interface AvailabilityParams {
+  eventId?: number;
   // A Singapore calendar day (YYYY-MM-DD) and how many days to show.
   date: string;
   days: number;

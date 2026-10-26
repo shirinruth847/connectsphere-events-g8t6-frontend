@@ -239,3 +239,13 @@ of the five latest notifications; **See more** and the attendee sidebar's
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
+
+## Event venue search and calendar fixes (SPM-72 / SPM-75)
+
+Applying unchanged filters refreshes the results. Rejected filter values retain
+previous results and comparison choices, with errors beside the fields.
+The coordinator's embedded calendar uses
+`GET /api/events/:id/venue-availability` with the existing date/venue query.
+The backend must deploy this route before the frontend: it verifies assigned
+coordinator access and excludes that event's own bookings and holds. Venue
+Staff continue to use `/api/venues/availability`. No schema migration is needed.

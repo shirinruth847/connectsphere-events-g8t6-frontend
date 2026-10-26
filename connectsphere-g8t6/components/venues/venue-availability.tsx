@@ -85,6 +85,7 @@ function EntryRow({ entry }: { entry: CalendarEntry }) {
 // The venues an event's calendar shows, opened on the event's date with its
 // window checked (SPM-72/74 venue section); the venue picker is hidden.
 export interface FixedCalendarVenues {
+  eventId: number;
   venueIds: number[];
   date: Date;
   check: AvailabilityParams["check"];
@@ -118,9 +119,10 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
   const range = calendarRange(viewMode, currentDate);
   // Keyed on the IDs' contents: a fixed list is rebuilt on every parent render.
   const selectedKey = selected.join(",");
+  const eventId = fixed?.eventId;
   const params: AvailabilityParams | null = useMemo(
-    () => (selectedKey ? { date: range.date, days: range.days, venueIds: selectedKey.split(",").map(Number), check } : null),
-    [selectedKey, range.date, range.days, check],
+    () => (selectedKey ? { eventId, date: range.date, days: range.days, venueIds: selectedKey.split(",").map(Number), check } : null),
+    [eventId, selectedKey, range.date, range.days, check],
   );
 
   // Loads whenever the venues, the visible range or the checked period change.

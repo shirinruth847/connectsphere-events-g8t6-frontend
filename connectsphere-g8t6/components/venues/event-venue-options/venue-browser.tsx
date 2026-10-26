@@ -15,7 +15,7 @@ import { DEFAULT_VENUE_PAGE_SIZE, EMPTY_FILTER_CHOICES, MAX_VENUE_PAGE_SIZE, par
 
 type OptionsState<T> =
   | { status: "loading" }
-  | { status: "ready"; data: T }
+  | { status: "ready"; data: T; filtered: boolean }
   | { status: "error"; message: string; fields?: Record<string, string> };
 
 // Search and capacity are typed; layout, facility and accessibility are
@@ -58,6 +58,9 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
   const [pageSizeText, setPageSizeText] = useState(String(DEFAULT_VENUE_PAGE_SIZE));
   const [shown, setShown] = useState(DEFAULT_VENUE_PAGE_SIZE);
   const [state, setState] = useState<OptionsState<T>>({ status: "loading" });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const lastReady = useRef<Extract<OptionsState<T>, { status: "ready" }> | null>(null);
+  const pageSizeRef = useRef(pageSize);
   const [attempt, setAttempt] = useState(0);
   const [viewId, setViewId] = useState<number | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -66,9 +69,10 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
   const panelsRef = useRef<HTMLDivElement>(null);
   const loadRef = useRef(load);
   const loadedRef = useRef(onLoaded);
-  const filtered = hasValue(applied);
+  const filtered = state.status === "ready" ? state.filtered : hasValue(applied);
 
   useEffect(() => {
+    pageSizeRef.current = pageSize;
     loadRef.current = load;
     loadedRef.current = onLoaded;
   });
@@ -78,12 +82,22 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
     loadRef.current({ ...applied, sort, order })
       .then((data) => {
         if (!alive) return;
-        setState({ status: "ready", data });
+        const ready = { status: "ready" as const, data, filtered: hasValue(applied) };
+        lastReady.current = ready;
+        setState(ready);
+        setShown(pageSizeRef.current);
         setChoices((current) => venueFilterChoices(data.venues, current));
         loadedRef.current?.(data);
       })
       .catch((caught: unknown) => {
         if (!alive) return;
+        if (caught instanceof ApiError && caught.status === 400 && Object.keys(caught.fields).length) {
+          setFieldErrors(caught.fields);
+          if (lastReady.current) {
+            setState(lastReady.current);
+            return;
+          }
+        }
         setState({
           status: "error",
           message: caught instanceof Error ? caught.message : "Venues could not be loaded.",
@@ -95,7 +109,8 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
 
   const reload = (next?: Partial<{ applied: Filters; sort: VenueOptionSort; order: "asc" | "desc" }>) => {
     setState({ status: "loading" });
-    setShown(pageSize);
+    setFieldErrors({});
+    setAttempt((value) => value + 1);
     if (next?.applied) setApplied(next.applied);
     if (next?.sort) setSort(next.sort);
     if (next?.order) setOrder(next.order);
@@ -115,7 +130,6 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
   const viewing = venueById(venues, viewId);
   const comparing = venueById(venues, compareId);
   const more = showMoreCount(shown, venues.length, pageSize);
-  const fieldErrors = state.status === "error" ? state.fields : undefined;
   const scrollToPanels = () => panelsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   // A related venue (e.g. a room of this hall) opens in the details panel. One
   // the filters hide is shown after clearing them; every related venue the
@@ -141,20 +155,26 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
         placeholder={field.placeholder}
         title={field.label}
         inputMode={field.inputMode}
-        aria-invalid={Boolean(fieldErrors?.[field.key])}
+        aria-invalid={Boolean(fieldErrors[field.key])}
+        aria-describedby={fieldErrors[field.key] ? `venue-option-${field.key}-error` : undefined}
         onKeyDown={applyOnEnter}
         onChange={(changeEvent) => setDraft((current) => ({ ...current, [field.key]: changeEvent.target.value }))}
       />
+      {fieldErrors[field.key] ? <p id={`venue-option-${field.key}-error`} className="mt-1 text-xs text-error" role="alert">{fieldErrors[field.key]}</p> : null}
     </div>
   );
   const multiSelect = (key: "layout" | "facility" | "accessibility", label: string, values: string[]) => (
-    <VenueMultiSelect
-      label={label}
-      values={values}
-      selected={draft[key]}
-      invalid={Boolean(fieldErrors?.[key])}
-      onChange={(selected) => setDraft((current) => ({ ...current, [key]: selected }))}
-    />
+    <div className="min-w-0">
+      <VenueMultiSelect
+        label={label}
+        values={values}
+        selected={draft[key]}
+        invalid={Boolean(fieldErrors[key])}
+        errorId={fieldErrors[key] ? `venue-option-${key}-error` : undefined}
+        onChange={(selected) => setDraft((current) => ({ ...current, [key]: selected }))}
+      />
+      {fieldErrors[key] ? <p id={`venue-option-${key}-error`} className="mt-1 text-xs text-error" role="alert">{fieldErrors[key]}</p> : null}
+    </div>
   );
 
   // minmax(0, 1fr) tracks keep long venue names from widening the page; the
@@ -175,7 +195,6 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
           {multiSelect("facility", "Facility", choices.facilities)}
           {multiSelect("accessibility", "Accessibility", choices.accessibility)}
         </div>
-        {fieldErrors ? <p className="text-xs text-error" role="alert">{Object.values(fieldErrors).join(" ")}</p> : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">

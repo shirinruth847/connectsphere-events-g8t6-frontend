@@ -79,7 +79,7 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
   const allVenues = choices.status === "ready" ? choices.data.venues : [];
   const related = venueById([...allVenues, ...preferredOptions], relatedId);
   const check = eventCalendarCheck(event.startDatetime, event.endDatetime);
-  const calendar = isCoordinator ? { date: event.startDatetime ? calendarDate(new Date(event.startDatetime)) : calendarDate(new Date()), check, label: event.requestId } : null;
+  const calendar = isCoordinator ? { eventId: event.eventId, date: event.startDatetime ? calendarDate(new Date(event.startDatetime)) : calendarDate(new Date()), check, label: event.requestId } : null;
   const load = useCallback((query: VenueOptionsQuery) => getEventVenueOptions(event.eventId, query), [event.eventId]);
 
   const badge = (venue: EventVenueOption) => {
