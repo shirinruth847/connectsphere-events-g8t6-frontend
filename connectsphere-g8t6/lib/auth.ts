@@ -5,6 +5,7 @@ export const ROUTES = {
   login: "/login",
   signup: "/signup",
   dashboard: "/dashboard",
+  requests: "/dashboard?scope=MINE",
   registrations: "/my-registrations",
   events: "/events",
   assignments: "/assignments",
