@@ -852,3 +852,16 @@ test("[SPM-74][SPM-72 AC6] the month view shows entries as labelled bars and the
   await expect(calendar.locator(".cal-year-day.is-requested")).toHaveCount(1);
   expect(await calendar.locator(".cal-year-day.has-events").count()).toBeGreaterThanOrEqual(3);
 });
+
+test("[SPM-72 AC11] an unexpected venue reply shows no venues and never breaks the event page", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  // A reply without venue lists, e.g. from a misrouted proxy or an older backend.
+  await routeVenueSection(page, { venueOptions: { event: { eventId: 42 } } });
+  await page.goto("/events/42");
+
+  await expect(page.getByText("The organiser did not choose a venue.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Schedule & attendance/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Select" })).toHaveCount(0);
+  await openSearch(page);
+  await expect(page.getByText("No venues are currently available")).toBeVisible();
+});

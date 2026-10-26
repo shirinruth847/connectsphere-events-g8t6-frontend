@@ -79,8 +79,21 @@ export interface EventVenueOptions extends VenueOptionsResult {
   canSuggestVenue: boolean;
 }
 
-export const getEventVenueOptions = (eventId: number, query: VenueOptionsQuery = {}) =>
-  apiRequest<EventVenueOptions>(`/events/${eventId}/venue-options${venueOptionsQuery(query)}`);
+// Lists the venue section needs are always arrays and its flags booleans, so
+// a partial or unexpected reply shows as "no venues" instead of crashing the
+// event page (which also holds the lifecycle and safety review panels).
+export const getEventVenueOptions = async (eventId: number, query: VenueOptionsQuery = {}): Promise<EventVenueOptions> => {
+  const data = await apiRequest<Partial<EventVenueOptions>>(`/events/${eventId}/venue-options${venueOptionsQuery(query)}`);
+  return {
+    ...data,
+    venues: Array.isArray(data.venues) ? data.venues : [],
+    preferredVenues: Array.isArray(data.preferredVenues) ? data.preferredVenues : [],
+    filtersNotChecked: Array.isArray(data.filtersNotChecked) ? data.filtersNotChecked : [],
+    detailsAvailable: data.detailsAvailable === true,
+    availabilityChecked: data.availabilityChecked === true,
+    canSuggestVenue: data.canSuggestVenue === true,
+  } as EventVenueOptions;
+};
 
 // Read-only photos of an available venue, for coordinators and Leads.
 export const listSelectableVenuePhotos = (venueId: number) =>
