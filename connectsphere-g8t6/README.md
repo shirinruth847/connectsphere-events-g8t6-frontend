@@ -90,7 +90,7 @@ Validation used Node.js 24.9.0.
   and traces are under ignored `playwright-report/` and `test-results/`.
   Live-account browser checks may use `E2E_COORDINATOR_EMAIL`,
   `E2E_COORDINATOR_PASSWORD`, `E2E_ATTENDEE_EMAIL`, and
-  `E2E_ATTENDEE_PASSWORD`; the venue catalogue tests do not require these
+  `E2E_ATTENDEE_PASSWORD`; the event venue section tests do not require these
   variables because they mock authentication and venue responses.
 - `npm run build` uses Webpack and performs TypeScript checks.
 - `npm run test:live` requires both real applications already running at
@@ -159,6 +159,31 @@ stale rejection, role restrictions, queue resilience and calendar boundaries
 using mocked APIs. These journeys do not establish real backend/database
 integration; the backend's opt-in `leadAssignment.browser.cjs` runner does.
 
+## Attendee event viewing (SPM-44)
+
+Attendees land on Event Discovery (`/events`) after login when no permitted
+return URL is supplied. My Events remains at `/my-registrations`, and the
+notifications inbox remains at `/notifications`.
+
+Discovery cards open the shared details dialog. Direct `/events/<id>` URLs
+render an attendee detail page using `GET /api/events/discovery/:id`; staff
+continue to use their existing role-specific workspace at that URL. Discovery
+uses `GET /api/events/discovery` with cursor pagination. Both reads go through
+Express, which enforces publication, lifecycle and attendee-safe fields.
+Published `CONFIRMED` and `PREPARATION` events are eligible under Master §5.3;
+ended events are excluded by the current backend query.
+
+Cards retain the labels **Registration Open**, **Full - Waitlist** and
+**Registration Closed**. Events without registration show no registration
+wording or actions. Register/waitlist/notify buttons remain unavailable with
+an explanatory note; SPM-44 does not implement registration writes. A detail
+404 removes the discovery card and replaces the dialog's stale title with
+**Event unavailable**. Session expiry, denied access and retryable failures
+have distinct states.
+
+See [the SPM-44 test plan](docs/test-plans/spm-44.md), including the outstanding
+Jira wording reconciliation and the limits of mocked browser verification.
+
 ## Attendee notifications (SPM-155)
 
 Attendees open their in-app inbox from the **Updates** button in the page
@@ -204,12 +229,23 @@ of the five latest notifications; **See more** and the attendee sidebar's
   state only what is known ("This event has been cancelled" or "This event's
   details are being confirmed"), without promising a notification
   (`TODO(SPM-163)` marks the offer follow-up). The attendee's own place reads
-  "On the waitlist", since "Waitlisted" is Event Discovery's word for a full
-  event. The dialog is the attendee's whole event view: there is no separate
-  attendee event page (team decision), and `/events/<id>` stays the staff
-  workspace.
+  "On the waitlist"; Event Discovery uses "Full - Waitlist" for an event
+  at capacity. My Events and notification links continue to open this dialog using
+  the registration endpoint. SPM-44 also supports direct `/events/<id>` URLs
+  through the attendee discovery endpoint; those URLs remain the role-specific
+  workspace for staff.
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
   notification shows the offer expiry, and the dialog keeps a footer slot.
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
+
+## Event venue search and calendar fixes (SPM-72 / SPM-75)
+
+Applying unchanged filters refreshes the results. Rejected filter values retain
+previous results and comparison choices, with errors beside the fields.
+The coordinator's embedded calendar uses
+`GET /api/events/:id/venue-availability` with the existing date/venue query.
+The backend must deploy this route before the frontend: it verifies assigned
+coordinator access and excludes that event's own bookings and holds. Venue
+Staff continue to use `/api/venues/availability`. No schema migration is needed.

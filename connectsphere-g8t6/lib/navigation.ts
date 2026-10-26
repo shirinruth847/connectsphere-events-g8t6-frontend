@@ -7,8 +7,7 @@ type NavigationGroup = { title: string; items: NavigationItem[] };
 // An absent href renders an unavailable item, never a link to an unfinished page.
 const organiserItems: NavigationItem[] = [
   { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
-  { id: "requests", title: "My Requests", icon: "event", href: ROUTES.dashboard },
-  { id: "drafts", title: "My Drafts", icon: "event", href: ROUTES.drafts },
+  { id: "requests", title: "My Requests", icon: "event", href: ROUTES.requests },
   { id: "registrations-unavailable", title: "Registrations", icon: "registrations" },
   { id: "notifications", title: "Notifications", icon: "notifications" },
 ];
@@ -47,15 +46,17 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
   ];
 }
 
-export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
+export function activeNavigationId(role: UserRole, pathname: string, status: string | null, scope: string | null = null) {
   if (role === "COORDINATOR_LEAD") {
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
     if (pathname === "/calendar") return "calendar";
+    // A supervised event is opened from Assignments (SPM-72/74).
+    if (pathname.startsWith("/events/")) return "assignments";
     return "home";
   }
   if (role === "ATTENDEE") {
-    if (pathname === ROUTES.events) return "discovery";
+    if (pathname === ROUTES.events || /^\/events\/[^/]+$/.test(pathname)) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
     // Opened from the sidebar identity block, not a tab, so no tab is current.
     if (pathname === ROUTES.attendeeProfile) return "profile";
@@ -63,6 +64,7 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";
-  if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
+  if (pathname === ROUTES.dashboard && status === "DRAFT") return "requests";
+  if (pathname === ROUTES.dashboard && scope !== "MINE") return "home";
   return "requests";
 }

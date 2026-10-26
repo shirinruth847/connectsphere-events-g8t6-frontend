@@ -12,16 +12,19 @@ import { eventDisplayStatus, statusPresentation } from "@/lib/events";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { editableIdentityFields } from "@/lib/permissions/event-workspace";
+import { ClarificationPanel } from "./clarification-panel";
+import { useEventClarifications } from "./use-event-clarifications";
 import {
   equipmentItems,
   registrationRows,
   RequirementList,
   scheduleRows,
-  venueRows,
+  layoutRows,
 } from "./event-detail-rows";
 import { EventHistoryPanel } from "./event-history-panel";
 import { EventIdentityEditor } from "./event-identity-editor";
 import { LifecyclePanel } from "@/components/coordinator/lifecycle-panel";
+import { EventVenueSection } from "@/components/venues/event-venue-options/event-venue-section";
 import { SafetyReviewSection } from "./safety-review-section";
 
 interface CoordinatorEventViewProps {
@@ -47,18 +50,50 @@ function ReviewSection({ step, title, description, action, children }: {
 
 const significantPill = <PermissionPill tone="read-only">Change request only</PermissionPill>;
 
-// The assigned coordinator's review of one event (Figma 50:2842, trimmed to SPM-33:
-// the SLA clock, conflict matrix, overrides, sign-off matrix and message thread
-// belong to other tickets or are outside the baseline).
+// The assigned coordinator's review of one event (Figma 50:2842, trimmed to SPM-33
+// and SPM-41: the SLA clock, conflict matrix, overrides, sign-off matrix, other
+// action-bar actions and internal staff notes belong to other tickets or are
+// outside the baseline).
 export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: CoordinatorEventViewProps) {
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [statusNotice, setStatusNotice] = useState("");
   const [historyKey, setHistoryKey] = useState(0);
+  const [clarificationKey, setClarificationKey] = useState(0);
+  const clarifications = useEventClarifications(event.eventId, clarificationKey);
   const editable = editableIdentityFields(event.permissions);
   const status = eventDisplayStatus(event);
   const statusLabel = statusPresentation(status).label;
   const attendance = event.expectedAttendance ?? 0;
   const capacity = event.isRegistrationEnabled ? event.registrationCapacity ?? 0 : 0;
+  const clarificationPanel = (
+    <ClarificationPanel
+      event={event}
+      state={clarifications.state}
+      onRetry={clarifications.retry}
+      onThreadOpened={clarifications.refreshThread}
+      onThreadRead={clarifications.markRead}
+      onRoundUpdated={clarifications.replaceRound}
+      onCompleted={(updated, message) => {
+        onEventChange(updated);
+        setHistoryKey((value) => value + 1);
+        setClarificationKey((value) => value + 1);
+        setStatusNotice("");
+        setNotice({ title: "Clarification complete", message: `${message} The organiser has been notified.` });
+      }}
+      onEventReplaced={(latest) => {
+        setNotice(null);
+        onEventChange(latest);
+        setHistoryKey((value) => value + 1);
+      }}
+      onAccessChanged={onAccessChanged}
+      onRequested={(updated) => {
+        onEventChange(updated);
+        setHistoryKey((value) => value + 1);
+        setClarificationKey((value) => value + 1);
+        setNotice({ title: "Clarification requested", message: "The organiser has been notified and can reply and amend the request. It stays assigned to you until you mark the clarification complete." });
+      }}
+    />
+  );
 
   return (
     <div className="grid gap-5">
@@ -85,7 +120,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
 
       <div aria-live="polite" role="status">
         {notice ? (
-          <AlertBanner tone="success" title="Changes saved" live={false}>{notice}</AlertBanner>
+          <AlertBanner tone="success" title={notice.title} live={false}>{notice.message}</AlertBanner>
         ) : null}
         {statusNotice ? (
           <AlertBanner tone="success" title="Status updated" live={false}>{statusNotice}</AlertBanner>
@@ -99,7 +134,9 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
       ) : null}
 
       <div className="grid items-start gap-5 xl:grid-cols-12">
-        <div className="grid gap-5 xl:col-span-8">
+        {/* min-w-0: wide venue content scrolls inside its own box instead of
+            widening a column. */}
+        <div className="grid min-w-0 gap-5 xl:col-span-8">
           <ReviewSection
             step={1}
             title="Event identity & purpose"
@@ -111,10 +148,10 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               onSaved={(saved, message) => {
                 onEventChange(saved);
                 setHistoryKey((value) => value + 1);
-                setNotice(`${message} The organiser is notified which fields changed.`);
+                setNotice({ title: "Changes saved", message: `${message} The organiser is notified which fields changed.` });
               }}
               onEventReplaced={(latest) => {
-                setNotice("");
+                setNotice(null);
                 onEventChange(latest);
                 setHistoryKey((value) => value + 1);
               }}
@@ -129,8 +166,14 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             ) : null}
           </ReviewSection>
 
-          <ReviewSection step={3} title="Venue & layout" description="Ranked venue preferences from the request." action={significantPill}>
-            <KeyValuePanel rows={venueRows(event)} />
+          <ReviewSection step={3} title="Venue & layout" description="The organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
+            <KeyValuePanel rows={layoutRows(event)} />
+            <EventVenueSection
+              key={event.venueSuggestion?.version ?? 0}
+              event={event}
+              onSuggested={() => setHistoryKey((value) => value + 1)}
+              onStale={onAccessChanged}
+            />
           </ReviewSection>
 
           <div className="grid gap-5 md:grid-cols-2">
@@ -147,17 +190,18 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
           </ReviewSection>
         </div>
 
-        <aside className="grid gap-5 xl:col-span-4" aria-label="Coordination and history">
+        <aside className="grid min-w-0 gap-5 xl:col-span-4" aria-label="Coordination and history">
           <LifecyclePanel
             event={event}
             onEventChange={(updated, message) => {
               onEventChange(updated);
               setHistoryKey((value) => value + 1);
-              setNotice("");
+              setNotice(null);
               setStatusNotice(message ?? "");
             }}
             onAccessChanged={onAccessChanged}
           />
+          {clarificationPanel}
           <SafetyReviewSection eventId={event.eventId} refreshKey={historyKey} />
           <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
             <SectionHeading id="coordination-heading" title="Coordination" />

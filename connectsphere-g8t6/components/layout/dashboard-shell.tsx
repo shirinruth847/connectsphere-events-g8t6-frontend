@@ -50,7 +50,7 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
   }, [open]);
   if (!profile) return null;
   const groups = navigationForRole(profile.role);
-  const activeId = activeNavigationId(profile.role, pathname, params.get("status"));
+  const activeId = activeNavigationId(profile.role, pathname, params.get("status"), params.get("scope"));
   const home = homeForRole(profile.role);
   const closeMenu = () => setOpen(false);
   const identity = <>
