@@ -50,8 +50,8 @@ components over adding all ticket logic to the role's dashboard file.
 
 `components/auth/role-dashboard.tsx` dispatches the trusted profile to a role's
 dashboard; feature logic belongs in that role's folder. Most roles keep the
-`/dashboard` URL while rendering different components. Attendees retain
-`/my-registrations`. New feature URLs belong under `app/`, with their view
+`/dashboard` URL while rendering different components. Attendees land on Event
+Discovery at `/events` (SPM-44); My Events remains at `/my-registrations`. New feature URLs belong under `app/`, with their view
 components in the role folder. Do not create another sidebar for a role.
 Staff/lead landing files are extension points for their tickets, not a claim
 that pending venue, technical or assignment workflows are implemented.
@@ -79,7 +79,7 @@ are available to other members; attaching the prompt alone does not add them.
 | `COORDINATOR_LEAD` | Event Coordinator Lead | `/dashboard` | Dashboard |
 | `VENUE_STAFF` | Venue Staff | `/dashboard` | Dashboard |
 | `TECH_SUPPORT` | Technical Support | `/dashboard` | Dashboard |
-| `ATTENDEE` | Attendee | `/my-registrations` | My Registrations |
+| `ATTENDEE` | Attendee | `/events` | Event Discovery, My Events, Notifications |
 
 Unavailable items have no `href` and appear disabled. Add links only when
 their page and access rules are implemented. Pending assignment/calendar
