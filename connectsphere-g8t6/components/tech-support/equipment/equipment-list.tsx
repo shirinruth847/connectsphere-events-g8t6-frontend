@@ -10,12 +10,13 @@ import { ApiError } from "@/lib/api";
 import { formatTimestamp } from "@/lib/datetime";
 import { DETAIL_KEYS, EMPTY_EQUIPMENT_FORM, validateEquipmentForm, type EquipmentFormValues, type FieldErrors } from "@/lib/equipment";
 import {
-  EQUIPMENT_STATUS_OPTIONS,
+  EMPTY_EQUIPMENT_OPTIONS,
   createEquipment,
   listEquipment,
-  listEquipmentCategories,
+  listEquipmentOptions,
   type Equipment,
   type EquipmentFilters,
+  type EquipmentOptions,
   type EquipmentStatus,
 } from "@/lib/api/equipment";
 import { EquipmentDetailFields, EquipmentRecordFields } from "./equipment-fields";
@@ -145,8 +146,6 @@ function EquipmentRow({ item }: { item: Equipment }) {
   );
 }
 
-const STATUS_PILLS: { value: EquipmentStatus | ""; label: string }[] = [{ value: "", label: "All" }, ...EQUIPMENT_STATUS_OPTIONS];
-
 // "Equipment" for Technical Support (SPM-52 AC5): search by name as you type,
 // filter by category and status, create items and open one to manage it.
 export function EquipmentList() {
@@ -156,7 +155,9 @@ export function EquipmentList() {
   const debouncedSearch = useDebouncedValue(search.trim());
   const filters: EquipmentFilters = useMemo(() => ({ search: debouncedSearch, category, status }), [debouncedSearch, category, status]);
   const [state, setState] = useState<ListState>({ status: "loading" });
-  const [categories, setCategories] = useState<string[]>([]);
+  const [options, setOptions] = useState<EquipmentOptions>(EMPTY_EQUIPMENT_OPTIONS);
+  const { categories } = options;
+  const statusPills: { value: EquipmentStatus | ""; label: string }[] = [{ value: "", label: "All" }, ...options.statuses];
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -167,10 +168,10 @@ export function EquipmentList() {
 
   useEffect(() => {
     let alive = true;
-    listEquipmentCategories()
-      .then((result) => { if (alive) setCategories(result.categories); })
-      // Without categories the filter offers only "All"; the list still loads.
-      .catch(() => { if (alive) setCategories([]); });
+    listEquipmentOptions()
+      .then((result) => { if (alive) setOptions(result); })
+      // Without options the filters offer only "All"; the list still loads.
+      .catch(() => { if (alive) setOptions(EMPTY_EQUIPMENT_OPTIONS); });
     return () => { alive = false; };
   }, [attempt]);
 
@@ -249,7 +250,7 @@ export function EquipmentList() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div role="group" aria-label="Status" className="flex flex-wrap gap-2">
-            {STATUS_PILLS.map((pill) => {
+            {statusPills.map((pill) => {
               const active = status === pill.value;
               return (
                 <button

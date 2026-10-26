@@ -17,11 +17,14 @@ import {
   type FieldErrors,
 } from "@/lib/equipment";
 import {
+  EMPTY_EQUIPMENT_OPTIONS,
   getEquipment,
-  listEquipmentCategories,
+  listEquipmentOptions,
   updateEquipment,
+  type CurrentEquipmentDetails,
   type Equipment,
   type EquipmentDetails,
+  type EquipmentOptions,
   type Unavailability,
 } from "@/lib/api/equipment";
 import { EquipmentDetailFields, EquipmentRecordFields } from "./equipment-fields";
@@ -53,12 +56,32 @@ const detailForm = (details: EquipmentDetails | null): EquipmentFormValues => ({
   handlingNotes: details?.handlingNotes ?? "",
 });
 
+type Conflict = { current: Equipment; details: CurrentEquipmentDetails | null };
+
+const DETAIL_LABELS: Record<keyof CurrentEquipmentDetails, string> = {
+  specifications: "Specifications",
+  technicalNotes: "Technical notes",
+  handlingNotes: "Handling and setup notes",
+};
+
 // A stale save (SPM-52 AC6): the current values come with the refusal, so they are
-// shown and the user chooses to load them; nothing is overwritten silently.
-function ConflictBanner({ current, onLoad }: { current: Equipment; onLoad: () => void }) {
+// shown and the user chooses to load them; nothing is overwritten silently. The
+// details form also shows the current detail values.
+function ConflictBanner({ conflict, showDetails, onLoad }: { conflict: Conflict; showDetails: boolean; onLoad: () => void }) {
+  const { current, details } = conflict;
   return (
     <AlertBanner tone="warning" title="This equipment was changed after you loaded it">
       <p>Current values: {current.name} · {current.category} · {current.storageLocation ?? "no storage location"} · total {current.totalQuantity} (version {current.version}).</p>
+      {showDetails ? (
+        <dl className="mt-2 grid gap-1">
+          {DETAIL_KEYS.map((key) => (
+            <div key={key} className="[overflow-wrap:anywhere]">
+              <dt className="inline font-semibold">{DETAIL_LABELS[key]}: </dt>
+              <dd className="inline">{details?.[key] ?? "None"}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
       <div className="mt-3"><Button variant="secondary" onClick={onLoad}><Icon name="refresh" size={16} />Load current values</Button></div>
     </AlertBanner>
   );
@@ -82,7 +105,7 @@ function useEquipmentForm({ equipment, formFor, keys, toValue, failure, successT
   const [values, setValues] = useState(formFor);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<Notice>(null);
-  const [conflict, setConflict] = useState<Equipment | null>(null);
+  const [conflict, setConflict] = useState<Conflict | null>(null);
   const [saving, setSaving] = useState(false);
 
   const change = (key: EquipmentKey, value: string) => {
@@ -118,7 +141,10 @@ function useEquipmentForm({ equipment, formFor, keys, toValue, failure, successT
       onSaved(successText(result.message, result.equipment), result.equipment);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "EQUIPMENT_VERSION_CONFLICT" && caught.details.current) {
-        setConflict(caught.details.current as Equipment);
+        setConflict({
+          current: caught.details.current as Equipment,
+          details: (caught.details.currentDetails as CurrentEquipmentDetails | null | undefined) ?? null,
+        });
       } else {
         if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
         setMessage({ tone: "error", text: errorText(caught, failure) });
@@ -131,11 +157,13 @@ function useEquipmentForm({ equipment, formFor, keys, toValue, failure, successT
   return { values, errors, message, conflict, saving, change, reset, submit };
 }
 
-function FormBanners({ message, conflict, onSaved }: { message: Notice; conflict: Equipment | null; onSaved: Saved }) {
+function FormBanners({ message, conflict, showDetails = false, onSaved }: { message: Notice; conflict: Conflict | null; showDetails?: boolean; onSaved: Saved }) {
   return (
     <>
       {message ? <AlertBanner tone={message.tone}>{message.text}</AlertBanner> : null}
-      {conflict ? <ConflictBanner current={conflict} onLoad={() => onSaved("The current values have been loaded.", conflict)} /> : null}
+      {conflict ? (
+        <ConflictBanner conflict={conflict} showDetails={showDetails} onLoad={() => onSaved("The current values have been loaded.", conflict.current)} />
+      ) : null}
     </>
   );
 }
@@ -204,7 +232,7 @@ function DetailsSection({ equipment, details, detailsRead, onSaved }: {
     <SectionCard className="grid gap-4">
       <SectionHeading step={2} title="Specifications and notes" description="Display information for planning. Quantities and availability never depend on it." />
       <form noValidate onSubmit={form.submit} className="grid gap-4">
-        <FormBanners message={form.message} conflict={form.conflict} onSaved={onSaved} />
+        <FormBanners message={form.message} conflict={form.conflict} showDetails onSaved={onSaved} />
         {equipment.detailNotice ? (
           <AlertBanner tone="warning" live={false}>{equipment.detailNotice}: a saved change has not reached the details store yet. It is retried automatically.</AlertBanner>
         ) : null}
@@ -228,7 +256,7 @@ function DetailsSection({ equipment, details, detailsRead, onSaved }: {
 // details, deactivate or reactivate, and manage unavailable stock.
 export function EquipmentDetailManager({ equipmentId }: { equipmentId: number | null }) {
   const [state, setState] = useState<PageState>(equipmentId ? { status: "loading" } : { status: "not-found" });
-  const [categories, setCategories] = useState<string[]>([]);
+  const [options, setOptions] = useState<EquipmentOptions>(EMPTY_EQUIPMENT_OPTIONS);
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
 
@@ -247,9 +275,9 @@ export function EquipmentDetailManager({ equipmentId }: { equipmentId: number | 
 
   useEffect(() => {
     let alive = true;
-    listEquipmentCategories()
-      .then((result) => { if (alive) setCategories(result.categories); })
-      .catch(() => { if (alive) setCategories([]); });
+    listEquipmentOptions()
+      .then((result) => { if (alive) setOptions(result); })
+      .catch(() => { if (alive) setOptions(EMPTY_EQUIPMENT_OPTIONS); });
     return () => { alive = false; };
   }, []);
 
@@ -306,10 +334,17 @@ export function EquipmentDetailManager({ equipmentId }: { equipmentId: number | 
       </div>
       <div className="grid items-start gap-5 xl:grid-cols-12">
         <div className="grid gap-5 xl:col-span-8">
-          <RecordSection key={`record-${sectionKey}`} equipment={equipment} categories={categories} onSaved={saved} />
+          <RecordSection key={`record-${sectionKey}`} equipment={equipment} categories={options.categories} onSaved={saved} />
           <DetailsSection key={`details-${sectionKey}`} equipment={equipment} details={details} detailsRead={detailsRead} onSaved={saved} />
           <StatusSection key={`status-${sectionKey}`} equipment={equipment} onSaved={saved} />
-          <UnavailabilitySection key={`unavailable-${sectionKey}`} equipment={equipment} records={unavailability} loadedAt={loadedAt} onSaved={saved} />
+          <UnavailabilitySection
+            key={`unavailable-${sectionKey}`}
+            equipment={equipment}
+            records={unavailability}
+            reasons={options.unavailabilityReasons}
+            loadedAt={loadedAt}
+            onSaved={saved}
+          />
         </div>
         <aside className="grid gap-5 xl:col-span-4" aria-label="Stock and history">
           <section className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">

@@ -12,17 +12,14 @@ export type EquipmentStatus = "ACTIVE" | "INACTIVE" | "DETAILS_PENDING";
 export type EquipmentDetailStatus = "CURRENT" | "PENDING" | "OUT_OF_DATE" | "FAILED" | "NONE";
 export type UnavailabilityReason = "DAMAGED" | "MAINTENANCE" | "OTHER";
 
-export const EQUIPMENT_STATUS_OPTIONS: { value: EquipmentStatus; label: string }[] = [
-  { value: "ACTIVE", label: "Active" },
-  { value: "INACTIVE", label: "Inactive" },
-  { value: "DETAILS_PENDING", label: "Details pending" },
-];
+// Filter and form choices; the labels come from the backend.
+export type EquipmentOptions = {
+  categories: string[];
+  statuses: { value: EquipmentStatus; label: string }[];
+  unavailabilityReasons: { value: UnavailabilityReason; label: string }[];
+};
 
-export const UNAVAILABILITY_REASON_OPTIONS: { value: UnavailabilityReason; label: string }[] = [
-  { value: "DAMAGED", label: "Damaged or faulty" },
-  { value: "MAINTENANCE", label: "Maintenance" },
-  { value: "OTHER", label: "Other" },
-];
+export const EMPTY_EQUIPMENT_OPTIONS: EquipmentOptions = { categories: [], statuses: [], unavailabilityReasons: [] };
 
 type Person = { userId: number; name: string | null } | null;
 
@@ -52,6 +49,9 @@ export type EquipmentDetails = {
   pgVersion: number;
   updatedAt: string | null;
 };
+
+// The detail values sent with a stale save's 409 (EQUIPMENT_VERSION_CONFLICT).
+export type CurrentEquipmentDetails = Pick<EquipmentDetails, "specifications" | "technicalNotes" | "handlingNotes">;
 
 export type Unavailability = {
   unavailabilityId: number;
@@ -93,7 +93,7 @@ export type UnavailabilityInput = {
 export const listEquipment = (filters: EquipmentFilters = {}, offset = 0) =>
   apiRequest<{ equipment: Equipment[]; nextOffset: number | null }>(`/equipment${equipmentQuery(filters, offset)}`);
 
-export const listEquipmentCategories = () => apiRequest<{ categories: string[] }>("/equipment/options");
+export const listEquipmentOptions = () => apiRequest<EquipmentOptions>("/equipment/options");
 
 export const getEquipment = (equipmentId: number) =>
   apiRequest<{ equipment: Equipment; details: EquipmentDetails | null; detailsRead: "OK" | "NOT_CHECKED"; unavailability: Unavailability[] }>(

@@ -16,13 +16,15 @@ import {
   type UnavailabilityFormValues,
 } from "@/lib/equipment";
 import {
-  UNAVAILABILITY_REASON_OPTIONS,
   endUnavailability,
   recordUnavailability,
   updateUnavailability,
   type Equipment,
+  type EquipmentOptions,
   type Unavailability,
 } from "@/lib/api/equipment";
+
+type ReasonOptions = EquipmentOptions["unavailabilityReasons"];
 import { Field, ReasonChip, describedBy, errorText, type Saved } from "./equipment-parts";
 
 const unavailabilityForm = (record: Unavailability): UnavailabilityFormValues => ({
@@ -34,13 +36,17 @@ const unavailabilityForm = (record: Unavailability): UnavailabilityFormValues =>
 });
 
 // Records or edits unavailable stock (SPM-52 AC8). Times are Singapore time.
-function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
+function UnavailabilityDialog({ equipment, record, reasons, open, onClose, onSaved }: {
   equipment: Equipment;
   record: Unavailability | null;
+  reasons: ReasonOptions;
   open: boolean;
   onClose: () => void;
   onSaved: Saved;
 }) {
+  // The reasons and labels come from the backend. If they could not be loaded,
+  // an edit still offers the record's own reason.
+  const reasonOptions: ReasonOptions = reasons.length || !record ? reasons : [{ value: record.reason, label: record.reasonLabel }];
   const initial = record ? unavailabilityForm(record) : EMPTY_UNAVAILABILITY_FORM;
   const [values, setValues] = useState<UnavailabilityFormValues>(initial);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -143,8 +149,11 @@ function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
               onChange={(event) => change("reason", event.target.value)}
             >
               <option value="">Choose a reason</option>
-              {UNAVAILABILITY_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              {reasonOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
+            {reasonOptions.length ? null : (
+              <p className="mt-1 text-xs text-on-surface-variant">The reasons could not be loaded. Reload the page to try again.</p>
+            )}
           </Field>
         </div>
         <Field id={`${idPrefix}-note`} label="Note" required error={errors.note}>
@@ -164,7 +173,13 @@ function UnavailabilityDialog({ equipment, record, open, onClose, onSaved }: {
   );
 }
 
-export function UnavailabilitySection({ equipment, records, loadedAt, onSaved }: { equipment: Equipment; records: Unavailability[]; loadedAt: number; onSaved: Saved }) {
+export function UnavailabilitySection({ equipment, records, reasons, loadedAt, onSaved }: {
+  equipment: Equipment;
+  records: Unavailability[];
+  reasons: ReasonOptions;
+  loadedAt: number;
+  onSaved: Saved;
+}) {
   const [editing, setEditing] = useState<Unavailability | "new" | null>(null);
   const [ending, setEnding] = useState<Unavailability | null>(null);
   const [error, setError] = useState("");
@@ -227,6 +242,7 @@ export function UnavailabilitySection({ equipment, records, loadedAt, onSaved }:
           key={editing === "new" ? "new" : `${editing.unavailabilityId}-${editing.version}`}
           equipment={equipment}
           record={editing === "new" ? null : editing}
+          reasons={reasons}
           open
           onClose={() => setEditing(null)}
           onSaved={(message, updated) => { setEditing(null); onSaved(message, updated); }}
