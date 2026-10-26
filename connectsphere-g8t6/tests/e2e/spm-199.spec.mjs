@@ -42,7 +42,9 @@ test("[SPM-199 TC01/02] owned event details, backend label and coordinator survi
   await page.reload();
   await expect(page.getByText("Sam Coordinator", { exact: true })).toBeVisible();
   await expect(page.getByText("Reconfirmation pending", { exact: true })).toBeVisible();
-  expect(state.requestLog.filter(({ method }) => !["GET", "OPTIONS"].includes(method))).toEqual([]);
+  // Main records history views; viewing arrangements must perform no business writes.
+  expect(state.requestLog.filter(({ method, pathname }) => !["GET", "OPTIONS"].includes(method)
+    && !(method === "POST" && pathname === "/api/events/42/history/viewed"))).toEqual([]);
 });
 
 test("[SPM-199 TC02] unassigned requests show Unassigned and the current backend status note", async ({ page }) => {

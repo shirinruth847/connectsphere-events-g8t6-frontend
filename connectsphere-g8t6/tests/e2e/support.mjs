@@ -150,6 +150,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
 
     if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
+    if (/^\/api\/events\/\d+\/history\/viewed$/.test(pathname) && method === "POST") return json({ lastViewedAt: FIXED_SAVED_AT });
     if (/^\/api\/events\/\d+\/arrangements$/.test(pathname) && method === "GET") return json({ arrangements: state.arrangements });
     if (/^\/api\/events\/\d+\/clarifications$/.test(pathname) && method === "GET") return json({ clarifications: [] });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
