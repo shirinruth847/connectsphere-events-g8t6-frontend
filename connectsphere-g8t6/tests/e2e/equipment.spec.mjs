@@ -22,6 +22,21 @@ const item = (equipmentId, name, overrides = {}) => ({
   ...overrides,
 });
 
+// GET /api/equipment/options: the labels come from the backend.
+const EQUIPMENT_OPTIONS = {
+  categories: ["Audio", "Visual"],
+  statuses: [
+    { value: "ACTIVE", label: "Active" },
+    { value: "INACTIVE", label: "Inactive" },
+    { value: "DETAILS_PENDING", label: "Details pending" },
+  ],
+  unavailabilityReasons: [
+    { value: "DAMAGED", label: "Damaged or faulty" },
+    { value: "MAINTENANCE", label: "Maintenance" },
+    { value: "OTHER", label: "Other" },
+  ],
+};
+
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
 const equipmentState = () => ({
@@ -44,7 +59,7 @@ async function routeEquipment(page, state) {
     const body = method === "GET" ? null : request.postDataJSON();
     state.requests.push({ method, path: url.pathname, query: Object.fromEntries(url.searchParams), body });
     const [, , , id, sub, recordId, action] = url.pathname.split("/");
-    if (url.pathname === "/api/equipment/options") return json(route, { categories: ["Audio", "Visual"] });
+    if (url.pathname === "/api/equipment/options") return json(route, EQUIPMENT_OPTIONS);
     if (url.pathname === "/api/equipment" && method === "GET") {
       const search = (url.searchParams.get("search") ?? "").toLowerCase();
       const category = url.searchParams.get("category");
@@ -67,10 +82,11 @@ async function routeEquipment(page, state) {
     if (!sub && method === "PUT") {
       if (state.staleVersion) {
         const fresh = { ...current, storageLocation: "Store Room Z", version: current.version + 1 };
-        return json(route, { error: "This equipment was changed after you loaded it.", code: "EQUIPMENT_VERSION_CONFLICT", current: fresh }, 409);
+        const currentDetails = { specifications: "4K, 6000 lm", technicalNotes: null, handlingNotes: "Two people to lift" };
+        return json(route, { error: "This equipment was changed after you loaded it.", code: "EQUIPMENT_VERSION_CONFLICT", current: fresh, currentDetails }, 409);
       }
       if (body.totalQuantity !== undefined && Number(body.totalQuantity) < 3 && state.unavailability.length) {
-        const message = "3 units are unavailable from 2031-01-06T09:00:00+00:00 to 2031-01-06T10:00:00+00:00, so the total cannot be lower than 3.";
+        const message = "3 units are unavailable during Mon, 6 Jan 2031 · 17:00–18:00 SGT, so the total cannot be lower than 3.";
         return json(route, { error: message, code: "EQUIPMENT_QUANTITY_COMMITTED", committedQuantity: 3, fields: { totalQuantity: message } }, 409);
       }
       Object.assign(current, body.totalQuantity !== undefined ? { ...body, totalQuantity: Number(body.totalQuantity) } : body, { version: current.version + 1 });
@@ -93,7 +109,7 @@ async function routeEquipment(page, state) {
     }
     if (sub === "unavailability" && method === "POST" && !recordId) {
       if (Number(body.quantity) > 5) {
-        const message = "Only 5 units are left to mark unavailable from 2031-01-06T09:00:00+00:00 to 2031-01-06T10:00:00+00:00. Unavailable stock cannot exceed the total.";
+        const message = "Only 5 units are left to mark unavailable during Mon, 6 Jan 2031 · 17:00–18:00 SGT. Unavailable stock cannot exceed the total.";
         return json(route, { error: message, code: "EQUIPMENT_STOCK_EXCEEDED", availableQuantity: 5, fields: { quantity: message } }, 409);
       }
       const record = {
@@ -179,8 +195,13 @@ test("[SPM-52 TC-07][TC-08][TC-10][TC-11] Technical Support manages one item: co
   await page.getByRole("button", { name: "Save record" }).click();
   await expect(page.getByText("This equipment was changed after you loaded it")).toBeVisible();
   await expect(page.getByText("Store Room Z", { exact: false })).toBeVisible();
+  await page.locator("#edit-equipment-specifications").fill("4K, 5500 lm");
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByText("Handling and setup notes: Two people to lift")).toBeVisible();
+  await expect(page.getByText("Specifications: 4K, 6000 lm")).toBeVisible();
   state.staleVersion = false;
   await page.getByRole("button", { name: "Reset" }).first().click();
+  await page.getByRole("button", { name: "Reset" }).nth(1).click();
 
   await page.getByRole("button", { name: "Record unavailable stock" }).click();
   await page.locator("#record-unavailable-quantity").fill("6");
@@ -189,7 +210,7 @@ test("[SPM-52 TC-07][TC-08][TC-10][TC-11] Technical Support manages one item: co
   await page.locator("#record-unavailable-reason").selectOption("DAMAGED");
   await page.locator("#record-unavailable-note").fill("Cracked lens");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.locator("#record-unavailable-quantity-error")).toContainText("Only 5 units are left");
+  await expect(page.locator("#record-unavailable-quantity-error")).toContainText("Only 5 units are left to mark unavailable during Mon, 6 Jan 2031 · 17:00–18:00 SGT");
   await page.locator("#record-unavailable-quantity").fill("3");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Unavailable stock recorded.")).toBeVisible();
@@ -199,7 +220,7 @@ test("[SPM-52 TC-07][TC-08][TC-10][TC-11] Technical Support manages one item: co
 
   await page.locator("#edit-equipment-totalQuantity").fill("2");
   await page.getByRole("button", { name: "Save record" }).click();
-  await expect(page.locator("#edit-equipment-totalQuantity-error")).toContainText("3 units are unavailable");
+  await expect(page.locator("#edit-equipment-totalQuantity-error")).toContainText("3 units are unavailable during Mon, 6 Jan 2031 · 17:00–18:00 SGT");
 
   await page.getByRole("button", { name: "Reset" }).first().click();
   await page.getByRole("button", { name: "Deactivate equipment" }).click();
@@ -222,14 +243,19 @@ test("[SPM-52 TC-07][TC-08][TC-10][TC-11] Technical Support manages one item: co
   await attachScreenshot(testInfo, page, "equipment-detail-mobile");
 });
 
-test("[SPM-52 AC1] other roles get no Equipment tab and cannot open the pages", async ({ page }) => {
-  const state = equipmentState();
-  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
-  await routeEquipment(page, state);
-  await page.goto("/dashboard");
-  await expect(page.getByRole("link", { name: "Equipment", exact: true })).toHaveCount(0);
-  await page.goto("/equipment");
-  await expect(page.getByText("Access denied")).toBeVisible();
-  await expect(page.locator("#equipment-search")).toHaveCount(0);
-  expect(state.requests).toHaveLength(0);
-});
+for (const role of ["ORGANISER", "COORDINATOR_LEAD", "COORDINATOR", "VENUE_STAFF", "SAFETY_OFFICER", "ATTENDEE"]) {
+  test(`[SPM-52 AC1][TC-05] ${role} gets no Equipment tab and cannot open the pages`, async ({ page }) => {
+    const state = equipmentState();
+    await installConnectSphereMocks(page, { role });
+    await routeEquipment(page, state);
+    await page.goto("/dashboard");
+    await expect(page.getByRole("navigation").first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Equipment", exact: true })).toHaveCount(0);
+    for (const path of ["/equipment", "/equipment/7"]) {
+      await page.goto(path);
+      await expect(page.getByText("Access denied")).toBeVisible();
+      await expect(page.locator("#equipment-search")).toHaveCount(0);
+    }
+    expect(state.requests).toHaveLength(0);
+  });
+}
