@@ -299,7 +299,7 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
         <>
           {!state.data.detailsAvailable ? (
             <AlertBanner tone="info" title="Error loading venue details">
-              Capacity and rooms come from the venue records; layout, facility and accessibility requirements cannot be checked right now.
+              Showing basic venue records. Layout and accessibility filters use recorded room layouts and accessibility notes. Facility filters cannot be checked right now; requirements without enough information are marked as not checked.
               {state.data.filtersNotChecked.length ? ` The ${state.data.filtersNotChecked.join(", ")} filter could not be checked.` : ""}
             </AlertBanner>
           ) : null}

@@ -470,6 +470,31 @@ test("[SPM-72 TC-VC-014][AC11] a failed load offers a retry; unchecked details a
   await expect(page.getByText("Available", { exact: true })).toHaveCount(0);
 });
 
+test("[SPM-75 AC8] the details outage notice explains basic-record fallback", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const fallback = venue({
+    detailStatus: "NOT_CHECKED",
+    availability: { status: "NOT_CHECKED", label: "Error checking availability", occupiedStart: null, occupiedEnd: null, conflicts: [], operatingHoursWarning: null },
+    requirements: [
+      requirement("layout", "Layout", "MET", "THEATRE layout"),
+      requirement("accessibility-0", "Accessibility", "MET", "Wheelchair access"),
+      requirement("facility-0", "Facility", "NOT_CHECKED", "Projector"),
+      requirement("availability", "Availability", "NOT_CHECKED", "Error checking availability"),
+    ],
+    allRequirementsMet: false,
+    unmetCount: 2,
+  });
+  await routeVenueSection(page, { venueOptions: options({ venues: [fallback], preferredVenues: [], detailsAvailable: false, availabilityChecked: false, filtersNotChecked: ["facility"] }) });
+  await page.goto("/events/42");
+  await openSearch(page);
+  await expect(search(page)).toContainText("Layout and accessibility filters use recorded room layouts and accessibility notes.");
+  await expect(search(page)).toContainText("The facility filter could not be checked.");
+  const hall = card(page, "Synthetic Grand Hall");
+  await expect(hall.locator('li[title="Layout: THEATRE layout (Met)"]')).toBeVisible();
+  await expect(hall).toContainText("Facility: Error loading details");
+  await expect(page.getByText("Available", { exact: true })).toHaveCount(0);
+});
+
 test("[SPM-72] the venue section works at mobile width", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
