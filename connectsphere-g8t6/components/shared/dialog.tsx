@@ -9,6 +9,8 @@ interface DialogProps {
   title: string;
   // Shown beside the title, e.g. a status chip.
   badge?: ReactNode;
+  // Header buttons placed before the close button, e.g. a primary action on the item shown.
+  actions?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   // "wide" fits a whole workspace, e.g. the venue search.
@@ -17,7 +19,7 @@ interface DialogProps {
 
 // Modal built on the native <dialog>: showModal() traps focus, Escape closes it,
 // and focus returns to whatever opened it.
-export function Dialog({ open, onClose, title, badge, children, footer, size = "default" }: DialogProps) {
+export function Dialog({ open, onClose, title, badge, actions, children, footer, size = "default" }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const titleId = useId();
@@ -51,13 +53,16 @@ export function Dialog({ open, onClose, title, badge, children, footer, size = "
           <h2 id={titleId} className="text-lg font-bold leading-tight text-on-surface">{title}</h2>
           {badge}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-control text-on-surface-variant transition-colors duration-150 hover:bg-surface-container-low focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <Icon name="close" size={20} label="Close dialog" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {actions}
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-control text-on-surface-variant transition-colors duration-150 hover:bg-surface-container-low focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <Icon name="close" size={20} label="Close dialog" />
+          </button>
+        </div>
       </header>
       {/* relative: absolutely placed content (e.g. sr-only text) scrolls and clips
           with the body instead of stretching the dialog. */}

@@ -29,9 +29,13 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
   ],
   TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
+  // SPM-243 AC1: the only tab; a review opens on the event's /events/[eventId] page.
+  SAFETY_OFFICER: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   ATTENDEE: [
     { id: "discovery", title: "Event Discovery", icon: "event", href: ROUTES.events },
     { id: "home", title: "My Events", icon: "registrations", href: ROUTES.registrations },
+    // The full inbox, read and unread (SPM-155); the Updates panel's See more leads here too.
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
 };
 
@@ -52,7 +56,11 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname.startsWith("/events/")) return "assignments";
     return "home";
   }
-  if (role === "ATTENDEE") return pathname === ROUTES.events ? "discovery" : "home";
+  if (role === "ATTENDEE") {
+    if (pathname === ROUTES.events) return "discovery";
+    if (pathname === ROUTES.notifications) return "notifications";
+    return "home";
+  }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";

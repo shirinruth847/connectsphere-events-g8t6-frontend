@@ -115,7 +115,9 @@ export default function FeaturePage() {
 Omit `role` only for a page intentionally shared by all signed-in roles.
 Use existing shared primitives and tokens such as `bg-primary`,
 `text-on-surface`, `rounded-panel` and `shadow-elevation-1`. Use a feature's
-`*.module.css` for custom styling. Do not add global `nav`, `label`, `button`,
+`*.module.css` for custom styling. `--warning` (`#f2b705`, `bg-warning`) marks
+unseen event-history entries; it has low contrast on white, so always pair it
+with a text label. Do not add global `nav`, `label`, `button`,
 `h1` or `.page-header` rules: they can override other members' layouts.
 Avoid another `main` element inside the shell's existing `main` element.
 
