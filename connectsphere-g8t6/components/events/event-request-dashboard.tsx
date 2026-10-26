@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertBanner, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { apiRequest } from "@/lib/api";
+import { ROUTES } from "@/lib/auth";
 import { eventDisplayStatus, EVENT_STATUS_ORDER, EventListItem, EventStatus, isDraftEvent, ORGANISER_LABEL_ORDER, ORGANISER_STATUS_LABELS, statusPresentation, eventStatusLabel, formatDateRange } from "@/lib/events";
 
 type ListResponse = { events?: EventListItem[]; nextCursor?: string | null };
@@ -30,6 +31,8 @@ const actionFor = (status: string) => {
 export function EventRequestDashboard() {
   const params = useSearchParams();
   const requestedStatus = params.get("status");
+  const mineOnly = params.get("scope") === "MINE" || requestedStatus === "DRAFT";
+  const title = requestedStatus === "DRAFT" ? "My Drafts" : mineOnly ? "My Requests" : "Organisation Events";
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [query, setQuery] = useState("");
   const [statusSelection, setStatusSelection] = useState<StatusSelection>(params.get("status") === "DRAFT" ? DRAFT_LABEL : "ALL");
@@ -60,7 +63,7 @@ export function EventRequestDashboard() {
       } while (cursor);
       setEvents(all);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load your event requests.");
+      setError(caught instanceof Error ? caught.message : "Could not load events.");
     } finally { setLoading(false); }
   }, []);
 
@@ -72,7 +75,9 @@ export function EventRequestDashboard() {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const filtered = events.filter((event) => {
-      const matchesQuery = !needle || `${event.title} ${event.requestId}`.toLowerCase().includes(needle);
+      if (mineOnly && event.isOwner !== true) return false;
+      if (isDraftEvent(event) && event.isOwner === false) return false;
+      const matchesQuery = !needle || `${event.title} ${event.requestId} ${event.organisation?.name ?? ""}`.toLowerCase().includes(needle);
       const matchesStatus = statusSelection === "ALL" || eventStatusLabel(event) === statusSelection;
       return matchesQuery && matchesStatus;
     });
@@ -80,13 +85,16 @@ export function EventRequestDashboard() {
       const statusDifference = EVENT_STATUS_ORDER.indexOf(eventDisplayStatus(left) as EventStatus) - EVENT_STATUS_ORDER.indexOf(eventDisplayStatus(right) as EventStatus);
       return statusDifference || (right.updatedAt || "").localeCompare(left.updatedAt || "") || right.eventId - left.eventId;
     });
-  }, [events, query, statusSelection]);
+  }, [events, query, statusSelection, mineOnly]);
 
   return <>
     <section className="mb-7 rounded-[10px] bg-white px-4 py-5 shadow-[0_4px_12px_rgba(15,23,42,0.06)] sm:px-5" aria-label="Event management controls">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-2xl font-semibold tracking-[0.02em] text-[#4F46E5]">My Requests</h1>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-[0.02em] text-[#4F46E5]">{title}</h1>
+            <p className="mt-1 text-sm text-[#6B7280]">{mineOnly ? "Events and private drafts you created." : "Events from everyone in your organisation, plus your private drafts."}</p>
+          </div>
           <label className="relative block w-full sm:max-w-[298px]">
             <span className="sr-only">Search events</span>
             <svg aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></svg>
@@ -99,6 +107,10 @@ export function EventRequestDashboard() {
               <svg aria-hidden="true" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
               New Event
             </Link>
+            <nav aria-label="Event ownership" className="flex flex-wrap gap-2 text-xs font-semibold">
+              <Link href={ROUTES.dashboard} aria-current={!mineOnly ? "page" : undefined} className={`rounded-control px-3 py-2 ${!mineOnly ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#6B7280] hover:bg-[#EEF2FF]"}`}>All organisation events</Link>
+              <Link href={ROUTES.requests} aria-current={mineOnly ? "page" : undefined} className={`rounded-control px-3 py-2 ${mineOnly ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#6B7280] hover:bg-[#EEF2FF]"}`}>Created by me</Link>
+            </nav>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
             <label className="flex h-[46px] items-center gap-2 rounded-[15px] border border-[#9CA3AF] px-3 text-xs text-[#6B7280]">
@@ -119,7 +131,7 @@ export function EventRequestDashboard() {
     {loading ? <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-40 w-full" />)}</div>
       : visible.length === 0 ? <SectionCard><EmptyState title="No matching events" description="Try changing your status or search, or create a new event." action={<Link href="/events/new" className="rounded-control bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary">Create an event</Link>} /></SectionCard>
         : <>
-          <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === DRAFT_LABEL ? "My Drafts" : "Event requests and drafts"}</h2>
+          <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === DRAFT_LABEL ? "My Drafts" : mineOnly ? "Your event requests and drafts" : "Organisation events and your drafts"}</h2>
           <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">
             {visible.map((event) => {
               const displayStatus = eventDisplayStatus(event);
@@ -131,12 +143,14 @@ export function EventRequestDashboard() {
                   <h2 className="line-clamp-2 text-base font-semibold text-[#1F2937]">{event.title || "Untitled draft"}</h2>
                   <StatusChip status={displayStatus} label={eventStatusLabel(event)} />
                 </div>
+                {event.organisation ? <p className="mt-2 text-sm font-medium text-[#4B5563]">{event.organisation.name}</p> : null}
+                <p className="mt-1 text-xs text-[#6B7280]">{isDraft ? "Private draft" : event.isOwner === false ? "Organisation event · Read-only" : "Created by you"}</p>
                 <p className="mt-3 text-sm text-[#6B7280]">{formatDateRange(event.startDatetime, event.endDatetime)}</p>
                 {event.expectedAttendance ? <p className="mt-1 text-sm text-[#6B7280]">{event.expectedAttendance.toLocaleString()} expected attendees</p> : null}
                 <div className="mt-auto flex items-end justify-between gap-3 pt-5">
                   <ReferenceIdTag value={event.requestId} />
                   <Link href={href} className={`inline-flex min-h-9 items-center justify-center rounded-[10px] px-3 py-2 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5] ${isDraft ? "bg-[#4F46E5] text-white hover:bg-[#4338CA]" : "border border-[#6366F1] text-[#4F46E5] hover:bg-[#EEF2FF]"}`}>
-                    {actionFor(displayStatus)} <span aria-hidden="true" className="ml-1">→</span>
+                    {event.isOwner === false ? "View event" : actionFor(displayStatus)} <span aria-hidden="true" className="ml-1">→</span>
                   </Link>
                 </div>
               </article>;

@@ -5,13 +5,13 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  await installConnectSphereMocks(page);
  await page.setViewportSize({width:1440,height:1000});
  await page.goto('/dashboard');
- await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Organisation Events',exact:true})).toBeVisible();
  const navigation=page.getByRole('navigation',{name:'Main Navigation',exact:true});
  const rows=await navigation.locator(':scope > a, :scope > span').evaluateAll(elements=>elements.map(element=>{
   const rect=element.getBoundingClientRect();return {x:rect.x,y:rect.y,right:rect.right,bottom:rect.bottom};
  }));
  const panel=await page.locator('aside').boundingBox();
- expect(rows).toHaveLength(5);
+ expect(rows).toHaveLength(4);
  for(let index=0;index<rows.length;index++) {
   expect(rows[index].x).toBeGreaterThanOrEqual(panel.x);
   expect(rows[index].right).toBeLessThanOrEqual(panel.x+panel.width);
@@ -25,15 +25,15 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  await page.setViewportSize({width:390,height:844});
  await page.getByRole('button',{name:'Open menu',exact:true}).click();
  await expect.poll(async()=>Math.round((await page.locator('aside').boundingBox()).x)).toBe(0);
- await expect(navigation.getByRole('link',{name:'My Drafts',exact:true})).toBeVisible();
- await navigation.getByRole('link',{name:'My Drafts',exact:true}).click();
- await expect(page).toHaveURL(/status=DRAFT/);
- await expect(navigation.getByRole('link',{name:'My Drafts',exact:true})).toHaveAttribute('aria-current','page');
+ await expect(navigation.getByRole('link',{name:'My Drafts',exact:true})).toHaveCount(0);
+ await navigation.getByRole('link',{name:'My Requests',exact:true}).click();
+ await expect(page).toHaveURL(/scope=MINE/);
+ await expect(navigation.getByRole('link',{name:'My Requests',exact:true})).toHaveAttribute('aria-current','page');
  await expect(page.getByRole('button',{name:'Open menu',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','Event Discovery'],['COORDINATOR_LEAD','Assignment queue']]) {
+for (const [role, heading] of [['ORGANISER','Organisation Events'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','Event Discovery'],['COORDINATOR_LEAD','Assignment queue']]) {
  test(`[SPM-32] ${role} login reaches its authorised workspace`, async ({page}) => {
   await installLoginMock(page,{role});await page.goto('/login');await page.getByLabel('Email',{exact:false}).fill('user@example.com');await page.getByLabel('Password',{exact:false}).fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible();
@@ -155,7 +155,7 @@ test('[SPM-32 TC-011/012 / SPM-35 TC-004] protected create returns after login',
  await installLoginMock(page);await page.goto('/events/create');await expect(page).toHaveURL(/\/login\?next=/);await expect(page.getByText('Please log in first to continue.')).toBeVisible();await page.locator('#email').fill('user@example.com');await page.locator('#password').fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('heading',{name:'Create Event Request',exact:true})).toBeVisible();await expect(page).toHaveURL(/\/events\/create/);
 });
 test('[SPM-32 TC-013] logout revokes backend session and Back cannot restore content', async ({page}) => {
- const state=await installConnectSphereMocks(page);await page.goto('/dashboard');await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toBeVisible();await page.getByRole('link',{name:'New Event',exact:false}).click();await expect(page.locator('#title')).toBeVisible();await page.getByRole('button',{name:'Logout',exact:true}).click();await expect(page).toHaveURL(/\/login/);expect(state.revoked).toBe(true);await page.goBack();await expect(page).toHaveURL(/\/login/);await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toHaveCount(0);
+ const state=await installConnectSphereMocks(page);await page.goto('/dashboard');await expect(page.getByRole('heading',{name:'Organisation Events',exact:true})).toBeVisible();await page.getByRole('link',{name:'New Event',exact:false}).click();await expect(page.locator('#title')).toBeVisible();await page.getByRole('button',{name:'Logout',exact:true}).click();await expect(page).toHaveURL(/\/login/);expect(state.revoked).toBe(true);await page.goBack();await expect(page).toHaveURL(/\/login/);await expect(page.getByRole('heading',{name:'Organisation Events',exact:true})).toHaveCount(0);
 });
 test('[SPM-32 TC-012] malicious normalised next cannot redirect off-site', async ({page}) => {
  await installLoginMock(page);await page.goto('/login?next=%2F..%2F%2Fevil.example');await page.locator('#email').fill('user@example.com');await page.locator('#password').fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page).toHaveURL(/127\.0\.0\.1:3100\/dashboard/);
@@ -186,7 +186,7 @@ test('[SPM-37 Scenario 3] slow autosave and manual save never create a second dr
  expect(state.draftUpdateRequests).toHaveLength(1);
 });
 test('[SPM-37 Scenario 5] dirty link and browser Back show the in-app warning', async ({page}) => {
- await installConnectSphereMocks(page);await page.goto('/dashboard');await page.getByRole('link',{name:'New Event',exact:false}).click();await page.locator('#title').fill('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.goBack();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await page.getByRole('button',{name:'Leave page'}).click();await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toBeVisible();await expect(page.getByText('Draft saved successfully.')).toHaveCount(0);
+ await installConnectSphereMocks(page);await page.goto('/dashboard');await page.getByRole('link',{name:'New Event',exact:false}).click();await page.locator('#title').fill('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.goBack();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Keep editing'}).click();await expect(page.locator('#title')).toHaveValue('Unsaved title');await page.getByRole('link',{name:'Close request and return to dashboard'}).click();await page.getByRole('button',{name:'Leave page'}).click();await expect(page.getByRole('heading',{name:'Organisation Events',exact:true})).toBeVisible();await expect(page.getByText('Draft saved successfully.')).toHaveCount(0);
 });
 test('[SPM-37 Scenario 4] submitted or missing draft never renders an editable form', async ({page}) => {
  await installConnectSphereMocks(page,{draft:makeDraft({status:'SUBMITTED',statusLabel:'Submitted'})});await page.goto('/events/new?draft=43');await expect(page.getByText('Draft unavailable',{exact:true})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);await page.goto('/events/new?draft=999');await expect(page.getByText('Draft unavailable',{exact:true})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);
@@ -195,7 +195,7 @@ test('[SPM-35 AC2] server scheduling errors appear on the scheduling step', asyn
  const state=await installConnectSphereMocks(page);state.failure={path:'/api/events',status:400,body:{error:'Please correct the highlighted fields.',fields:{startDatetime:'Server says the start is too soon.'}}};await page.goto('/events/new');await enterCompleteRequestThroughSubmit(page);await page.getByRole('button',{name:'Submit Request',exact:true}).click();await expect(page.getByText('Server says the start is too soon.')).toBeVisible();await expect(page.getByRole('heading',{name:'Scheduling & Attendance Estimates',exact:true})).toBeVisible();
 });
 test('[SPM-35 auth] a business-call 401 redirects to login', async ({page}) => {
- const state=await installConnectSphereMocks(page);state.failure={path:'/api/events/mine',status:401,body:{error:'Please log in to continue.'}};await page.goto('/dashboard');await expect(page).toHaveURL(/\/login/);await expect(page.getByRole('heading',{name:'My Requests',exact:true})).toHaveCount(0);
+ const state=await installConnectSphereMocks(page);state.failure={path:'/api/events/mine',status:401,body:{error:'Please log in to continue.'}};await page.goto('/dashboard');await expect(page).toHaveURL(/\/login/);await expect(page.getByRole('heading',{name:'Organisation Events',exact:true})).toHaveCount(0);
 });
 
 test('[SPM-37 Scenario 4] final draft submission is one atomic write', async ({page}) => {

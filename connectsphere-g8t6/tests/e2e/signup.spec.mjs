@@ -29,7 +29,7 @@ async function fillSignup(page, { accountType = 'ATTENDEE', name = 'New User', e
 }
 const submit = (page) => page.getByRole('button', { name: 'Create account', exact: true }).click();
 
-for (const [accountType, role, url, heading] of [['ATTENDEE', 'ATTENDEE', /\/events$/, 'Event Discovery'], ['ORGANISER', 'ORGANISER', /\/dashboard$/, 'My Requests']]) {
+for (const [accountType, role, url, heading] of [['ATTENDEE', 'ATTENDEE', /\/events$/, 'Event Discovery'], ['ORGANISER', 'ORGANISER', /\/dashboard$/, 'Organisation Events']]) {
   test(`[SPM-123] ${accountType} signs up and is signed in automatically`, async ({ page }) => {
     await installLoginMock(page, { role });
     const requests = await mockSignup(page);
