@@ -258,13 +258,19 @@ export function EquipmentDetailManager({ equipmentId }: { equipmentId: number | 
   const [state, setState] = useState<PageState>(equipmentId ? { status: "loading" } : { status: "not-found" });
   const [options, setOptions] = useState<EquipmentOptions>(EMPTY_EQUIPMENT_OPTIONS);
   const [attempt, setAttempt] = useState(0);
+  const [generation, setGeneration] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
 
   useEffect(() => {
     if (!equipmentId) return;
     let alive = true;
     getEquipment(equipmentId)
-      .then((data) => { if (alive) setState({ status: "ready", data: { ...data, loadedAt: Date.now() } }); })
+      .then((data) => {
+        if (!alive) return;
+        setState({ status: "ready", data: { ...data, loadedAt: Date.now() } });
+        // Reset forms only when the refreshed record and details arrive together.
+        setGeneration((value) => value + 1);
+      })
       .catch((caught: unknown) => {
         if (!alive) return;
         if (caught instanceof ApiError && caught.status === 404) setState({ status: "not-found" });
@@ -311,7 +317,7 @@ export function EquipmentDetailManager({ equipmentId }: { equipmentId: number | 
   }
 
   const { equipment, details, detailsRead, unavailability, loadedAt } = state.data;
-  const sectionKey = `${equipment.version}-${attempt}`;
+  const sectionKey = `${equipmentId}-${generation}`;
   return (
     <div className="grid gap-5">
       <Link href="/equipment" className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-primary hover:underline">

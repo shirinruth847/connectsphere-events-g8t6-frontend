@@ -90,7 +90,11 @@ async function routeEquipment(page, state) {
         return json(route, { error: message, code: "EQUIPMENT_QUANTITY_COMMITTED", committedQuantity: 3, fields: { totalQuantity: message } }, 409);
       }
       Object.assign(current, body.totalQuantity !== undefined ? { ...body, totalQuantity: Number(body.totalQuantity) } : body, { version: current.version + 1 });
-      delete current.specifications;
+      for (const key of ["specifications", "technicalNotes", "handlingNotes"]) {
+        if (Object.hasOwn(body, key)) state.details[key] = body[key];
+        delete current[key];
+      }
+      state.details.pgVersion = current.version;
       return json(route, { message: "Equipment updated.", equipment: current, changed: true });
     }
     if (sub === "status") {
@@ -181,6 +185,30 @@ test("[SPM-52 TC-01][TC-02][TC-04][TC-16][TC-17] Technical Support lists, filter
     name: "Shotgun Mic", category: "Audio", storageLocation: "Store Room A", totalQuantity: "4", specifications: null,
   });
   await attachScreenshot(testInfo, page, "equipment-list-desktop");
+});
+
+test("[SPM-52 AC6][AC12] saved details and same-version reloads display the refreshed values", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "TECH_SUPPORT" });
+  const state = equipmentState();
+  await routeEquipment(page, state);
+  await page.goto("/equipment/7");
+  const specifications = page.locator("#edit-equipment-specifications");
+  await expect(specifications).toHaveValue("4K, 5000 lm");
+  await specifications.fill("4K, 6000 lm");
+  const refreshed = page.waitForResponse((response) => response.url().endsWith("/api/equipment/7") && response.request().method() === "GET");
+  await page.getByRole("button", { name: "Save details", exact: true }).click();
+  await refreshed;
+  await expect(page.getByText("Equipment updated.", { exact: true })).toBeVisible();
+  await expect(specifications).toHaveValue("4K, 6000 lm");
+
+  await page.getByRole("button", { name: "Save details", exact: true }).click();
+  await expect(page.getByText("No changes to save.", { exact: true })).toBeVisible();
+  expect(state.requests.filter((request) => request.method === "PUT")).toHaveLength(1);
+
+  // An outbox application can refresh details without changing the equipment version.
+  state.details.specifications = "Refreshed detail snapshot";
+  await page.getByRole("button", { name: "Reload equipment", exact: true }).click();
+  await expect(specifications).toHaveValue("Refreshed detail snapshot");
 });
 
 test("[SPM-52 TC-07][TC-08][TC-10][TC-11] Technical Support manages one item: conflicts, stock limits, unavailable stock and deactivation", async ({ page }, testInfo) => {
