@@ -10,7 +10,7 @@ import { CoordinatorLeadDashboard } from "@/components/coordinator-lead/dashboar
 import { VenueStaffDashboard } from "@/components/venue-staff/dashboard";
 import { TechSupportDashboard } from "@/components/tech-support/dashboard";
 import { SafetyOfficerDashboard } from "@/components/safety-officer/dashboard";
-import { ROUTES, type UserRole } from "@/lib/auth";
+import { homeForRole, type UserRole } from "@/lib/auth";
 
 // Compatibility for feature branches; new pages use DashboardWorkspace.
 export { DashboardShell as StaffShell } from "@/components/layout/dashboard-shell";
@@ -29,7 +29,7 @@ export function RoleDashboard() {
   const user = useSessionUser();
   const router = useRouter();
   useEffect(() => {
-    if (user?.role === "ATTENDEE") router.replace(ROUTES.registrations);
+    if (user?.role === "ATTENDEE") router.replace(homeForRole(user.role));
   }, [router, user]);
   if (!user || user.role === "ATTENDEE") return null;
   const Dashboard = dashboards[user.role];

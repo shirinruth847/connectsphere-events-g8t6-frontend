@@ -14,19 +14,29 @@ import {
   scheduleRows,
 } from "@/components/attendee/event-details/event-details-parts";
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
-import type { AttendeeEventDetail, AttendeeEventSummary } from "@/lib/api/discovery";
+import type {
+  AttendeeEventDetail,
+  AttendeeEventSummary,
+} from "@/lib/api/discovery";
 import type { AttendeeEventView } from "@/lib/api/my-events";
-import { DiscoveryDetailsPanel } from "./discovery-details-panel";
+import { discoveryErrorMessage } from "./discovery-state";
 import { DiscoveryIcon } from "./discovery-icon";
+import { DiscoveryDetailsPanel } from "./discovery-details-panel";
 import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
 import { formatEventDate, formatEventTime } from "./format-event-time";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
-import { useAttendeeEvent, type EventDetailsSource } from "@/components/attendee/event-details/use-attendee-event";
+import {
+  useAttendeeEvent,
+  type EventDetailsSource,
+} from "@/components/attendee/event-details/use-attendee-event";
 
 export { REGISTRATION_UNAVAILABLE_NOTE } from "@/components/attendee/event-details/event-details-parts";
 
 // What opens the dialog: a discovery row, or just an ID and title from My Events.
-export type EventDetailsTarget = Pick<AttendeeEventSummary, "eventId" | "title"> &
+export type EventDetailsTarget = Pick<
+  AttendeeEventSummary,
+  "eventId" | "title"
+> &
   Partial<Pick<AttendeeEventSummary, "registrationAvailability">>;
 
 interface EventDetailsDialogProps {
@@ -43,7 +53,8 @@ interface EventDetailsDialogProps {
   notFoundDescription?: string;
 }
 
-const DISCOVERY_NOT_FOUND = "It may have been unpublished or rescheduled. It has been removed from your list.";
+const DISCOVERY_NOT_FOUND =
+  "It may have been unpublished or rescheduled. It has been removed from your list.";
 
 // The event summary shared by Event Discovery (SPM-34) and My Events (SPM-155),
 // laid out from the event details frame (282:1271). A native <dialog>:
@@ -121,22 +132,35 @@ function EventDetailsContent({
   notFoundDescription: string;
 }) {
   // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
-  const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom, { onLoaded, onNotFound });
+  const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom, {
+    onLoaded,
+    onNotFound,
+  });
   const event = state.status === "ready" ? state.event : null;
   const withheld = Boolean(event?.detailsWithheld);
   const myRegistration = event?.myRegistration ?? null;
   // Availability is for deciding whether to sign up, so it is not shown to
   // someone who already holds a place, or when the details are held back.
-  const availability = event ? event.registrationAvailability : summary.registrationAvailability;
-  const showAvailability = state.status !== "not-found" && !withheld && !myRegistration && availability;
+  const availability = event
+    ? event.registrationAvailability
+    : summary.registrationAvailability;
+  const showAvailability =
+    state.status !== "not-found" &&
+    !withheld &&
+    !myRegistration &&
+    availability;
 
   return (
     <>
       <header className="flex items-center justify-between gap-3 border-b border-outline-variant/40 bg-surface-container-lowest px-4 py-2.5 sm:px-6">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {showAvailability ? <RegistrationAvailabilityChip value={availability} /> : null}
+          {showAvailability ? (
+            <RegistrationAvailabilityChip value={availability} />
+          ) : null}
           {event ? <AttendeeStatusChip status={event.attendeeStatus} /> : null}
-          {myRegistration ? <MyPlaceChip registration={myRegistration} /> : null}
+          {myRegistration ? (
+            <MyPlaceChip registration={myRegistration} />
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {event && !withheld && event.startDatetime ? (
@@ -155,23 +179,39 @@ function EventDetailsContent({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto bg-surface px-4 py-5 sm:px-8 sm:py-6" aria-busy={state.status === "loading"}>
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto bg-surface px-4 py-5 sm:px-8 sm:py-6"
+        aria-busy={state.status === "loading"}
+      >
         {/* The frame's photo banner; without event imagery it uses the lavender fallback. */}
         <section className="flex min-h-40 flex-col justify-end gap-3 rounded-panel bg-gradient-to-br from-primary-fixed to-tertiary-fixed p-5 sm:p-6">
-          <span className="text-[11px] font-bold uppercase tracking-label text-primary">Event details</span>
-          <h2 id={titleId} className="text-2xl font-bold leading-tight tracking-[-0.025em] text-on-surface [overflow-wrap:anywhere] sm:text-[28px]">
-            {event?.title ?? summary.title}
+          <span className="text-[11px] font-bold uppercase tracking-label text-primary">
+            Event details
+          </span>
+          <h2
+            id={titleId}
+            className="text-2xl font-bold leading-tight tracking-[-0.025em] text-on-surface [overflow-wrap:anywhere] sm:text-[28px]"
+          >
+            {state.status === "not-found" ? "Event unavailable" : event?.title ?? summary.title}
           </h2>
           {event && !withheld ? (
             <div className="flex flex-wrap gap-2">
-              <HeroChip icon="calendar">{formatEventDate(event.startDatetime, event.endDatetime)}</HeroChip>
-              <HeroChip icon="venue">{event.location ?? LOCATION_PENDING_LABEL}</HeroChip>
+              <HeroChip icon="calendar">
+                {formatEventDate(event.startDatetime, event.endDatetime)}
+              </HeroChip>
+              <HeroChip icon="venue">
+                {event.location ?? LOCATION_PENDING_LABEL}
+              </HeroChip>
             </div>
           ) : null}
         </section>
 
         {state.status === "loading" ? (
-          <div className="space-y-3" role="status" aria-label="Loading the latest event details">
+          <div
+            className="space-y-3"
+            role="status"
+            aria-label="Loading the latest event details"
+          >
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-4/5" />
             <Skeleton className="h-36 w-full" />
@@ -184,19 +224,36 @@ function EventDetailsContent({
           </AlertBanner>
         ) : null}
 
-        {state.status === "error" ? (
+        {state.status === "error" && state.error.status === 401 ? (
+          <AlertBanner tone="info" title="Your session has ended">Taking you to sign in…</AlertBanner>
+        ) : state.status === "error" && state.error.status === 403 ? (
+          <AlertBanner tone="error" title="Attendee access required">
+            Event details are available to attendee accounts only.
+          </AlertBanner>
+        ) : state.status === "error" ? (
           <AlertBanner tone="error" title="Could not load the event details">
-            {state.error.message}
+            {discoveryErrorMessage(state.error, "event details")}
             <div className="mt-3">
-              <Button variant="danger" onClick={retry} className="max-lg:min-h-11">
+              <Button
+                variant="danger"
+                onClick={retry}
+                className="max-lg:min-h-11"
+              >
                 Try again
               </Button>
             </div>
           </AlertBanner>
         ) : null}
 
-        {event && withheld ? <WithheldNotice attendeeStatus={event.attendeeStatus} /> : null}
-        {event && !withheld && event.lastConfirmedAt ? <LastConfirmedNotice attendeeStatus={event.attendeeStatus} lastConfirmedAt={event.lastConfirmedAt} /> : null}
+        {event && withheld ? (
+          <WithheldNotice attendeeStatus={event.attendeeStatus} />
+        ) : null}
+        {event && !withheld && event.lastConfirmedAt ? (
+          <LastConfirmedNotice
+            attendeeStatus={event.attendeeStatus}
+            lastConfirmedAt={event.lastConfirmedAt}
+          />
+        ) : null}
         {myRegistration ? <MyPlaceCard registration={myRegistration} /> : null}
         {event && !withheld ? <EventSummaryBody event={event} /> : null}
       </div>
