@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getAvailabilityPresentation, getRegistrationAction, isRegistrationEnabled } from '../components/attendee/discovery/registration-availability.ts';
 import { formatDateTile, formatEventDate, formatEventTime, formatTimestamp } from '../components/attendee/discovery/format-event-time.ts';
-import { appendUnique, discoveryReducer, initialDiscoveryState } from '../components/attendee/discovery/discovery-state.ts';
+import { appendUnique, discoveryErrorMessage, discoveryReducer, initialDiscoveryState } from '../components/attendee/discovery/discovery-state.ts';
 import { canViewPath, postLoginPath } from '../lib/auth.ts';
 
 const NOW = new Date('2026-10-18T00:00:00Z');
@@ -72,4 +72,22 @@ test('[SPM-34/SPM-174] /events is an attendee or coordinator lead workspace', ()
  assert.equal(canViewPath('COORDINATOR_LEAD', '/events'), true);
  for (const role of ['ORGANISER','COORDINATOR','VENUE_STAFF','TECH_SUPPORT']) assert.equal(canViewPath(role, '/events'), false, role);
  assert.equal(postLoginPath({role:'ORGANISER'}, '/events'), '/dashboard');
+});
+test('[SPM-44] attendees may return to an event details URL after login', () => {
+ assert.equal(canViewPath('ATTENDEE', '/events/42'), true);
+ assert.equal(postLoginPath({role:'ATTENDEE'}, '/events/42'), '/events/42');
+ for (const path of ['/events/new', '/events/create', '/events/abc', '/events/42/edit']) assert.equal(canViewPath('ATTENDEE', path), false, path);
+});
+test('[SPM-44] discovery errors never show backend wording, except the client network message', () => {
+ const safe = 'The events could not be loaded right now. Please try again.';
+ assert.equal(discoveryErrorMessage({ status: 400, code: 'VALIDATION_FAILED', message: 'Please correct the highlighted fields.' }, 'events'), safe);
+ assert.equal(discoveryErrorMessage({ status: 500, code: 'REQUEST_FAILED', message: 'Internal Server Error' }, 'events'), safe);
+ assert.equal(discoveryErrorMessage({ status: 409, code: 'SOMETHING_NEW', message: 'raw detail' }, 'events'), safe);
+ assert.equal(discoveryErrorMessage({ status: 0, code: 'NETWORK_ERROR', message: 'ConnectSphere could not reach the backend.' }, 'events'), 'ConnectSphere could not reach the backend.');
+});
+test('[SPM-44] attendees land on Event Discovery and can still return to My Events', () => {
+ assert.equal(postLoginPath({role:'ATTENDEE'}, null), '/events');
+ assert.equal(postLoginPath({role:'ATTENDEE'}, '/my-registrations'), '/my-registrations');
+ assert.equal(canViewPath('COORDINATOR_LEAD', '/my-registrations'), false);
+ assert.equal(postLoginPath({role:'COORDINATOR_LEAD'}, '/events'), '/events');
 });
