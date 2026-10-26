@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { AlertBanner, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { apiRequest } from "@/lib/api";
 import { ROUTES } from "@/lib/auth";
@@ -95,11 +96,15 @@ export function EventRequestDashboard() {
             <h1 className="text-2xl font-semibold tracking-[0.02em] text-[#4F46E5]">{title}</h1>
             <p className="mt-1 text-sm text-[#6B7280]">{mineOnly ? "Events and private drafts you created." : "Events from everyone in your organisation, plus your private drafts."}</p>
           </div>
-          <label className="relative block w-full sm:max-w-[298px]">
-            <span className="sr-only">Search events</span>
-            <svg aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></svg>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ..." className="h-[42px] w-full rounded-full bg-[#EEF2FF] py-2 pl-10 pr-4 text-[13px] text-[#1F2937] placeholder:text-[#6B7280] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]" />
-          </label>
+          <div className="flex w-full items-center gap-3 sm:max-w-[400px]">
+            <label className="relative block min-w-0 flex-1">
+              <span className="sr-only">Search events</span>
+              <svg aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></svg>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ..." className="h-[42px] w-full rounded-full bg-[#EEF2FF] py-2 pl-10 pr-4 text-[13px] text-[#1F2937] placeholder:text-[#6B7280] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F46E5]" />
+            </label>
+            {/* The organiser's Updates button and panel, shared with attendees (SPM-192). */}
+            <NotificationsBell />
+          </div>
         </div>
         <div className="flex flex-col gap-3 border-t border-[#EEF0F5] pt-3 lg:flex-row lg:items-center lg:justify-between lg:border-0 lg:pt-0">
           <div className="flex flex-wrap items-center gap-3">
