@@ -27,8 +27,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export function homeForRole(role: UserRole) {
-  if (role === 'ATTENDEE') return ROUTES.registrations;
-  return ROUTES.dashboard;
+  return role === "ATTENDEE" ? ROUTES.events : ROUTES.dashboard;
 }
 
 export function safeNextPath(value: string | null): string | null {
@@ -47,17 +46,14 @@ export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
   if (pathname === ROUTES.dashboard) return role !== "ATTENDEE";
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
-  if (pathname === "/events") return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
+  if (pathname === ROUTES.events) return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   // The inbox (SPM-155); organisers and coordinators join with SPM-192/193.
   if (pathname === ROUTES.notifications) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
-  // The event workspace (SPM-33; Safety Officer reviews, SPM-243; the
-  // supervising Lead's read-only view, SPM-72 AC2); the backend still answers
-  // "not found" for unrelated events. Venue Staff open an event through its
-  // venue bookings (SPM-181).
-  if (/^\/events\/\d+$/.test(pathname)) return ["ORGANISER", "COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF", "SAFETY_OFFICER"].includes(role);
-  // Coordinators and Leads browse venues inside each event instead (SPM-72/74).
+  // The event workspace (SPM-33; Safety Officer reviews, SPM-243); the backend still answers "not found" for unrelated events.
+  // Venue Staff open an event through its venue bookings (SPM-181).
+  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF" || role === "SAFETY_OFFICER" || role === "ATTENDEE";
   if (pathname === ROUTES.venues) return role === "VENUE_STAFF";
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
@@ -68,7 +64,7 @@ export function postLoginPath(user: SessionUser, next: string | null) {
   const path = safeNextPath(next);
   if (path && canViewPath(user.role, path)) return path;
   // Keep the SPM-174 lead workflow's queue as its landing page. Coordinators
-  // and other staff use main's role-aware dashboard; attendees go to registrations.
+  // and other staff use main's role-aware dashboard; attendees go to discovery.
   return user.role === "COORDINATOR_LEAD" ? "/events" : homeForRole(user.role);
 }
 

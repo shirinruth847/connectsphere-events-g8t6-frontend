@@ -33,11 +33,11 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','My Registrations'],['COORDINATOR_LEAD','Assignment queue']]) {
+for (const [role, heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['ATTENDEE','Event Discovery'],['COORDINATOR_LEAD','Assignment queue']]) {
  test(`[SPM-32] ${role} login reaches its authorised workspace`, async ({page}) => {
   await installLoginMock(page,{role});await page.goto('/login');await page.getByLabel('Email',{exact:false}).fill('user@example.com');await page.getByLabel('Password',{exact:false}).fill('Valid-password9');await page.getByRole('button',{name:'Sign in',exact:true}).click();
   await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible();
-  if(role==='ATTENDEE') {await expect(page.getByText('Registered attendee event')).toBeVisible();await expect(page.getByText('Assigned coordinator event')).toHaveCount(0);}
+  if(role==='ATTENDEE') {await expect(page).toHaveURL(/\/events$/);await expect(page.getByRole('heading',{name:'No events are available at the moment.',exact:true})).toBeVisible();await expect(page.getByText('Assigned coordinator event')).toHaveCount(0);}
   if(role==='COORDINATOR') await expect(page.getByText('Assigned coordinator event')).toBeVisible();
   const shell=page.locator('[data-dashboard-shell]');
   await expect(shell).toHaveAttribute('data-dashboard-shell',role);
@@ -220,5 +220,5 @@ for (const [email,password,message] of [['','Valid-password9','Email is required
  });
 }
 test('[SPM-32 TC-004] attendee cannot render an organiser editor', async ({page}) => {
- await installConnectSphereMocks(page,{role:'ATTENDEE'});await page.goto('/events/new');await expect(page.getByText('This page is not available for your role.',{exact:false})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);await page.getByRole('link',{name:'Go to your dashboard'}).click();await expect(page.getByRole('heading',{name:'My Registrations',exact:true})).toBeVisible();
+ await installConnectSphereMocks(page,{role:'ATTENDEE'});await page.goto('/events/new');await expect(page.getByText('This page is not available for your role.',{exact:false})).toBeVisible();await expect(page.locator('#title')).toHaveCount(0);await page.getByRole('link',{name:'Go to your dashboard'}).click();await expect(page.getByRole('heading',{name:'Event Discovery',exact:true})).toBeVisible();
 });
