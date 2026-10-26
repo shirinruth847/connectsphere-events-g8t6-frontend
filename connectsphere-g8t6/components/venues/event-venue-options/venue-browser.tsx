@@ -20,7 +20,7 @@ type OptionsState<T> =
 
 // Search and capacity are typed; layout, facility and accessibility are
 // multi-selects of the values the venues carry (developer request of 25
-// October 2026): any of the layouts, all of the facilities and features.
+// October 2026); a venue matches with any of the chosen values.
 type Filters = { search: string; minCapacity: string; layout: string[]; facility: string[]; accessibility: string[] };
 type TextField = { key: "search" | "minCapacity"; label: string; placeholder: string; inputMode?: "numeric" };
 

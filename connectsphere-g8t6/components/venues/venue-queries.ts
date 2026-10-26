@@ -1,8 +1,8 @@
 // Query strings for the venue APIs. Pure (no imports), so they are unit tested.
 
 // layout, facility and accessibility take several values (developer request
-// of 25 October 2026), sent as repeated parameters: any of the layouts, all
-// of the facilities and accessibility features.
+// of 25 October 2026), sent as repeated parameters; the backend matches a
+// venue with any of the chosen values.
 export interface CatalogueFilters {
   search?: string;
   minCapacity?: string;
