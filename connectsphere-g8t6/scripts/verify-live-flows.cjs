@@ -63,8 +63,11 @@ const SAFE_DISCOVERY_FIELDS='description,endDatetime,eventId,location,organisati
 let visibleDiscoveryEventId=null;
 const workspaceReads=(requests)=>requests.filter(url=>/^\/api\/events\/\d+(\/|$)/.test(url));
 async function verifyAttendeeDiscovery(page,requests) {
+ // Attendees already land here after login, and that page's own discovery
+ // request may still be answering. Leave it first, so the response awaited below
+ // is the reload's and not one whose body the reload throws away.
+ await page.goto('about:blank');
  const firstResponse=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/api/events/discovery'&&!u.searchParams.has('cursor');});
- // Attendees already land here after login; reload so the first page is requested again.
  await page.goto(base+'/events');
  const first=await firstResponse;assert(first.status()===200,'Discovery list returned '+first.status());
  const page1=await first.json();
