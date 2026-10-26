@@ -215,3 +215,83 @@ test("[SPM-173] lifecycle panel works at mobile width", async ({ page }, testInf
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await attachScreenshot(testInfo, page, "lifecycle-mobile");
 });
+
+for (const mobile of [false, true]) {
+  test(`[SPM-39] approval confirmation and planning success ${mobile ? 'mobile' : 'desktop'}`, async ({ page }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const requests = [];
+    await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+    await routeLifecycle(page, { event: eventView({ status: 'UNDER_REVIEW', statusLabel: 'Under Review' }), next: eventView({ version: 4 }), requests });
+    await page.goto('/events/42');
+    await page.getByRole('button', { name: 'Approve request', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Approve event request?' });
+    await expect(dialog).toBeVisible();
+    expect(requests).toHaveLength(0);
+    await dialog.getByRole('button', { name: 'Keep reviewing' }).click();
+    expect(requests).toHaveLength(0);
+    await page.getByRole('button', { name: 'Approve request', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Confirm approval' }).click();
+    await expect(page.getByText('Status updated')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Submit for safety review' })).toBeVisible();
+    expect(requests).toEqual([{ path: '/api/events/42/accept-feasibility', body: { version: 3 }, key: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(mobile ? 390 : 1280);
+    await attachScreenshot(testInfo, page, `spm39-${mobile ? 'mobile' : 'desktop'}`);
+  });
+}
+
+for (const status of ['REJECTED', 'CANCELLED']) {
+  test(`[SPM-39] ${status} requests cannot be approved`, async ({ page }) => {
+    const requests = [];
+    await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+    await routeLifecycle(page, { event: eventView({ status }), requests });
+    await page.goto('/events/42');
+    await expect(page.getByRole('button', { name: 'Approve request', exact: true })).toBeDisabled();
+    await expect(page.getByText('Request cannot be approved', { exact: true })).toBeVisible();
+    expect(requests).toHaveLength(0);
+  });
+}
+
+test('[SPM-39] missing mandatory requirements show field errors without success', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  await routeLifecycle(page, { event: eventView({ status: 'UNDER_REVIEW' }), refusal: { status: 409, json: { error: 'Complete the mandatory event fields before approving this request.', code: 'FEASIBILITY_REQUIREMENTS_MISSING', fields: { venuePreferences: 'Venue preference is required.' } } } });
+  await page.goto('/events/42');
+  await page.getByRole('button', { name: 'Approve request', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
+  await expect(page.getByText('Venue preference is required.')).toBeVisible();
+  await expect(page.getByText('Status updated')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Approve request', exact: true })).toBeEnabled();
+});
+
+test('[SPM-39] an uncertain approval retains its command key across reload', async ({ page }) => {
+  const requests = [];
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  await routeLifecycle(page, { event: eventView({ status: 'UNDER_REVIEW' }), next: eventView({ status: 'UNDER_REVIEW' }), lostResponses: 1, requests });
+  await page.goto('/events/42');
+  await page.getByRole('button', { name: 'Approve request', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
+  await expect(page.getByText('Action not completed', { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Approve request', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
+  await expect(page.getByText('Status updated')).toBeVisible();
+  expect(requests).toHaveLength(2);
+  expect(requests[1].key).toBe(requests[0].key);
+});
+
+test('[SPM-39] organiser has no approval controls', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'ORGANISER' });
+  await routeLifecycle(page, { event: eventView({ status: undefined, statusLabel: 'Under Review', viewerRelationship: 'OWNER', isOwner: true, isAssignedToCoordinator: false, permissions: { canEdit: false, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false } }) });
+  await page.goto('/events/42');
+  await expect(page.getByRole('heading', { name: 'Lifecycle event', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve request', exact: true })).toHaveCount(0);
+});
+
+test('[SPM-39] approval session expiry redirects to sign-in and retains the command', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  await routeLifecycle(page, { event: eventView({ status: 'UNDER_REVIEW' }), refusal: { status: 401, json: { code: 'UNAUTHENTICATED', error: 'Sign in again.' } } });
+  await page.goto('/events/42');
+  await page.getByRole('button', { name: 'Approve request', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
+  await expect(page).toHaveURL(/\/login\?/);
+  expect(await page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('connectsphere:recovery:spm39:')).length)).toBe(1);
+});

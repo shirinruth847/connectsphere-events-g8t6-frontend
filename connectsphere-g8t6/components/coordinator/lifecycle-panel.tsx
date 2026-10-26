@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
+import { Dialog } from "@/components/shared/dialog";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { ApiError } from "@/lib/api";
 import {
@@ -51,6 +52,8 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
   const wantsReadiness = showsReadiness(status);
   const [readiness, setReadiness] = useState<ReadinessState>({ status: "loading" });
   const [readinessAttempt, setReadinessAttempt] = useState(0);
+  const [confirmApproval, setConfirmApproval] = useState(false);
+  const inFlight = useRef(false);
   const [running, setRunning] = useState<LifecycleAction | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
   // A retry of the same action on the same version reuses its key, so it cannot apply twice.
@@ -87,18 +90,38 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
   if (!options.length) return null;
 
   const run = async (action: LifecycleAction) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setConfirmApproval(false);
     const attempt = `${action}:${event.version}`;
-    const current = pendingKey.current?.attempt === attempt ? pendingKey.current : { key: crypto.randomUUID(), attempt };
+    // Persist only the command key, scoped to the trusted assignment and event version.
+    // This survives a lost response, page reload or automatic session expiry.
+    const recoverySlot = `connectsphere:recovery:spm39:${event.coordinatorId}:${event.eventId}:${event.version}`;
+    let savedKey: string | null = null;
+    if (action === "acceptFeasibility") {
+      try { savedKey = sessionStorage.getItem(recoverySlot); } catch { /* Memory retry still works. */ }
+    }
+    const current = pendingKey.current?.attempt === attempt ? pendingKey.current : { key: savedKey && /^[0-9a-f-]{36}$/.test(savedKey) ? savedKey : crypto.randomUUID(), attempt };
+    if (action === "acceptFeasibility") {
+      try { sessionStorage.setItem(recoverySlot, current.key); } catch { /* Storage may be unavailable. */ }
+    }
     pendingKey.current = current;
     setRunning(action);
     setBanner(null);
     try {
       const result = await runLifecycleAction(event.eventId, action, event.version, current.key);
       pendingKey.current = null;
+      if (action === "acceptFeasibility") {
+        try { sessionStorage.removeItem(recoverySlot); } catch { /* Storage may be unavailable. */ }
+      }
       onEventChange(result.event, result.message);
     } catch (caught) {
+      if (action === "acceptFeasibility" && !keepsIdempotencyKey(caught instanceof ApiError ? caught : null) && !(caught instanceof ApiError && caught.status === 401)) {
+        try { sessionStorage.removeItem(recoverySlot); } catch { /* Storage may be unavailable. */ }
+      }
       handleError(caught);
     } finally {
+      inFlight.current = false;
       setRunning(null);
     }
   };
@@ -130,7 +153,7 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
       tone: caught.status === 409 ? "warning" : "error",
       title: "Action not completed",
       message: refusal.message,
-      failures: refusal.failures,
+      failures: caught.code === "FEASIBILITY_REQUIREMENTS_MISSING" ? Object.entries(caught.fields).map(([code, message]) => ({ code, message })) : refusal.failures,
     });
   };
 
@@ -138,6 +161,15 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
     <section aria-labelledby="lifecycle-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
       <SectionHeading id="lifecycle-heading" title="Next step" description="Move the event forward when it is ready." />
 
+      {status === "REJECTED" || status === "CANCELLED" ? (
+        <AlertBanner tone="warning" title="Request cannot be approved">This event request is {status.toLowerCase()}. Its status will remain unchanged.</AlertBanner>
+      ) : null}
+      <Dialog open={confirmApproval} onClose={() => setConfirmApproval(false)} title="Approve event request?" footer={<>
+        <Button variant="secondary" onClick={() => setConfirmApproval(false)}>Keep reviewing</Button>
+        <Button onClick={() => void run("acceptFeasibility")} disabled={running !== null}>Confirm approval</Button>
+      </>}>
+        <p>Approve “{event.title}” for planning? The backend will check the mandatory requirements. This moves the request to Planning and notifies the organiser; it does not confirm the event or book resources.</p>
+      </Dialog>
       {wantsReadiness ? (
         <div className="mt-4" aria-live="polite">
           {readiness.status === "loading" ? (
@@ -171,7 +203,7 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
               fullWidth
               variant={option.action === "complete" ? "secondary" : "primary"}
               disabled={Boolean(option.disabledReason) || running !== null}
-              onClick={() => void run(option.action)}
+              onClick={() => option.action === "acceptFeasibility" ? setConfirmApproval(true) : void run(option.action)}
             >
               {running === option.action ? "Working…" : option.label}
             </Button>
