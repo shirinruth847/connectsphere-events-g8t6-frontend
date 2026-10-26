@@ -19,7 +19,7 @@ test('[SPM-32 TC-004/011/012] return paths respect role permissions', () => {
   assert.equal(postLoginPath({role:'ORGANISER'}, '/login'), '/dashboard');
 });
 test('[SPM-33 AC1][SPM-181 AC4][SPM-44] event detail URLs are valid return paths for permitted roles', () => {
-  for (const role of ['ORGANISER', 'COORDINATOR', 'VENUE_STAFF']) {
+  for (const role of ['ORGANISER', 'COORDINATOR', 'COORDINATOR_LEAD', 'VENUE_STAFF']) {
     assert.equal(postLoginPath({ role }, '/events/42'), '/events/42');
   }
 
