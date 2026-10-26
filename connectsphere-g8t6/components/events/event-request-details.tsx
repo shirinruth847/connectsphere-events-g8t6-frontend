@@ -179,6 +179,20 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
             ) : null}
           </Card>
 
+          {event.venueSuggestion ? (
+            <Card labelledBy="suggested-venue-heading">
+              <SectionHeading id="suggested-venue-heading" title="Suggested venue" description="Your event coordinator suggests this venue. It is not booked yet; the coordinator arranges the booking with Venue Staff." />
+              <KeyValuePanel
+                rows={[
+                  { icon: "venue", label: "Venue", value: event.venueSuggestion.name ?? "Not available" },
+                  { icon: "organisation", label: "Address", value: event.venueSuggestion.address ?? "Not available" },
+                  { icon: "attendees", label: "Capacity", value: event.venueSuggestion.maxCapacity != null ? `${event.venueSuggestion.maxCapacity.toLocaleString()} people` : "Not available" },
+                  { icon: "history", label: "Suggested", value: `${formatTimestamp(event.venueSuggestion.suggestedAt)}${event.venueSuggestion.suggestedBy ? ` by ${event.venueSuggestion.suggestedBy}` : ""}` },
+                ]}
+              />
+            </Card>
+          ) : null}
+
           <Card labelledBy="requirements-heading">
             <SectionHeading id="requirements-heading" title="Requirements" />
             <div className="grid gap-5 md:grid-cols-2">
