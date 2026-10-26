@@ -198,9 +198,11 @@ of the five latest notifications; **See more** and the attendee sidebar's
 - Data comes from the backend `/api/notifications` routes through
   `lib/api/notifications.ts`; display rules (Go to Event targets, SGT times,
   offer expiry, badge text, page merging) are in `lib/notifications.ts`.
-- Components are role-agnostic in `components/notifications/`. Other roles get
-  the inbox by widening `canViewPath`, the page's `DashboardWorkspace` role and
-  placing `NotificationsBell` on their pages (SPM-192/193).
+- Components are role-agnostic in `components/notifications/`. A role gets
+  the inbox by joining `NOTIFICATION_ROLES` in `lib/auth.ts` (used by
+  `canViewPath` and the page's `DashboardWorkspace`), linking its sidebar tab
+  and placing `NotificationsBell` on its pages. Organisers joined with SPM-192;
+  coordinators follow with SPM-193.
 - Read state and the unread count change only after the backend confirms them.
   The count refreshes on window focus, on tab visibility and after each read
   action; nothing promises instant delivery. After an action that writes a
@@ -208,12 +210,13 @@ of the five latest notifications; **See more** and the attendee sidebar's
   `announceNotificationsChanged()` without a count and the badge fetches it again.
 - **Go to Event** marks the notification read, then opens
   `/my-registrations?eventId=<id>&from=notification` (attendees) or
-  `/events/<id>` (staff workspace, other roles later). On My Events that URL
+  `/events/<id>` (the event workspace, for organisers and staff). On My Events that URL
   opens the event details dialog (frame `282:1271`) over the outlined card, labelled "Opened from your
   notification"; **View Event Details** on a card opens the same dialog
   without that label, and closing removes the parameters. A notification the
   backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
-  navigating, and a background refresh drops any it no longer returns.
+  navigating, with a role-worded reason (`notificationGoneText`), and a
+  background refresh drops any it no longer returns.
 - Event Discovery and My Events share that dialog
   (`components/attendee/discovery/event-details-dialog.tsx`), and each reads
   its own endpoint through `useAttendeeEvent`. From Event Discovery it reads
