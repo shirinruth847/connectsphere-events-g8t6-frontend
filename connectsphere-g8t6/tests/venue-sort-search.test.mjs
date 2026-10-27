@@ -10,7 +10,7 @@ import {
   sortByLastAccessed,
 } from '../components/venue-staff/booking-requests/booking-filters.ts';
 import { managedVenueQuery } from '../components/venues/venue-queries.ts';
-import { calendarRange, civilDate, toCalendarLanes } from '../components/venues/availability-calendar-model.ts';
+import { availabilityOverlays, calendarRange, civilDate, toCalendarLanes } from '../components/venues/availability-calendar-model.ts';
 
 // ---------- My Requests (SPM-181 follow-up) ----------
 
@@ -132,4 +132,31 @@ test('[TC-VENUE-181-41] each venue is a lane and each entry spans its occupied r
   assert.equal(lanes[1].events[0].title, 'Operational block · Maintenance');
   assert.equal(refs.get(3).venueName, 'Seminar Centre');
   assert.equal(refs.size, 3);
+});
+
+test('[SPM-74][SPM-72 AC6] the calendar shades the request, its overlaps and the hours every venue is closed', () => {
+  const venue = (overrides) => ({ venueId: 1, name: 'Hall', operatingHours: '08:00-22:00', entries: [{ entryId: 'booking-9', label: 'Confirmed booking' }], check: null, ...overrides });
+  const check = {
+    start: '2026-11-20T02:00:00.000Z', end: '2026-11-20T04:00:00.000Z',
+    occupiedStart: '2026-11-20T01:30:00.000Z', occupiedEnd: '2026-11-20T04:45:00.000Z',
+    availabilityLabel: 'Unavailable – booking', operatingHoursWarning: null,
+    conflicts: [{ entryId: 'booking-9', occupiedStart: '2026-11-20T00:30:00.000Z', occupiedEnd: '2026-11-20T02:30:00.000Z' }],
+  };
+  const format = { label: 'REQ-000042', formatWindow: (start, end) => `${start}/${end}`, formatTimes: () => '10:00–12:00' };
+  const overlays = availabilityOverlays({ venues: [venue({ check }), venue({ venueId: 2, operatingHours: '09:00-23:00', check: null })] }, { date: '2026-11-20', days: 1 }, format);
+
+  // Closed only while both venues are: before 08:00 and from 23:00, Singapore time.
+  assert.deepEqual(overlays.filter((item) => item.tone === 'closed').map(({ start, end }) => [start, end]), [
+    ['2026-11-19T16:00:00.000Z', '2026-11-20T00:00:00.000Z'],
+    ['2026-11-20T15:00:00.000Z', '2026-11-20T16:00:00.000Z'],
+  ]);
+  const request = overlays.find((item) => item.tone === 'request');
+  assert.equal(request.label, 'REQ-000042 · 10:00–12:00');
+  assert.match(request.detail, /Hall: Unavailable – booking/);
+  assert.match(request.detail, /Overlaps Confirmed booking/);
+  // Red where the occupied time (09:30–12:45) meets the booking (08:30–10:30).
+  assert.deepEqual(overlays.filter((item) => item.tone === 'conflict').map(({ start, end }) => [start, end]), [['2026-11-20T01:30:00.000Z', '2026-11-20T02:30:00.000Z']]);
+
+  // Hours not recorded for one venue: nothing is greyed out.
+  assert.equal(availabilityOverlays({ venues: [venue({ operatingHours: null })] }, { date: '2026-11-20', days: 7 }, format).length, 0);
 });

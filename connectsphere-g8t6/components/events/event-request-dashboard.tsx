@@ -133,11 +133,11 @@ export function EventRequestDashboard() {
     </section>
     {notice ? <div className="mb-5"><AlertBanner tone="success">{notice}</AlertBanner></div> : null}
     {error ? <div className="mb-5"><AlertBanner tone="error" title="Requests could not be loaded">{error}<button className="ml-2 font-semibold underline" onClick={() => void load()}>Try again</button></AlertBanner></div> : null}
-    {loading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-40 w-full" />)}</div>
+    {loading ? <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-40 w-full" />)}</div>
       : visible.length === 0 ? <SectionCard><EmptyState title="No matching events" description="Try changing your status or search, or create a new event." action={<Link href="/events/new" className="rounded-control bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary">Create an event</Link>} /></SectionCard>
         : <>
           <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === DRAFT_LABEL ? "My Drafts" : mineOnly ? "Your event requests and drafts" : "Organisation events and your drafts"}</h2>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">
             {visible.map((event) => {
               const displayStatus = eventDisplayStatus(event);
               const statusStyle = statusPresentation(displayStatus);

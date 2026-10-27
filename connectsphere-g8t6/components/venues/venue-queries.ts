@@ -1,11 +1,14 @@
 // Query strings for the venue APIs. Pure (no imports), so they are unit tested.
 
+// layout, facility and accessibility take several values (developer request
+// of 25 October 2026), sent as repeated parameters; the backend matches a
+// venue with any of the chosen values.
 export interface CatalogueFilters {
   search?: string;
   minCapacity?: string;
-  layout?: string;
-  facility?: string;
-  accessibility?: string;
+  layout?: string | string[];
+  facility?: string | string[];
+  accessibility?: string | string[];
 }
 
 export type ManagedVenueSort = "name" | "capacity" | "updatedAt" | "setupMinutes" | "turnaroundMinutes";
@@ -27,23 +30,33 @@ export interface ManagedVenueFilters {
 }
 
 export interface AvailabilityParams {
+  eventId?: number;
   // A Singapore calendar day (YYYY-MM-DD) and how many days to show.
   date: string;
   days: number;
   venueIds: number[];
   // An optional period to check, in the same day/time inputs the form uses.
-  check?: { date: string; startTime: string; endTime: string } | null;
+  // endDate (optional) lets the period span several days: a multi-day event
+  // occupies the venue as one block, nights included (Master 5.4.1).
+  check?: { date: string; startTime: string; endTime: string; endDate?: string } | null;
 }
 
 const SGT_OFFSET = "+08:00";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-const build = (entries: [string, string | number | undefined | null][]) => {
+const build = (entries: [string, string | string[] | number | undefined | null][]) => {
   const params = new URLSearchParams();
   for (const [key, value] of entries) {
-    const text = value === undefined || value === null ? "" : String(value).trim();
-    if (text) params.set(key, text);
+    const values = Array.isArray(value) ? value : [value];
+    const seen = new Set<string>();
+    for (const item of values) {
+      const text = item === undefined || item === null ? "" : String(item).trim();
+      if (text && !seen.has(text.toLowerCase())) {
+        seen.add(text.toLowerCase());
+        params.append(key, text);
+      }
+    }
   }
   const query = params.toString();
   return query ? `?${query}` : "";
@@ -56,6 +69,40 @@ export const catalogueQuery = (filters: CatalogueFilters) =>
     ["layout", filters.layout],
     ["facility", filters.facility],
     ["accessibility", filters.accessibility],
+  ]);
+
+// The venue section of an event (SPM-72/74). Required facilities rank and
+// highlight venues; they never filter them out.
+export type VenueOptionSort = "match" | "name" | "capacity" | "setup" | "turnaround";
+
+export const VENUE_OPTION_SORT_OPTIONS: { value: VenueOptionSort; label: string }[] = [
+  { value: "match", label: "Best match" },
+  { value: "name", label: "Name" },
+  { value: "capacity", label: "Capacity" },
+  { value: "setup", label: "Setup time" },
+  { value: "turnaround", label: "Turnaround time" },
+];
+
+export interface VenueOptionsQuery extends CatalogueFilters {
+  requiredFacilities?: string;
+  sort?: VenueOptionSort;
+  order?: "asc" | "desc";
+}
+
+// "Projector, stage ,, Projector" → "Projector,stage"
+const facilityList = (text: string | undefined) =>
+  [...new Set((text ?? "").split(",").map((item) => item.trim()).filter(Boolean))].join(",");
+
+export const venueOptionsQuery = (query: VenueOptionsQuery) =>
+  build([
+    ["search", query.search],
+    ["minCapacity", query.minCapacity],
+    ["layout", query.layout],
+    ["facility", query.facility],
+    ["accessibility", query.accessibility],
+    ["requiredFacilities", facilityList(query.requiredFacilities)],
+    ["sort", query.sort && query.sort !== "match" ? query.sort : undefined],
+    ["order", query.order === "desc" ? "desc" : undefined],
   ]);
 
 export const managedVenueQuery = (filters: ManagedVenueFilters, offset = 0) =>
@@ -85,8 +132,11 @@ export const availabilityQuery = ({ date, days, venueIds, check }: AvailabilityP
   if (venueIds.length) params.set("venueId", venueIds.join(","));
   if (check && DATE.test(check.date) && TIME.test(check.startTime) && TIME.test(check.endTime)) {
     params.set("checkStart", sgtInstant(check.date, check.startTime));
-    // An end time at or before the start time ends on the next day.
-    const endDate = check.endTime <= check.startTime ? addDays(check.date, 1) : check.date;
+    // A later end date ends the period that day; otherwise an end time at or
+    // before the start time ends on the next day.
+    const endDate = check.endDate && DATE.test(check.endDate) && check.endDate > check.date
+      ? check.endDate
+      : check.endTime <= check.startTime ? addDays(check.date, 1) : check.date;
     params.set("checkEnd", sgtInstant(endDate, check.endTime));
   }
   return `?${params.toString()}`;

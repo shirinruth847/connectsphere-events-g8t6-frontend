@@ -19,7 +19,7 @@ test('[SPM-32 TC-004/011/012] return paths respect role permissions', () => {
   assert.equal(postLoginPath({role:'ORGANISER'}, '/login'), '/dashboard');
 });
 test('[SPM-33 AC1][SPM-181 AC4][SPM-44] event detail URLs are valid return paths for permitted roles', () => {
-  for (const role of ['ORGANISER', 'COORDINATOR', 'VENUE_STAFF']) {
+  for (const role of ['ORGANISER', 'COORDINATOR', 'COORDINATOR_LEAD', 'VENUE_STAFF']) {
     assert.equal(postLoginPath({ role }, '/events/42'), '/events/42');
   }
 
@@ -32,7 +32,8 @@ test('[SPM-33 AC1][SPM-181 AC4][SPM-44] event detail URLs are valid return paths
   assert.equal(canViewPath('ATTENDEE', '/events/42'), true);
 
   // These roles still cannot use the event-detail return path.
-  for (const role of ['COORDINATOR_LEAD', 'TECH_SUPPORT']) {
+  // The supervising Lead opens events read-only (SPM-72 AC2, master 3.4).
+  for (const role of ['TECH_SUPPORT']) {
     assert.equal(canViewPath(role, '/events/42'), false);
   }
 
