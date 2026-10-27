@@ -149,7 +149,8 @@ production build and type checks.
 
 ## Lead assignment workspace (SPM-174)
 
-Leads assign submitted unassigned requests on `/events` and reassign their
+Leads see and assign submitted unassigned requests directly on `/dashboard`
+and on `/events`, using the same queue component and backend scope. They reassign their
 supervised or legacy unsupervised active events on `/assignments`. The shared
 shell, trusted session profile and Express API helpers remain in use. Assignment
 requires explicit confirmation; busy coordinators are disabled, the backend
@@ -157,12 +158,18 @@ checks availability again, and success is shown only after its response. Stale
 or uncertain results require refreshing before another attempt. The calendar
 uses half-open Singapore scheduling windows and clamps month-end navigation.
 
-The backend must enable `ENABLE_COORDINATOR_WORKFLOWS=true` and deploy
-`20261020075714_spm174_lead_assignment_conflict_guard.sql` before this frontend.
+The backend must deploy `20261020075714_spm174_lead_assignment_conflict_guard.sql`
+before this frontend. The paired `fix/lead-workflow-availability` backend change
+retires the rollout environment switch; its Lead routes are always registered
+and retain authentication and Lead-only authorization. Older backends still
+require `ENABLE_COORDINATOR_WORKFLOWS=true` until upgraded.
 Existing legacy overlaps are preserved for Lead-controlled reassignment; the
 guard prevents new conflicts while the full exclusion constraint remains
 deferred. See the backend's `docs/test-plans/spm-174.md` for deployment,
 rollback and real hosted/browser verification commands.
+
+The Dashboard home correction and its mocked browser regression coverage are
+documented in `docs/test-plans/lead-dashboard.md`.
 
 `npm run test:e2e -- --grep SPM-174` covers initial assignment, reassignment,
 stale rejection, role restrictions, queue resilience and calendar boundaries
