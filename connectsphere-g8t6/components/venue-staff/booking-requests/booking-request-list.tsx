@@ -213,7 +213,7 @@ export function BookingRequestList() {
       </div>
 
       {state.status === "loading" ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading booking requests">
+        <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading booking requests">
           {[0, 1, 2].map((key) => <Skeleton key={key} className="h-72 w-full" />)}
         </div>
       ) : null}
@@ -235,7 +235,7 @@ export function BookingRequestList() {
 
       {state.status === "ready" && visibleBookings.length > 0 ? (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy={busy}>
+          <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy={busy}>
             {visibleBookings.map((booking) => (
               <BookingRequestCard
                 key={booking.bookingId}

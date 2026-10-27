@@ -33,6 +33,7 @@ const ACTION_LABELS: Record<string, string> = {
   SAFETY_CHANGES_REQUESTED: "Safety review requested changes",
   SAFETY_VENUES_REJECTED: "Safety review rejected venue bookings",
   SAFETY_REVIEW_SUPERSEDED: "Safety review closed after an arrangement change",
+  VENUE_SUGGESTED: "Venue suggested",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -72,6 +73,28 @@ function describeHistory(event: EventView) {
 const UNSEEN_LINE =
   "before:absolute before:left-2.5 before:top-5 before:-bottom-5 before:w-0.5 before:-translate-x-1/4 before:bg-warning last:before:bottom-0";
 
+// A suggestion is not an edit of the request (SPM-72 AC8): it reads as the
+// venue suggested, and which suggestion it replaces, rather than From/To.
+function ChangeValue({ change }: { change: EventHistoryEntry["changes"][number] }) {
+  if (change.field === "suggestedVenue") {
+    return (
+      <dd className="mt-1 grid gap-0.5 text-on-surface">
+        <span className="line-clamp-3">{formatValue(change.field, change.after)}</span>
+        {change.before ? <span className="line-clamp-3 text-on-surface-variant">Replaces {formatValue(change.field, change.before)}</span> : null}
+      </dd>
+    );
+  }
+  return (
+    <dd className="mt-1 grid gap-0.5 text-on-surface">
+      <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {formatValue(change.field, change.before)}</span>
+      <span className="line-clamp-3"><span className="font-semibold">To:</span> {formatValue(change.field, change.after)}</span>
+    </dd>
+  );
+}
+
+const historyIcon = (action: string) =>
+  action.startsWith("COORDINATOR_") ? "person" : action === "EVENT_SUBMITTED" ? "check" : action === "VENUE_SUGGESTED" ? "venue" : "edit";
+
 function HistoryItem({ entry, isNew }: { entry: EventHistoryEntry; isNew: boolean }) {
   return (
     <li className={`relative pl-7 ${isNew ? UNSEEN_LINE : ""}`} data-unseen={isNew ? "true" : undefined}>
@@ -95,10 +118,7 @@ function HistoryItem({ entry, isNew }: { entry: EventHistoryEntry; isNew: boolea
           {entry.changes.map((change) => (
             <div key={change.field} className="text-xs">
               <dt className="font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{fieldLabel(change.field)}</dt>
-              <dd className="mt-1 grid gap-0.5 text-on-surface">
-                <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {formatValue(change.field, change.before)}</span>
-                <span className="line-clamp-3"><span className="font-semibold">To:</span> {formatValue(change.field, change.after)}</span>
-              </dd>
+              <ChangeValue change={change} />
             </div>
           ))}
         </dl>

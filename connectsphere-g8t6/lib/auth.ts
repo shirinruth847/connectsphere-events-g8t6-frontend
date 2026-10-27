@@ -15,6 +15,8 @@ export const ROUTES = {
   drafts: "/dashboard?status=DRAFT#my-drafts",
   notifications: "/notifications",
   venues: "/venues",
+  equipment: "/equipment",
+  attendeeProfile: "/attendee-profile",
 } as const;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -55,13 +57,19 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
   // The inbox (attendees SPM-155, organisers SPM-192, coordinators SPM-193).
   if (pathname === ROUTES.notifications) return NOTIFICATION_ROLES.includes(role);
+  // The attendee's own profile (SPM-270), opened from the sidebar identity block.
+  if (pathname === ROUTES.attendeeProfile) return role === "ATTENDEE";
   if (/^\/events\/(new|create)$/.test(pathname)) return role === "ORGANISER";
-  // The event workspace (SPM-33; Safety Officer reviews, SPM-243); the backend still answers "not found" for unrelated events.
-  // Venue Staff open an event through its venue bookings (SPM-181).
-  if (/^\/events\/\d+$/.test(pathname)) return role === "ORGANISER" || role === "COORDINATOR" || role === "VENUE_STAFF" || role === "SAFETY_OFFICER" || role === "ATTENDEE";
-  if (pathname === ROUTES.venues) return ["COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF"].includes(role);
+  // The event workspace (SPM-33; Safety Officer reviews, SPM-243; the
+  // supervising Lead's read-only view, SPM-72 AC2; attendee details, SPM-44);
+  // the backend still answers "not found" for unrelated events. Venue Staff
+  // open an event through its venue bookings (SPM-181).
+  if (/^\/events\/\d+$/.test(pathname)) return ["ORGANISER", "COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF", "SAFETY_OFFICER", "ATTENDEE"].includes(role);
+  if (pathname === ROUTES.venues) return role === "VENUE_STAFF";
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
+  // Equipment catalogue (SPM-52).
+  if (pathname === ROUTES.equipment || /^\/equipment\/\d+$/.test(pathname)) return role === "TECH_SUPPORT";
   return false;
 }
 

@@ -267,25 +267,23 @@ test("[SPM-73 TC9] other roles cannot open venue management", async ({ page }) =
   await expect(page.getByRole("button", { name: "Save venue record" })).toHaveCount(0);
 });
 
-// ---------- SPM-72 catalogue search ----------
+// ---------- SPM-72/74: no /venues page for coordinators or Leads ----------
 
-test("[SPM-72] coordinators search and filter the catalogue", async ({ page }) => {
-  const requests = [];
-  await installConnectSphereMocks(page, { role: "COORDINATOR" });
-  await page.route((url) => url.pathname === "/api/venues", (route) => {
-    requests.push(Object.fromEntries(new URL(route.request().url()).searchParams));
-    return json(route, { venues: [], detailsAvailable: true, filtersNotChecked: [] });
+for (const role of ["COORDINATOR", "COORDINATOR_LEAD"]) {
+  test(`[SPM-72 AC1] ${role} cannot open /venues and gets no venue tab`, async ({ page }) => {
+    const calls = [];
+    await installConnectSphereMocks(page, { role });
+    await page.route((url) => url.pathname.startsWith("/api/venues"), (route) => {
+      calls.push(new URL(route.request().url()).pathname);
+      return route.fulfill({ status: 403, json: { error: "Forbidden", code: "FORBIDDEN" } });
+    });
+    await page.goto("/venues");
+
+    await expect(page.getByText("This page is not available for your role.")).toBeVisible();
+    await expect(page.getByRole("link", { name: /venues/i })).toHaveCount(0);
+    expect(calls).toEqual([]);
   });
-  await page.goto("/venues");
-
-  await page.getByLabel("Search", { exact: true }).fill("Hall");
-  await page.getByLabel("Minimum capacity").fill("200");
-  await page.getByLabel("Facility").fill("Stage");
-  await page.getByRole("button", { name: "Apply filters" }).click();
-
-  await expect.poll(() => requests.at(-1)).toEqual({ search: "Hall", minCapacity: "200", facility: "Stage" });
-  await expect(page.getByText("No venues match these filters")).toBeVisible();
-});
+}
 
 // ---------- SPM-74 availability calendar ----------
 
@@ -340,9 +338,6 @@ async function routeAvailability(page, { status = 200, body } = {}) {
   const requests = [];
   await page.route("**/api/venues**", (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/venues") {
-      return json(route, { venues: [{ venueId: 45, name: "Synthetic Grand Hall", address: "1 Road" }, { venueId: 46, name: "Synthetic Seminar Centre", address: "2 Road" }], detailsAvailable: true, filtersNotChecked: [] });
-    }
     if (url.pathname === "/api/venues/manage/options") {
       return json(route, { venues: [{ venueId: 45, name: "Synthetic Grand Hall", status: "ACTIVE" }, { venueId: 46, name: "Synthetic Seminar Centre", status: "ACTIVE" }] });
     }
@@ -360,12 +355,14 @@ async function routeAvailability(page, { status = 200, body } = {}) {
 const pinClock = (page) => page.clock.setFixedTime(new Date("2026-11-03T10:00:00+08:00"));
 const calendarRegion = (page) => page.getByRole("region", { name: "Venue availability calendar" });
 const openDay = async (page, day) => {
-  await calendarRegion(page).locator(".cal-month-day:not(.other-month)").filter({ hasText: new RegExp(`^${day}$`) }).click();
+  await calendarRegion(page).locator(".cal-month-day:not(.other-month) .cal-month-day-number").filter({ hasText: new RegExp(`^${day}$`) }).click();
 };
 
+// Coordinators see the same calendar inside each event's venue section
+// (event-venue-options.spec.mjs); /venues is Venue Staff only.
 test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active and expired holds, and checks a period", async ({ page }) => {
   await pinClock(page);
-  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   const requests = await routeAvailability(page);
   await page.goto("/venues?view=availability");
 
@@ -404,8 +401,11 @@ test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active an
   await page.getByLabel("End", { exact: true }).fill("14:00");
   await page.getByRole("button", { name: "Check period" }).click();
   await expect.poll(() => requests.at(-1)).toMatchObject({ checkStart: "2026-11-04T12:44:00+08:00", checkEnd: "2026-11-04T14:00:00+08:00" });
-  await expect(page.getByText("Requested period: Unavailable – booking")).toBeVisible();
-  await expect(page.getByText(/This period cannot be requested/)).toBeVisible();
+  // The period shows on the timeline (developer request of 24 October 2026):
+  // a labelled block whose hover detail gives the result, red where it overlaps.
+  const requested = calendarRegion(page).locator(".cal-overlay--request .cal-overlay-label");
+  await expect(requested).toHaveAttribute("aria-label", /^Requested period · 12:44–14:00\. .*Unavailable – booking/s);
+  await expect(calendarRegion(page).locator(".cal-overlay--conflict")).not.toHaveCount(0);
 });
 
 test("[SPM-74] the calendar's year view loads the whole year and its legend names venues", async ({ page }) => {
@@ -453,12 +453,15 @@ test("[SPM-74 TC8][TC14] blocks show reason and note; an empty range says the ve
   await expect(details.getByText("Reason: Maintenance")).toBeVisible();
   await expect(details.getByText("Note: Air-conditioning service")).toBeVisible();
   await details.getByRole("button", { name: "Close dialog" }).click();
-  await expect(page.getByText("No bookings, holds or blocks in this period. The venue is available for the whole range.")).toBeVisible();
+  // An empty range: the timeline shows no entry for the free venue, and there
+  // are no summary cards (developer request of 24 October 2026).
+  await expect(calendarRegion(page).getByLabel(/Synthetic Grand Hall/)).toHaveCount(0);
+  await expect(page.getByLabel("Venue summaries")).toHaveCount(0);
 });
 
 test("[SPM-74 TC13] a failed load shows an error and no calendar, with retry", async ({ page }) => {
   await pinClock(page);
-  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeAvailability(page, { status: 503, body: { error: "Venue availability cannot be loaded right now, so no venue is shown as available. Try again shortly.", code: "AVAILABILITY_UNAVAILABLE" } });
   await page.goto("/venues?view=availability&venueId=45");
 
@@ -474,7 +477,7 @@ test("[SPM-74 TC11] Coordinator Leads have no availability view", async ({ page 
   await routeAvailability(page);
   await page.goto("/venues?view=availability");
 
-  await expect(page.getByRole("heading", { name: "Venue Catalogue", exact: true })).toBeVisible();
+  await expect(page.getByText("This page is not available for your role.")).toBeVisible();
   await expect(calendarRegion(page)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Availability", exact: true })).toHaveCount(0);
 });
