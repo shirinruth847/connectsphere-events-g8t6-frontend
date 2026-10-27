@@ -37,11 +37,13 @@ test('[SPM-155] no target, an unknown page or a bad event ID gets no link', () =
 test('[SPM-192 AC7] a notification that is no longer available is explained in the reader\'s terms', () => {
   assert.equal(notificationGoneText('ATTENDEE'), 'That notification is no longer available. It may be about an event you are no longer registered or waitlisted for.');
   assert.equal(notificationGoneText('ORGANISER'), 'That notification is no longer available. It may be because you no longer have access to this event.');
+  assert.equal(notificationGoneText('COORDINATOR'), 'This event is no longer assigned to you.');
   assert.equal(notificationGoneText(null), 'That notification is no longer available.');
 });
-test('[SPM-192] the empty inbox names what each role is told about', () => {
+test('[SPM-192 / SPM-193] the empty inbox names what each role is told about', () => {
   assert.match(emptyInboxText('ATTENDEE'), /registration confirmations/);
   assert.match(emptyInboxText('ORGANISER'), /^Updates about your event requests/);
+  assert.match(emptyInboxText('COORDINATOR'), /^Updates about events assigned to you/);
   assert.equal(emptyInboxText(undefined), 'Updates about your events will appear here.');
 });
 
@@ -108,13 +110,19 @@ test('[SPM-155 TC-08] the confirmed read state replaces only that notification',
   assert.deepEqual([updated[1].is_read, updated[1].read_at], [true, '2026-10-21T04:00:00Z']);
 });
 
-test('[SPM-155 TC-12 / SPM-192] attendees and organisers return to /notifications after login; other roles do not yet', () => {
+test('[SPM-155 TC-12 / SPM-192 / SPM-193] attendees, organisers and coordinators return to /notifications after login; other roles do not yet', () => {
   assert.equal(ROUTES.notifications, '/notifications');
-  for (const role of ['ATTENDEE', 'ORGANISER']) {
+  for (const role of ['ATTENDEE', 'ORGANISER', 'COORDINATOR']) {
     assert.equal(canViewPath(role, '/notifications'), true, role);
     assert.equal(postLoginPath({ user_id: 1, name: 'A', email: 'a@example.com', role }, '/notifications'), '/notifications', role);
   }
-  for (const role of ['COORDINATOR', 'COORDINATOR_LEAD', 'VENUE_STAFF', 'TECH_SUPPORT', 'SAFETY_OFFICER']) {
+  // The Coordinator Lead is out of SPM-193's scope.
+  for (const role of ['COORDINATOR_LEAD', 'VENUE_STAFF', 'TECH_SUPPORT', 'SAFETY_OFFICER']) {
     assert.equal(canViewPath(role, '/notifications'), false, role);
   }
+});
+
+test('[SPM-193 TC-11] a coordinator\'s notification opens the event workspace', () => {
+  assert.equal(notificationTargetHref({ page: 'EVENT_WORKSPACE', event_id: 81 }), '/events/81');
+  assert.equal(canViewPath('COORDINATOR', '/events/81'), true);
 });
