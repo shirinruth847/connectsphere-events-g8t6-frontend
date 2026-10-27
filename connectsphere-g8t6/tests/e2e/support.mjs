@@ -116,6 +116,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
       const id = Number(coordinatorChange[1]);
       const reassign = payload.expectedCoordinatorId !== undefined;
+      if (reassign && !request.headers()['idempotency-key']) return json({ error: "Send a command key.", code: "VALIDATION_FAILED" }, 400);
       const event = (reassign ? state.assignments : state.queueEvents || []).find(event => event.eventId === id);
       if (!event) return json({ error: "Event not found.", code: "EVENT_NOT_FOUND" }, 404);
       if (reassign && event.coordinatorId !== payload.expectedCoordinatorId) return json({ error: "Assignment changed. Refresh and try again.", code: "ASSIGNMENT_CHANGED" }, 409);
@@ -126,7 +127,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       state.assignments = [...state.assignments.filter(other => other.eventId !== id), assigned];
       state.queueEvents = (state.queueEvents || []).filter(other => other.eventId !== id);
       target.events.push(assigned);
-      return json({ event: assigned, coordinator: { coordinatorId: target.coordinatorId, name: target.name } });
+      return json({ event: assigned, coordinator: { coordinatorId: target.coordinatorId, name: target.name }, ...(reassign ? { replayed: false } : {}) });
     }
     if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
     // Attendees land on Event Discovery; specs needing events route it themselves.
