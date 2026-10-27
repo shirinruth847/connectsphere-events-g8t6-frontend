@@ -16,7 +16,9 @@ const organiserItems: NavigationItem[] = [
 const mainItems: Record<UserRole, NavigationItem[]> = {
   ORGANISER: organiserItems,
   COORDINATOR: [
-    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }
+    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard },
+    // The same inbox attendees and organisers use (SPM-193).
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
   COORDINATOR_LEAD: [
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
@@ -59,9 +61,10 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === ROUTES.notifications) return "notifications";
     return "home";
   }
+  // Only roles with an inbox reach /notifications; the others are refused before the shell renders.
+  if (pathname === ROUTES.notifications) return "notifications";
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";
-  if (pathname === ROUTES.notifications) return "notifications";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "requests";
   if (pathname === ROUTES.dashboard && scope !== "MINE") return "home";
   return "requests";
