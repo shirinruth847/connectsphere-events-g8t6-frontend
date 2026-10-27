@@ -201,8 +201,16 @@ of the five latest notifications; **See more** and the attendee sidebar's
 - Components are role-agnostic in `components/notifications/`. A role gets
   the inbox by joining `NOTIFICATION_ROLES` in `lib/auth.ts` (used by
   `canViewPath` and the page's `DashboardWorkspace`), linking its sidebar tab
-  and placing `NotificationsBell` on its pages. Organisers joined with SPM-192;
-  coordinators follow with SPM-193.
+  and placing `NotificationsBell` on its pages. Organisers joined with SPM-192
+  (Updates after the search box on `/dashboard`); coordinators with SPM-193
+  (Updates in the Assigned Events header, Notifications sidebar tab). The
+  Coordinator Lead and other staff roles have no inbox yet and get 403.
+- A coordinator sees notifications only for events assigned to them now, plus
+  the "Event assignment ended" notice (`ASSIGNMENT_ENDED`) after a
+  reassignment; the backend decides. Go to Event on that notice opens
+  `/events/<id>`, which shows "Event not available"; Go to Event on a notice
+  hidden since the list loaded removes it with "This event is no longer
+  assigned to you."
 - Read state and the unread count change only after the backend confirms them.
   The count refreshes on window focus, on tab visibility and after each read
   action; nothing promises instant delivery. After an action that writes a
