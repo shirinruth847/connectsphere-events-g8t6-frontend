@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { attachScreenshot, installLoginMock, makeDraft } from './support.mjs';
+import { attachScreenshot, installConnectSphereMocks, installLoginMock, makeDraft } from './support.mjs';
 import { cards, installInbox, makeNotification, panel, unreadCards, updatesButton } from './spm-155-mocks.mjs';
 
 // Mocked journeys for organiser notifications (SPM-192). Organisers use the
@@ -179,3 +179,158 @@ test('[SPM-192 UI] mobile: the organiser header keeps Updates, and the panel fit
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await attachScreenshot(testInfo, page, 'organiser-mobile-panel');
 });
+
+test('[SPM-192 AC10] an uncertain reassignment keeps its command across reload and replays after an intervening change', async ({ page }, testInfo) => {
+  const state = await installConnectSphereMocks(page, { role: 'COORDINATOR_LEAD' });
+  const assigned = { ...makeDraft(), eventId: 81, requestId: 'REQ-000081', title: 'Replay check', status: 'PLANNING',
+    coordinatorId: 21, coordinatorName: 'Coordinator A', supervisingLeadId: 11, hasScheduleConflict: false };
+  state.assignments = [assigned];
+  state.coordinators = [{ coordinatorId: 21, name: 'Coordinator A', events: [assigned] }, { coordinatorId: 22, name: 'Coordinator B', events: [] }];
+  const commands = [];
+  await page.route('**/api/events/81/coordinator', async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fallback();
+    commands.push({ key: route.request().headers()['idempotency-key'], body: route.request().postDataJSON() });
+    // The original command committed A -> B but its response was lost; another
+    // command has since restored A. The saved command must still replay.
+    if (commands.length === 1) return route.abort('failed');
+    if (commands.length === 2) return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      event: { eventId: 81, coordinatorId: 22 }, coordinator: { coordinatorId: 22, name: 'Coordinator B' }, replayed: true,
+    }) });
+  });
+  await page.goto('/assignments');
+  const card = page.getByRole('article', { name: 'Replay check' });
+  await card.getByRole('combobox').selectOption('22');
+  await card.getByRole('button', { name: 'Reassign coordinator', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm assignment' }).click();
+  await expect(card.getByRole('alert')).toContainText('result is unconfirmed');
+  await expect(page.getByText('Coordinator updated for REQ-000081.')).toHaveCount(0);
+  await attachScreenshot(testInfo, page, 'reassignment-recovery-desktop');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(card.getByRole('combobox')).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await attachScreenshot(testInfo, page, 'reassignment-recovery-mobile');
+  await card.getByRole('button', { name: 'Retry previous reassignment' }).click();
+  // A malformed success body also leaves the outcome uncertain and must not
+  // clear its key or announce a fresh successful reassignment.
+  await expect(card.getByRole('alert')).toContainText('result is unconfirmed');
+  await expect(page.getByText('Coordinator updated for REQ-000081.')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Retry previous reassignment' }).click();
+  await expect(page.getByText('Previous reassignment confirmed for REQ-000081. Current assignments refreshed.')).toBeVisible();
+  await expect(card).toContainText('Current coordinator: Coordinator A');
+  await expect(card.getByRole('button', { name: 'Retry previous reassignment' })).toHaveCount(0);
+  expect(commands).toHaveLength(3);
+  expect(commands[0].key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
+  expect(commands[1]).toEqual(commands[0]);
+  expect(commands[2]).toEqual(commands[0]);
+  await expect(card.getByRole('combobox')).toBeEnabled();
+});
+
+test('[SPM-192 AC10] an expired reassignment session preserves the command for the same account', async ({ page }) => {
+  const state = await installConnectSphereMocks(page, { role: 'COORDINATOR_LEAD' });
+  const assigned = { ...makeDraft(), eventId: 82, requestId: 'REQ-000082', title: 'Session replay check', status: 'PLANNING',
+    coordinatorId: 21, coordinatorName: 'Coordinator A', supervisingLeadId: 11, hasScheduleConflict: false };
+  state.assignments = [assigned];
+  state.coordinators = [{ coordinatorId: 21, name: 'Coordinator A', events: [assigned] }, { coordinatorId: 22, name: 'Coordinator B', events: [] }];
+  const keys = [];
+  await page.route('**/api/events/82/coordinator', async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fallback();
+    keys.push(route.request().headers()['idempotency-key']);
+    return route.fulfill({ status: keys.length === 1 ? 401 : 200, contentType: 'application/json', body: JSON.stringify(
+      keys.length === 1 ? { error: 'Please log in.', code: 'UNAUTHENTICATED' }
+        : { event: { eventId: 82, coordinatorId: 22 }, coordinator: { coordinatorId: 22, name: 'Coordinator B' }, replayed: true }) });
+  });
+  await page.goto('/assignments');
+  const card = page.getByRole('article', { name: 'Session replay check' });
+  await card.getByRole('combobox').selectOption('22');
+  await card.getByRole('button', { name: 'Reassign coordinator', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm assignment' }).click();
+  await expect(page).toHaveURL(/\/login\?next=%2Fassignments/);
+  // installConnectSphereMocks restores the synthetic account on navigation;
+  // real sign-in/redirect handling has separate shared authentication coverage.
+  await page.goto('/assignments');
+  await card.getByRole('button', { name: 'Retry previous reassignment' }).click();
+  await expect(page.getByText('Previous reassignment confirmed for REQ-000082. Current assignments refreshed.')).toBeVisible();
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
+});
+
+for (const originalOutcome of ['success', 'rejection']) {
+  test(`[SPM-192 AC10] a delayed ${originalOutcome} from an earlier view preserves a newer command`, async ({ page }) => {
+    const state = await installConnectSphereMocks(page, { role: 'COORDINATOR_LEAD' });
+    const event = { ...makeDraft(), eventId: 83, requestId: 'REQ-000083', title: 'Overlapping responses', status: 'PLANNING',
+      coordinatorId: 21, coordinatorName: 'Coordinator A', supervisingLeadId: 11, hasScheduleConflict: false };
+    state.assignments = [event];
+    state.coordinators = [{ coordinatorId: 21, name: 'Coordinator A', events: [event] }, { coordinatorId: 22, name: 'Coordinator B', events: [] }];
+    const storageKey = 'connectsphere:recovery:reassignment:11:83';
+    const commands = [];
+    let releaseOriginal;
+    let releaseNew;
+    await page.route('**/api/events/83/coordinator', async (route) => {
+      if (route.request().method() === 'OPTIONS') return route.fallback();
+      commands.push({ key: route.request().headers()['idempotency-key'], body: route.request().postDataJSON() });
+      const attempt = commands.length;
+      if (attempt === 1) {
+        await new Promise((resolve) => { releaseOriginal = resolve; });
+        if (originalOutcome === 'rejection') {
+          return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Coordinator was busy.', code: 'COORDINATOR_CONFLICT' }) });
+        }
+      }
+      if (attempt === 3) {
+        await new Promise((resolve) => { releaseNew = resolve; });
+        return route.abort('failed').catch(() => {});
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        event: { eventId: 83, coordinatorId: 22 }, coordinator: { coordinatorId: 22, name: 'Coordinator B' }, replayed: attempt !== 1,
+      }) });
+    });
+    const card = page.getByRole('article', { name: event.title });
+    const sendNewCommand = async () => {
+      await card.getByRole('combobox').selectOption('22');
+      await card.getByRole('button', { name: 'Reassign coordinator', exact: true }).click();
+      await page.getByRole('button', { name: 'Confirm assignment', exact: true }).click();
+    };
+    try {
+      await page.goto('/dashboard');
+      await page.locator('aside').getByRole('link', { name: 'Assignments', exact: true }).click();
+      await sendNewCommand();
+      await expect.poll(() => commands.length).toBe(1);
+      // Browser history can leave a pending modal. The original fetch still
+      // exists while a remounted view recovers its stored command.
+      await page.goBack();
+      await expect(page).toHaveURL(/\/dashboard$/);
+      await page.goForward();
+      await card.getByRole('button', { name: 'Retry previous reassignment' }).click();
+      await expect(page.getByText('Previous reassignment confirmed for REQ-000083. Current assignments refreshed.')).toBeVisible();
+      await sendNewCommand();
+      await expect.poll(() => commands.length).toBe(3);
+      const pendingNew = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), storageKey);
+      expect(pendingNew.key).toBe(commands[2].key);
+      expect(pendingNew.key).not.toBe(commands[0].key);
+
+      const oldResponse = page.waitForResponse((response) => response.url().endsWith('/api/events/83/coordinator')
+        && response.status() === (originalOutcome === 'success' ? 200 : 409));
+      releaseOriginal();
+      await (await oldResponse).finished();
+      // Let the old fetch's body handling and React callbacks settle.
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      expect(await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), storageKey)).toEqual(pendingNew);
+      await expect(page.getByText('Coordinator updated for REQ-000083.', { exact: true })).toHaveCount(0);
+
+      releaseNew();
+      await expect(card.getByRole('alert')).toContainText('result is unconfirmed');
+      await page.reload();
+      await expect(card.getByRole('combobox')).toBeDisabled();
+      await card.getByRole('button', { name: 'Retry previous reassignment' }).click();
+      await expect(page.getByText('Previous reassignment confirmed for REQ-000083. Current assignments refreshed.')).toBeVisible();
+      expect(commands).toHaveLength(4);
+      expect(commands[1]).toEqual(commands[0]);
+      expect(commands[3]).toEqual(commands[2]);
+      await expect(card.getByRole('combobox')).toBeEnabled();
+    } finally {
+      releaseOriginal?.();
+      releaseNew?.();
+    }
+  });
+}
