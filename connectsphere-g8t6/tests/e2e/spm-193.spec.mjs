@@ -179,7 +179,56 @@ test('[SPM-193 AC9 / TC-12] Go to Event on a notice hidden since the list loaded
   await cards(page).first().getByRole('button', { name: /^Go to Event/ }).click();
   await expect(page.getByText('This event is no longer assigned to you.', { exact: true })).toBeVisible();
   await expect(cards(page)).toHaveCount(1);
+  await expect(page.getByText('1 unread', { exact: true })).toBeVisible();
+  expect(inbox.listRequests).toHaveLength(2);
   await expect(page).toHaveURL(/\/notifications$/);
+});
+
+test('[SPM-193 AC10, AC11] hiding the last notification refreshes the inbox to zero unread', async ({ page }) => {
+  const { inbox } = await installInbox(page, {
+    role: 'COORDINATOR',
+    notifications: [coordinatorNotification(1, 81)],
+  });
+  await page.goto('/notifications');
+  await expect(page.getByText('1 unread', { exact: true })).toBeVisible();
+  inbox.gone.add(1);
+
+  await cards(page).first().getByRole('button', { name: /^Go to Event/ }).click();
+
+  await expect(page.getByText('This event is no longer assigned to you.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No notifications yet', { exact: true })).toBeVisible();
+  await expect(page.getByText('0 unread', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mark all as read', exact: true })).toHaveCount(0);
+  expect(inbox.listRequests).toHaveLength(2);
+  expect(inbox.readAllRequests).toBe(0);
+  await expect(page).toHaveURL(/\/notifications$/);
+});
+
+test('[SPM-193 AC10, AC11] an unavailable panel notice refreshes the list and badge with newly arrived notifications', async ({ page }) => {
+  const { inbox } = await installInbox(page, {
+    role: 'COORDINATOR',
+    notifications: [coordinatorNotification(1, 81), coordinatorNotification(2, 81)],
+  });
+  await page.goto('/dashboard');
+  await expect(updatesButton(page)).toHaveAccessibleName('Updates, 2 unread');
+  await updatesButton(page).click();
+  await expect(panel(page).locator('article')).toHaveCount(2);
+  // Both old notices become hidden, while three new notices arrive. The
+  // correct server count is 3; simply decrementing the old count would give 1.
+  inbox.gone.add(1);
+  inbox.gone.add(2);
+  inbox.items.push(coordinatorNotification(3, 82), coordinatorNotification(4, 83), coordinatorNotification(5, 84));
+
+  await panel(page).locator('article').first().getByRole('button', { name: /^Go to Event/ }).click();
+
+  await expect(panel(page).getByText('This event is no longer assigned to you.', { exact: true })).toBeVisible();
+  await expect(panel(page).getByText('3 New', { exact: true })).toBeVisible();
+  await expect(panel(page).locator('article h3')).toHaveText([/Coordinator update 5/, /Coordinator update 4/, /Coordinator update 3/]);
+  await expect(updatesButton(page)).toHaveAccessibleName('Updates, 3 unread');
+  expect(inbox.listRequests).toHaveLength(2);
+  expect(inbox.readRequests).toEqual([2]);
+  expect(inbox.readAllRequests).toBe(0);
+  await expect(page).toHaveURL(/\/dashboard$/);
 });
 
 test('[SPM-193] signed out, a coordinator returns to /notifications after login and sees the coordinator\'s empty inbox', async ({ page }) => {
