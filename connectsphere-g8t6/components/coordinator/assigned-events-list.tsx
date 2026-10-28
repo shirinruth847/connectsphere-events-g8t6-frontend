@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PageContent } from "@/components/layout/page-content";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { AlertBanner, Button, buttonClasses, EmptyState, ReferenceIdTag, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
@@ -90,16 +91,20 @@ export function AssignedEventsList() {
         title={`${ROLE_LABELS.COORDINATOR} dashboard`}
         description="Events a Coordinator Lead has assigned to you, soonest first. Open one to review it, correct its title, purpose or description, and see its change history."
         action={
-          state.status === "ready" ? (
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-control bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
-                <strong className="block text-xl font-bold text-primary">{events.length}</strong>Assigned
-              </span>
-              <span className={`rounded-control px-3 py-2 text-xs ${needsAction ? "bg-error-container text-on-error-container" : "bg-surface-container-low text-on-surface-variant"}`}>
-                <strong className={`block text-xl font-bold ${needsAction ? "" : "text-primary"}`}>{needsAction}</strong>Awaiting clarification
-              </span>
-            </div>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            {state.status === "ready" ? (
+              <>
+                <span className="rounded-control bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
+                  <strong className="block text-xl font-bold text-primary">{events.length}</strong>Assigned
+                </span>
+                <span className={`rounded-control px-3 py-2 text-xs ${needsAction ? "bg-error-container text-on-error-container" : "bg-surface-container-low text-on-surface-variant"}`}>
+                  <strong className={`block text-xl font-bold ${needsAction ? "" : "text-primary"}`}>{needsAction}</strong>Awaiting clarification
+                </span>
+              </>
+            ) : null}
+            {/* The coordinator's Updates button and panel, shared with attendees and organisers (SPM-193). */}
+            <NotificationsBell />
+          </div>
         }
       >
       <section aria-labelledby="assigned-heading" className="grid gap-4">

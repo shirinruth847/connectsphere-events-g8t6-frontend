@@ -228,6 +228,10 @@ export function useNotificationList({ pageSize, refreshOnReturn }: { pageSize: n
       const error = toApiError(caught);
       if (isGone(error)) {
         dispatch({ type: "removed", id: item.notification_id, text: notificationGoneText(user?.role) });
+        // Reassignment can hide several notices while new ones arrive. Read
+        // the current list/count instead of subtracting one from a stale total;
+        // fetchFirstPage also announces the confirmed count to Updates.
+        await fetchFirstPage({ background: true });
         return "gone";
       }
       dispatch({ type: "notice", notice: { tone: "error", text: `Could not mark "${item.title}" as read. ${error.message}` } });

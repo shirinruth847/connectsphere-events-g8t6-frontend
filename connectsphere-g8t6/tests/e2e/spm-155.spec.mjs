@@ -353,9 +353,9 @@ test('[SPM-155 TC-12] signed out, /notifications returns after login', async ({ 
   expect(state.requestLog.some((entry) => entry.pathname === '/api/auth/me')).toBe(true);
 });
 
-// Organisers joined with SPM-192; coordinators wait for SPM-193.
+// Organisers joined with SPM-192 and coordinators with SPM-193; the Lead has no inbox yet.
 test('[SPM-155] other roles are refused /notifications for now', async ({ page }) => {
-  await installInbox(page, { role: 'COORDINATOR' });
+  await installInbox(page, { role: 'COORDINATOR_LEAD' });
   await page.goto('/notifications');
   await expect(page.getByText('This page is not available for your role.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Notifications', level: 1 })).toHaveCount(0);

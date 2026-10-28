@@ -218,8 +218,16 @@ of the five latest notifications; **See more** and the attendee sidebar's
 - Components are role-agnostic in `components/notifications/`. A role gets
   the inbox by joining `NOTIFICATION_ROLES` in `lib/auth.ts` (used by
   `canViewPath` and the page's `DashboardWorkspace`), linking its sidebar tab
-  and placing `NotificationsBell` on its pages. Organisers joined with SPM-192;
-  coordinators follow with SPM-193.
+  and placing `NotificationsBell` on its pages. Organisers joined with SPM-192
+  (Updates after the search box on `/dashboard`); coordinators with SPM-193
+  (Updates in the Assigned Events header, Notifications sidebar tab). The
+  Coordinator Lead and other staff roles have no inbox yet and get 403.
+- A coordinator sees notifications only for events assigned to them now, plus
+  the "Event assignment ended" notice (`ASSIGNMENT_ENDED`) after a
+  reassignment; the backend decides. Go to Event on that notice opens
+  `/events/<id>`, which shows "Event not available"; Go to Event on a notice
+  hidden since the list loaded removes it with "This event is no longer
+  assigned to you."
 - Read state and the unread count change only after the backend confirms them.
   The count refreshes on window focus, on tab visibility and after each read
   action; nothing promises instant delivery. After an action that writes a
@@ -233,7 +241,9 @@ of the five latest notifications; **See more** and the attendee sidebar's
   without that label, and closing removes the parameters. A notification the
   backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
   navigating, with a role-worded reason (`notificationGoneText`), and a
-  background refresh drops any it no longer returns.
+  background refresh reads the current list and unread count and updates the
+  Updates badge. It can drop other hidden notices and include new arrivals;
+  the client does not estimate the count by subtracting one.
 - Event Discovery and My Events share that dialog
   (`components/attendee/discovery/event-details-dialog.tsx`), and each reads
   its own endpoint through `useAttendeeEvent`. From Event Discovery it reads
@@ -259,6 +269,13 @@ of the five latest notifications; **See more** and the attendee sidebar's
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
+
+SPM-193's user-approved staged delivery explicitly defers technical decision
+notifications (AC6), hold warning/expiry notifications (AC8) and the
+operational-block portion of AC5 until their owning workflows exist. Their
+backend helpers alone do not complete those criteria. See
+[the coordinator test plan](docs/test-plans/spm-193.md) for the scope and stale
+Jira wording; existing venue status changes remain supported.
 
 ## Event venue search and calendar fixes (SPM-72 / SPM-75)
 
