@@ -397,6 +397,9 @@ export function VenueBlocksSection({ venueId, venueName }: { venueId: number; ve
               <BlockIncidents block={block} onRestored={saved} onRefused={refresh} />
             </li>
           ))}
+          {state.data.hasMore ? (
+            <li className="text-xs text-on-surface-variant">Later blocks are not shown. Lift or wait out the earlier ones to see them.</li>
+          ) : null}
         </ul>
       ) : (
         <EmptyState title="No current or upcoming blocks" description="The venue is not blocked. Record a block when it cannot be used for a period, for example for maintenance or a safety issue." />

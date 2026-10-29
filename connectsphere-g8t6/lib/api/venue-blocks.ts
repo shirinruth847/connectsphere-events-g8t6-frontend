@@ -72,6 +72,8 @@ export interface VenueBlockWithIncidents extends VenueBlock {
 export interface VenueBlockList {
   venueId: number;
   venueName: string;
+  // True when the backend left later blocks out of a long list.
+  hasMore?: boolean;
   blocks: VenueBlockWithIncidents[];
 }
 
@@ -118,6 +120,7 @@ export const listVenueBlocks = async (venueId: number): Promise<VenueBlockList> 
   return {
     venueId: data.venueId ?? venueId,
     venueName: data.venueName ?? "",
+    hasMore: data.hasMore === true,
     blocks: Array.isArray(data.blocks)
       ? data.blocks.map((block) => ({ ...block, incidents: Array.isArray(block.incidents) ? block.incidents : [] }))
       : [],

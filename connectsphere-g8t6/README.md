@@ -346,6 +346,12 @@ Venue Staff only. No new route: the screens extend existing pages.
   Lead sees the card read-only, without the options. The organiser view is
   SPM-199's and is unchanged.
 
+- **Closed incidents:** the backend closes an incident when its booking or the
+  event ends. The card then reads "Venue incident closed" with the backend's
+  resolution label (for example "Booking released") and no restore action; a
+  restored one reads "Venue available again". A long block list that the
+  backend cut short (`hasMore`) says that later blocks are not shown.
+
 Every change is shown after the backend commits it, then the list reloads. The
-backend needs migrations `20261029130000`, `20261029140000` and
-`20261029150000`.
+backend needs migrations `20261029130000`, `20261029140000`, `20261029150000`
+and `20261029160000`.

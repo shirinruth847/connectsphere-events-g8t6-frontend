@@ -17,12 +17,15 @@ const INCIDENT_CHIPS: Record<string, string> = {
   OPEN: "bg-error-container text-on-error-container",
   RESOLVED: "bg-success-container text-on-success-container",
 };
+// Closed because the booking or event ended, not restored: neutral tones.
+const CLOSED_CHIP = "bg-surface-container-high text-on-surface-variant";
 
 export function IncidentChip({ incident }: { incident: VenueIncident }) {
   const label = incident.status === "RESOLVED" && incident.resolutionLabel ? incident.resolutionLabel : incident.statusLabel;
+  const tones = incident.status === "RESOLVED" && incident.resolution !== "RESTORED" ? CLOSED_CHIP : INCIDENT_CHIPS[incident.status];
   return (
     <span
-      className={`inline-flex w-fit items-center rounded-chip px-2 py-1 text-[11px] font-semibold uppercase tracking-label ${INCIDENT_CHIPS[incident.status] ?? "bg-surface-container-high text-on-surface-variant"}`}
+      className={`inline-flex w-fit items-center rounded-chip px-2 py-1 text-[11px] font-semibold uppercase tracking-label ${tones ?? "bg-surface-container-high text-on-surface-variant"}`}
       title={INCIDENT_CHIPS[incident.status] ? undefined : `Incident status "${incident.status}" is not recognised`}
     >
       {label}
@@ -99,7 +102,7 @@ export function RestoreIncidentButton({ incident, onRestored, onRefused }: {
       </Button>
       {incident.canBeRestored !== true ? (
         <span id={`restore-reason-${incident.incidentId}`} className="sr-only">
-          {incident.canBeRestored === false ? "Part of the booking's time is still blocked." : "Availability could not be checked."}
+          {incident.canBeRestored === false ? "This booking cannot be restored now." : "Availability could not be checked."}
         </span>
       ) : null}
       <Dialog
@@ -156,19 +159,22 @@ export function BookingIncidentCard({ incident, audience, onRestored, onRefused 
   onRefused?: () => void;
 }) {
   const open = incident.status === "OPEN";
+  // A closed incident was either restored, or closed because the booking or
+  // the event ended (the chip shows the backend's resolution label).
+  const restored = incident.resolution === "RESTORED";
   const showsActions = open && audience === "coordinator" && Boolean(incident.actions?.length);
   return (
     <div
       className={`grid gap-3 rounded-control p-3 ${open ? "bg-error-container/50" : "bg-surface-container-lowest"}`}
       role="group"
-      aria-label={open ? "Venue unavailable" : "Venue incident resolved"}
+      aria-label={open ? "Venue unavailable" : restored ? "Venue incident resolved" : "Venue incident closed"}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-          <span aria-hidden="true" className={`grid h-7 w-7 place-items-center rounded-control ${open ? "bg-error text-on-primary" : "bg-success-container text-on-success-container"}`}>
-            <Icon name={open ? "warning" : "check"} size={16} />
+          <span aria-hidden="true" className={`grid h-7 w-7 place-items-center rounded-control ${open ? "bg-error text-on-primary" : restored ? "bg-success-container text-on-success-container" : "bg-surface-container-high text-on-surface-variant"}`}>
+            <Icon name={open ? "warning" : restored ? "check" : "info"} size={16} />
           </span>
-          {open ? "Venue unavailable during this booking" : "Venue available again"}
+          {open ? "Venue unavailable during this booking" : restored ? "Venue available again" : "Venue incident closed"}
         </p>
         <IncidentChip incident={incident} />
       </div>

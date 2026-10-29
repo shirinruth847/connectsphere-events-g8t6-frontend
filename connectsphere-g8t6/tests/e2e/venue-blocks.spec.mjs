@@ -44,7 +44,7 @@ async function routeVenuePage(page, state) {
     if (url.pathname === "/api/venues/7/photos") return json(route, { photos: [] });
     if (url.pathname === "/api/venues/7/blocks" && method === "GET") {
       if (state.blocksUnavailable) return json(route, { error: "The venue calendar cannot be read or saved right now, so nothing was changed. Try again shortly.", code: "VENUE_CALENDAR_UNAVAILABLE" }, 503);
-      return json(route, { venueId: 7, venueName: VENUE.name, blocks: state.blocks });
+      return json(route, { venueId: 7, venueName: VENUE.name, blocks: state.blocks, hasMore: Boolean(state.hasMore) });
     }
     if (url.pathname === "/api/venues/7/blocks" && method === "POST") {
       state.blocks = [{ ...block({ ...body }), incidents: [incident()] }];
@@ -239,4 +239,41 @@ test("[SPM-195] the blocks section works at mobile width", async ({ page }) => {
   await section.evaluate((root) => root.remove());
   const withoutSection = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(withSection).toBe(withoutSection);
+});
+
+test("[SPM-195] an incident closed because its booking ended offers no restore, and a cut list says so", async ({ page }) => {
+  const closed = incident({
+    status: "RESOLVED", statusLabel: "Resolved", resolution: "RELEASED", resolutionLabel: "Booking released",
+    resolvedAt: "2030-03-02T00:00:00.000Z", canBeRestored: null, restoreLabel: null,
+  });
+  const state = { requests: [], hasMore: true, blocks: [{ ...block(), incidents: [closed] }] };
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeVenuePage(page, state);
+  await page.goto("/venues/7");
+  const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "Operational blocks" }) });
+  await expect(section.getByText("Booking released")).toBeVisible();
+  await expect(section.getByRole("button", { name: "Restore booking" })).toHaveCount(0);
+  await expect(section.getByText("Later blocks are not shown.", { exact: false })).toBeVisible();
+});
+
+test("[SPM-195] a rejected booking shows its incident as closed, not as available again", async ({ page }) => {
+  const venue = { venueId: 7, name: VENUE.name, address: VENUE.address, maxCapacity: 500, operatingHours: "08:00-22:00", setupTurnaroundMinutes: null, roomId: 70, roomLayoutType: "Theater", roomCapacity: 500 };
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await page.route("**/api/venues/bookings/events/42", (route) => json(route, {
+    event: { eventId: 42, requestId: "REQ-000042", title: "Synthetic planning forum", status: "PLANNING", eventType: null, eventTypeLabel: null,
+      purpose: "Planning", description: null, startDatetime: "2030-03-10T01:00:00.000Z", endDatetime: "2030-03-10T09:00:00.000Z",
+      expectedAttendance: 120, preferredLayoutType: "THEATRE", accessibilityNeeds: [], submittedAt: null, organisationName: null, coordinatorName: "Synthetic Coordinator" },
+    bookings: [{
+      bookingId: 900, label: null, status: "REJECTED", statusLabel: "Rejected", venueId: 7, venueName: VENUE.name,
+      startDatetime: "2030-03-10T06:00:00.000Z", endDatetime: "2030-03-10T08:00:00.000Z", expectedAttendance: 120,
+      submittedAt: "2030-02-01T00:00:00.000Z", venue, layoutType: "Theater", requiredFacilities: [], accessibilityRequirements: [],
+      specialRequirements: null, rejectionReason: "Venue under maintenance",
+      incident: incident({ status: "RESOLVED", statusLabel: "Resolved", resolution: "RELEASED", resolutionLabel: "Booking released", resolvedAt: "2030-03-02T00:00:00.000Z", canBeRestored: null, restoreLabel: null }),
+    }],
+  }));
+  await page.goto("/events/42?booking=900");
+  const card = page.getByRole("group", { name: "Venue incident closed" });
+  await expect(card.getByText("Booking released")).toBeVisible();
+  await expect(card.getByText("Venue available again")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Restore booking" })).toHaveCount(0);
 });
