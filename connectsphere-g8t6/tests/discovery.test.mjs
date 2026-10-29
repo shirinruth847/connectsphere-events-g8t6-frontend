@@ -11,15 +11,16 @@ const event = (eventId, title = `Event ${eventId}`) => ({ eventId, title, descri
 test('[SPM-34 AC3] OPEN shows Registration Open and Register Now', () => {
  assert.equal(getAvailabilityPresentation('OPEN').label, 'Registration Open');
  assert.equal(isRegistrationEnabled('OPEN'), true);
- assert.deepEqual(getRegistrationAction({ registrationAvailability: 'OPEN', registrationOpenAt: null }, NOW), { label: 'Register Now', variant: 'primary' });
+ // SPM-134: Register Now is a real action, so it carries no unavailable note.
+ assert.deepEqual(getRegistrationAction({ registrationAvailability: 'OPEN', registrationOpenAt: null }, NOW), { kind: 'register', label: 'Register Now', variant: 'primary' });
 });
 test('[SPM-34 AC3] FULL_WAITLIST shows Full - Waitlist and Join Waitlist', () => {
  assert.equal(getAvailabilityPresentation('FULL_WAITLIST').label, 'Full - Waitlist');
- assert.equal(getRegistrationAction({ registrationAvailability: 'FULL_WAITLIST', registrationOpenAt: null }, NOW).label, 'Join Waitlist');
+ assert.deepEqual(getRegistrationAction({ registrationAvailability: 'FULL_WAITLIST', registrationOpenAt: null }, NOW), { kind: 'waitlist', label: 'Join Waitlist', variant: 'primary', unavailableNote: "Joining the waitlist isn't available in ConnectSphere yet." });
 });
 test('[SPM-34 AC3] CLOSED before the window opens offers a notify action', () => {
  assert.equal(getAvailabilityPresentation('CLOSED').label, 'Registration Closed');
- assert.deepEqual(getRegistrationAction({ registrationAvailability: 'CLOSED', registrationOpenAt: '2026-10-25T00:00:00Z' }, NOW), { label: 'Notify when registration opens', variant: 'secondary' });
+ assert.deepEqual(getRegistrationAction({ registrationAvailability: 'CLOSED', registrationOpenAt: '2026-10-25T00:00:00Z' }, NOW), { kind: 'notify', label: 'Notify when registration opens', variant: 'secondary', unavailableNote: "Registration reminders aren't available in ConnectSphere yet." });
 });
 test('[SPM-34 AC3] CLOSED after the window, or with no opening time, offers no action', () => {
  assert.equal(getRegistrationAction({ registrationAvailability: 'CLOSED', registrationOpenAt: '2026-10-01T00:00:00Z' }, NOW), null);

@@ -43,15 +43,29 @@ async function installDiscoveryMocks(page, { pages = { '': { events: [], nextCur
 
 const card = (page, title) => page.getByRole('article', { name: title, exact: true });
 
-const UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
+// Waitlist and notify still have no endpoints, so each says why (SPM-134 made
+// Register Now a real action; see attendee-registration.spec.mjs).
+const UNAVAILABLE_NOTES = {
+  'Join Waitlist': "Joining the waitlist isn't available in ConnectSphere yet.",
+  'Notify when registration opens': "Registration reminders aren't available in ConnectSphere yet.",
+};
 
 // The action stays focusable, describes why it is unavailable and uses the
 // shared Button's disabled look (no pointer interaction, 55% opacity).
+// Register Now for an OPEN event the attendee holds no place on is a working,
+// enabled action with no unavailable note (SPM-134 AC1/AC2).
+async function expectRegisterNow(scope, title) {
+  const action = scope.getByRole('button', { name: `Register now for ${title}`, exact: true });
+  await expect(action).toBeEnabled();
+  await expect(action).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(scope).not.toContainText("Online sign-up isn't available");
+}
+
 async function expectUnavailableAction(dialog, label) {
   const action = dialog.getByRole('button', { name: label, exact: true });
   await expect(action).toHaveAttribute('aria-disabled', 'true');
   await expect(action).not.toHaveAttribute('disabled');
-  await expect(action).toHaveAccessibleDescription(UNAVAILABLE_NOTE);
+  await expect(action).toHaveAccessibleDescription(UNAVAILABLE_NOTES[label]);
   await expect(action).toHaveCSS('pointer-events', 'none');
   await expect(action).toHaveCSS('opacity', '0.55');
   await expect(dialog).not.toContainText('Registration coming soon');
@@ -105,7 +119,7 @@ test('[SPM-34 AC1] Load more appends the next page without duplicates', async ({
   expect(requests.list).toEqual(['', 'page-2']);
 });
 
-test('[SPM-34 AC3/AC6] details modal shows the latest details and a disabled action', async ({ page }) => {
+test('[SPM-34 AC3/AC6] [SPM-134 AC2] details modal shows the latest details and Register Now', async ({ page }) => {
   const { requests } = await installDiscoveryMocks(page, {
     pages: { '': { events: [makeEvent({ title: 'Old title' })], nextCursor: null } },
     details: { 101: makeEvent({ title: 'SMU Tech Summit', description: 'Updated programme for the summit.' }) },
@@ -122,7 +136,7 @@ test('[SPM-34 AC3/AC6] details modal shows the latest details and a disabled act
   await expect(dialog).toContainText('SMU Computing Club');
   await expect(dialog).toContainText('10 Oct 2026, 08:00 SGT');
   await expect(dialog).toContainText('27 Oct 2026, 23:59 SGT');
-  await expectUnavailableAction(dialog, 'Register Now');
+  await expectRegisterNow(dialog, 'SMU Tech Summit');
   expect(requests.detail).toEqual([101]);
 
   await page.keyboard.press('Escape');
@@ -277,7 +291,7 @@ test('[SPM-44] an attendee opening /events/:id reads only the discovery details 
   await expect(page.getByText('Registration Open', { exact: true })).toBeVisible();
   await expect(page.getByText('SMU Hall A', { exact: true })).toBeVisible();
   await expect(page.getByText('SMU Computing Club', { exact: true })).toBeVisible();
-  await expectUnavailableAction(page.locator('main'), 'Register Now');
+  await expectRegisterNow(page.locator('main'), 'SMU Tech Summit');
   const nav = page.getByRole('navigation', { name: 'Main Navigation', exact: true });
   await expect(nav.getByRole('link', { name: 'Event Discovery', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'Back to Event Discovery', exact: true })).toHaveAttribute('href', '/events');
@@ -495,7 +509,7 @@ test('[SPM-44] should_fit_390px_with_44px_actions_when_viewing_attendee_event_de
   }
   await expect(main.getByText('Registration Open', { exact: true })).toBeVisible();
   await expect(main.getByRole('link', { name: 'Back to Event Discovery', exact: true })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Register Now', exact: true })).toBeVisible();
+  await expect(main.getByRole('button', { name: `Register now for ${LONG_TITLE}`, exact: true })).toBeVisible();
   await expectTouchTargets(page);
 });
 
