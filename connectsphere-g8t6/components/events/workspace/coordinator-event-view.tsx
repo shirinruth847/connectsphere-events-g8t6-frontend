@@ -183,7 +183,8 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
             </ReviewSection>
             <ReviewSection step={5} title="Technical & equipment" action={significantPill}>
-              <RequirementList items={equipmentItems(event)} empty="No equipment was requested." />
+              <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Equipment requirements</h3><RequirementList items={equipmentItems(event)} empty="No equipment was requested." /></div>
+              <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Technical support needs</h3><p className="whitespace-pre-wrap text-sm text-on-surface [overflow-wrap:anywhere]">{event.technicalSupportNeeds || "No technical support needs were provided."}</p></div>
             </ReviewSection>
           </div>
 
@@ -213,6 +214,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               rows={[
                 { icon: "person", label: "Coordinator", value: "You" },
                 { icon: "person", label: "Organiser", value: event.organiser?.name ?? "Not available" },
+                ...(event.organiser?.email ? [{ label: "Organiser email", value: <a className="text-primary underline underline-offset-2 [overflow-wrap:anywhere]" href={`mailto:${event.organiser.email}`}>{event.organiser.email}</a> }] : []),
                 { icon: "organisation", label: "Organisation", value: event.organisation?.name ?? "Not provided" },
                 { icon: "history", label: "Last updated", value: formatTimestamp(event.updatedAt) },
               ]}
