@@ -24,6 +24,7 @@ export interface EventRequest {
   title: string;
   purpose?: string | null;
   description?: string | null;
+  technicalSupportNeeds?: string | null;
   startDatetime?: string | null;
   endDatetime?: string | null;
   expectedAttendance?: number | null;
@@ -63,6 +64,7 @@ export interface EventFormValues {
   title: string;
   purpose: string;
   description: string;
+  technicalSupportNeeds: string;
   startDatetime: string;
   endDatetime: string;
   expectedAttendance: string;
@@ -79,6 +81,7 @@ export interface EventRequestPayload {
   title: string;
   purpose: string | null;
   description: string | null;
+  technicalSupportNeeds: string | null;
   startDatetime: string | null;
   endDatetime: string | null;
   expectedAttendance: number | null;
@@ -182,7 +185,7 @@ export const eventStatusLabel = (event: { status?: string | null; statusLabel?: 
   (event.statusLabel && event.statusLabel !== event.status ? event.statusLabel : null)
   ?? (event.status ? ORGANISER_STATUS_LABELS[event.status as EventStatus] ?? statusPresentation(event.status).label : "Unknown status");
 
-export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
+export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, technicalSupportNeeds: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
 export function validateEventStep(values: EventFormValues, index: number, required = false, now = Date.now(), checkLeadTime = true) {
   const errors: Record<string, string> = {};
   if (index === 0) {
@@ -206,6 +209,7 @@ export function validateEventStep(values: EventFormValues, index: number, requir
   }
   if (index === 2 && required && !values.preferredLayoutType) errors.preferredLayoutType = "Preferred layout is required.";
   if (index === 3 && values.accessibilityNotes.split("\n").some(line => line.length > 200)) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
+  if (index === 4 && values.technicalSupportNeeds.trim().length > 2000) errors.technicalSupportNeeds = "Technical support needs must be 2,000 characters or fewer.";
   if (index === 4 && (values.equipmentRequirements.length > 20 || values.equipmentRequirements.some((item) =>
     !Number.isInteger(item.equipmentId) || item.equipmentId < 1 ||
     !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 2147483647
@@ -252,6 +256,7 @@ export const EMPTY_EVENT_FORM: EventFormValues = {
   title: "",
   purpose: "",
   description: "",
+  technicalSupportNeeds: "",
   startDatetime: "",
   endDatetime: "",
   expectedAttendance: "",
@@ -282,6 +287,7 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   title: values.title.trim(),
   purpose: values.purpose.trim() || null,
   description: values.description.trim() || null,
+  technicalSupportNeeds: values.technicalSupportNeeds.trim() || null,
   startDatetime: localDateTimeToIso(values.startDatetime) ?? null,
   endDatetime: localDateTimeToIso(values.endDatetime) ?? null,
   expectedAttendance: values.expectedAttendance.trim() ? Number(values.expectedAttendance) : null,
@@ -306,6 +312,7 @@ export const AMENDABLE_FIELDS = [
   "venuePreferences",
   "accessibilityNeeds",
   "equipmentRequirements",
+  "technicalSupportNeeds",
 ] as const;
 export type AmendableField = (typeof AMENDABLE_FIELDS)[number];
 export type EventAmendments = Partial<Pick<EventRequestPayload, AmendableField>>;
@@ -347,6 +354,7 @@ export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
     title: event.title ?? "",
     purpose: event.purpose ?? "",
     description: event.description ?? "",
+    technicalSupportNeeds: event.technicalSupportNeeds ?? "",
     startDatetime: toLocalDateTimeInput(event.startDatetime),
     endDatetime: toLocalDateTimeInput(event.endDatetime),
     expectedAttendance: event.expectedAttendance?.toString() ?? "",
