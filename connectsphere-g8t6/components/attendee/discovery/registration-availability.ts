@@ -45,30 +45,40 @@ export function getAvailabilityPresentation(value: string): AvailabilityPresenta
 export const isRegistrationEnabled = (value: string) => getAvailabilityPresentation(value) !== null;
 
 export interface RegistrationAction {
+  // register is direct registration (SPM-134); waitlist and notify have no
+  // backend endpoints yet, so callers render them as unavailable with the note.
+  kind: "register" | "waitlist" | "notify";
   label: string;
   // A shared Button variant.
   variant: "primary" | "secondary";
+  // Why an unavailable action cannot be used; absent for register.
+  unavailableNote?: string;
 }
 
-// The one action the event details offer for each availability. Registering,
-// waitlisting and notifications have no backend endpoints yet, so callers
-// render the action as unavailable.
+export const WAITLIST_UNAVAILABLE_NOTE = "Joining the waitlist isn't available in ConnectSphere yet.";
+export const NOTIFY_UNAVAILABLE_NOTE = "Registration reminders aren't available in ConnectSphere yet.";
+
+// The one action the event details offer for each availability. Only OPEN
+// offers direct registration; whether the attendee already holds a place is
+// decided by the caller from their registrations, not from availability.
 export function getRegistrationAction(
   event: Pick<AttendeeEventDetail, "registrationAvailability" | "registrationOpenAt">,
   now: Date = new Date(),
 ): RegistrationAction | null {
   switch (event.registrationAvailability) {
     case "OPEN":
-      return { label: "Register Now", variant: "primary" };
+      return { kind: "register", label: "Register Now", variant: "primary" };
     case "FULL_WAITLIST":
-      return { label: "Join Waitlist", variant: "primary" };
+      return { kind: "waitlist", label: "Join Waitlist", variant: "primary", unavailableNote: WAITLIST_UNAVAILABLE_NOTE };
     case "CLOSED": {
       // Closed because the window has not opened yet, as opposed to having ended.
       // This compares against the browser clock, which can be wrong. That is
       // acceptable because it only picks the wording of a disabled button: no
       // request depends on it, and the backend decides availability itself.
       const opensAt = event.registrationOpenAt ? new Date(event.registrationOpenAt).getTime() : Number.NaN;
-      return opensAt > now.getTime() ? { label: "Notify when registration opens", variant: "secondary" } : null;
+      return opensAt > now.getTime()
+        ? { kind: "notify", label: "Notify when registration opens", variant: "secondary", unavailableNote: NOTIFY_UNAVAILABLE_NOTE }
+        : null;
     }
     default:
       // NOT_ENABLED, or a value the backend adds later: no action.

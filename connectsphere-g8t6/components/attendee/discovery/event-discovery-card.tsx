@@ -1,5 +1,7 @@
+import { MyPlaceChip } from "@/components/attendee/event-details/event-details-parts";
 import { Button } from "@/components/shared/primitives";
 import type { AttendeeEventSummary } from "@/lib/api/discovery";
+import type { AttendeeRegistration } from "@/lib/api/my-events";
 import { DiscoveryIcon } from "./discovery-icon";
 import { formatDateTile, formatEventDate, formatEventTime } from "./format-event-time";
 import { getAvailabilityPresentation } from "./registration-availability";
@@ -12,11 +14,16 @@ export const LOCATION_PENDING_LABEL = "Location details coming soon";
 interface EventDiscoveryCardProps {
   event: AttendeeEventSummary;
   onViewDetails: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
+  // The attendee's own place on this event, from their registrations (SPM-134).
+  place?: AttendeeRegistration | null;
+  // Offered only when the backend says OPEN and the attendee holds no place.
+  canRegister?: boolean;
+  onRegister?: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
 }
 
 // List-row card from the "Event Discovery" Figma frame (282:346), limited to
 // fields the backend returns: no photos, tracks, speakers or capacity numbers.
-export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardProps) {
+export function EventDiscoveryCard({ event, onViewDetails, place = null, canRegister = false, onRegister }: EventDiscoveryCardProps) {
   const availability = getAvailabilityPresentation(event.registrationAvailability);
   const tile = formatDateTile(event.startDatetime);
   const titleId = `discovery-event-${event.eventId}-title`;
@@ -28,7 +35,8 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
-          <RegistrationAvailabilityChip value={event.registrationAvailability} />
+          {/* Availability is for deciding whether to sign up, so a held place replaces it. */}
+          {place ? <MyPlaceChip registration={place} /> : <RegistrationAvailabilityChip value={event.registrationAvailability} />}
           <span className="inline-flex items-center gap-1 rounded-tag bg-surface-container-high px-2 py-0.5 text-[11px] font-bold leading-[14px] tracking-[0.04em] text-primary">
             <DiscoveryIcon name="venue" size={16} />
             <span className="sr-only">Location: </span>
@@ -82,7 +90,7 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
         </div>
       </div>
 
-      <div className="flex justify-end border-t border-outline-variant/40 pt-3">
+      <div className="flex flex-col gap-2 border-t border-outline-variant/40 pt-3 sm:flex-row sm:justify-end">
         <Button
           variant="secondary"
           className="w-full max-lg:min-h-11 sm:w-auto"
@@ -91,6 +99,15 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
         >
           View Event Details
         </Button>
+        {canRegister && onRegister ? (
+          <Button
+            className="w-full max-lg:min-h-11 sm:w-auto"
+            aria-label={`Register now for ${event.title}`}
+            onClick={(clickEvent) => onRegister(event, clickEvent.currentTarget)}
+          >
+            Register Now
+          </Button>
+        ) : null}
       </div>
     </article>
   );

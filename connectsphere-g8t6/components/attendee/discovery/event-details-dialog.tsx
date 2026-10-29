@@ -18,7 +18,8 @@ import type {
   AttendeeEventDetail,
   AttendeeEventSummary,
 } from "@/lib/api/discovery";
-import type { AttendeeEventView } from "@/lib/api/my-events";
+import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
+import { canRegister } from "@/components/attendee/registration/registration-form";
 import { discoveryErrorMessage } from "./discovery-state";
 import { DiscoveryIcon } from "./discovery-icon";
 import { DiscoveryDetailsPanel } from "./discovery-details-panel";
@@ -29,8 +30,6 @@ import {
   useAttendeeEvent,
   type EventDetailsSource,
 } from "@/components/attendee/event-details/use-attendee-event";
-
-export { REGISTRATION_UNAVAILABLE_NOTE } from "@/components/attendee/event-details/event-details-parts";
 
 // What opens the dialog: a discovery row, or just an ID and title from My Events.
 export type EventDetailsTarget = Pick<
@@ -51,6 +50,13 @@ interface EventDetailsDialogProps {
   onNotFound?: (eventId: number) => void;
   // Explains a 404 in the opener's terms.
   notFoundDescription?: string;
+  // Event Discovery only (SPM-134): the attendee's places, which the discovery
+  // endpoint does not include, and the shared registration form. Null places
+  // (not loaded) offer no Register Now.
+  places?: ReadonlyMap<number, AttendeeRegistration> | null;
+  onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
+  // Bumped to read the open event again (after a registration or a refusal).
+  refreshKey?: number;
 }
 
 const DISCOVERY_NOT_FOUND =
@@ -68,6 +74,9 @@ export function EventDetailsDialog({
   onLoaded,
   onNotFound,
   notFoundDescription = DISCOVERY_NOT_FOUND,
+  places = null,
+  onRegister,
+  refreshKey = 0,
 }: EventDetailsDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -100,7 +109,7 @@ export function EventDetailsDialog({
     >
       {event ? (
         <EventDetailsContent
-          key={event.eventId}
+          key={`${event.eventId}:${refreshKey}`}
           summary={event}
           titleId={titleId}
           detailsFrom={detailsFrom}
@@ -108,6 +117,8 @@ export function EventDetailsDialog({
           onLoaded={onLoaded}
           onNotFound={onNotFound}
           notFoundDescription={notFoundDescription}
+          places={places}
+          onRegister={onRegister}
         />
       ) : null}
     </dialog>
@@ -122,6 +133,8 @@ function EventDetailsContent({
   onLoaded,
   onNotFound,
   notFoundDescription,
+  places,
+  onRegister,
 }: {
   summary: EventDetailsTarget;
   titleId: string;
@@ -130,6 +143,8 @@ function EventDetailsContent({
   onLoaded?: (event: AttendeeEventView) => void;
   onNotFound?: (eventId: number) => void;
   notFoundDescription: string;
+  places: ReadonlyMap<number, AttendeeRegistration> | null;
+  onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
 }) {
   // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
   const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom, {
@@ -138,7 +153,8 @@ function EventDetailsContent({
   });
   const event = state.status === "ready" ? state.event : null;
   const withheld = Boolean(event?.detailsWithheld);
-  const myRegistration = event?.myRegistration ?? null;
+  // My Events reads the place with the event; Event Discovery adds it from the places.
+  const myRegistration = event?.myRegistration ?? (detailsFrom === "discovery" ? places?.get(summary.eventId) ?? null : null);
   // Availability is for deciding whether to sign up, so it is not shown to
   // someone who already holds a place, or when the details are held back.
   const availability = event
@@ -258,7 +274,15 @@ function EventDetailsContent({
         {event && !withheld ? <EventSummaryBody event={event} /> : null}
       </div>
 
-      {event ? <EventDetailsFooter event={event} /> : null}
+      {event ? (
+        <EventDetailsFooter
+          event={{ ...event, myRegistration }}
+          register={onRegister && detailsFrom === "discovery" ? {
+            canRegister: canRegister(event.registrationAvailability, places, event.eventId),
+            onRegister: (trigger) => onRegister(event, trigger),
+          } : undefined}
+        />
+      ) : null}
     </>
   );
 }

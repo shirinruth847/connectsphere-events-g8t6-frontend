@@ -137,26 +137,48 @@ export function placeRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
   return rows;
 }
 
-// Read out as the disabled action's description. It explains why the action
-// is unavailable without contradicting the availability chip.
-export const REGISTRATION_UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
+// How an event surface offers direct registration (SPM-134). canRegister is
+// decided by the caller from the backend's availability and the attendee's own
+// registrations; onRegister opens the shared registration form.
+export interface RegistrationEntry {
+  canRegister: boolean;
+  onRegister: (trigger: HTMLButtonElement) => void;
+}
 
-// The footer from the frame: the sign-up note on the left, then the one
-// registration action, shown as unavailable: there are no register, waitlist
-// or notify endpoints yet (separate ticket). It
-// uses aria-disabled rather than disabled so keyboard and screen-reader users
-// can still reach it and hear why. The shared Button's disabled: style only
-// matches the disabled attribute, so the same classes go through aria-disabled:.
-// Someone who already holds a place is offered no sign-up action.
-export function EventDetailsFooter({ event }: { event: AttendeeEventView }) {
+// The registration action for an event, shared by the event details dialog and
+// the /events/[eventId] page. OPEN offers Register Now when the caller says the
+// attendee may register; otherwise nothing (places unknown, or no entry point).
+// Join Waitlist and Notify have no endpoints yet, so they are shown unavailable
+// with their reason: aria-disabled rather than disabled keeps them reachable by
+// keyboard and screen readers, and the shared Button's disabled: style only
+// matches the attribute, so the same classes go through aria-disabled:.
+// Someone who already holds a place, or whose details are withheld, gets none.
+export function RegistrationActionBar({ event, register, className }: { event: AttendeeEventView; register?: RegistrationEntry; className: string }) {
   const helperId = useId();
   const action = event.detailsWithheld || event.myRegistration ? null : getRegistrationAction(event);
   if (!action) return null;
 
+  if (action.kind === "register") {
+    if (!register?.canRegister) return null;
+    return (
+      <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${className}`}>
+        <Button
+          type="button"
+          variant={action.variant}
+          aria-label={`Register now for ${event.title}`}
+          onClick={(clickEvent) => register.onRegister(clickEvent.currentTarget)}
+          className="w-full max-lg:min-h-11 sm:w-auto"
+        >
+          {action.label}
+        </Button>
+      </footer>
+    );
+  }
+
   return (
-    <footer className="flex flex-col gap-2 border-t border-outline-variant/60 bg-surface-container-lowest px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+    <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${className}`}>
       <p id={helperId} className="text-xs text-on-surface-variant sm:order-first sm:mr-auto">
-        {REGISTRATION_UNAVAILABLE_NOTE}
+        {action.unavailableNote}
       </p>
       <Button
         type="button"
@@ -171,5 +193,16 @@ export function EventDetailsFooter({ event }: { event: AttendeeEventView }) {
           footer (tertiary Accept, secondary Decline) with the offer expiry,
           driven by myRegistration.offer. */}
     </footer>
+  );
+}
+
+// The dialog's footer from the frame (282:1271).
+export function EventDetailsFooter({ event, register }: { event: AttendeeEventView; register?: RegistrationEntry }) {
+  return (
+    <RegistrationActionBar
+      event={event}
+      register={register}
+      className="border-t border-outline-variant/60 bg-surface-container-lowest px-5 py-4"
+    />
   );
 }

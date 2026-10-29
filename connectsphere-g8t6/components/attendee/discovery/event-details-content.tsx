@@ -1,47 +1,12 @@
-import { useId } from "react";
-import { Button } from "@/components/shared/primitives";
 import type { AttendeeEventDetail } from "@/lib/api/discovery";
 import { DiscoveryDetailsPanel, type DiscoveryDetailRow } from "./discovery-details-panel";
 import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
 import { formatEventDate, formatEventTime, formatTimestamp } from "./format-event-time";
-import { getRegistrationAction, isRegistrationEnabled } from "./registration-availability";
+import { isRegistrationEnabled } from "./registration-availability";
 
-// Attendee event details shared by the details dialog on /events and the
-// /events/[eventId] page. Both render only a GET /api/events/discovery/:id
-// response, never list data.
-
-// Read out as the disabled action's description. It explains why the action
-// is unavailable without contradicting the availability chip.
-export const REGISTRATION_UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
-
-// Shows the one registration action for this event, as unavailable: there are
-// no register, waitlist or notify endpoints yet (separate ticket). It uses
-// aria-disabled rather than disabled so keyboard and screen-reader users can
-// still reach it and hear why it is unavailable. It has no click handler.
-// The shared Button's disabled: style only matches the disabled attribute, so
-// the same classes are applied through aria-disabled: instead.
-export function RegistrationActionFooter({ event, className = "" }: { event: AttendeeEventDetail; className?: string }) {
-  const helperId = useId();
-  const action = getRegistrationAction(event);
-  if (!action) return null;
-
-  return (
-    <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-4 ${className}`}>
-      <p id={helperId} className="text-xs text-on-surface-variant sm:order-first">
-        {REGISTRATION_UNAVAILABLE_NOTE}
-      </p>
-      <Button
-        type="button"
-        variant={action.variant}
-        aria-disabled="true"
-        aria-describedby={helperId}
-        className="w-full aria-disabled:pointer-events-none aria-disabled:opacity-55 max-lg:min-h-11 sm:w-auto"
-      >
-        {action.label}
-      </Button>
-    </footer>
-  );
-}
+// The body of the /events/[eventId] page, from a GET /api/events/discovery/:id
+// response, never list data. Its registration action is the shared
+// RegistrationActionBar (SPM-134).
 
 export function EventDetailsBody({ event }: { event: AttendeeEventDetail }) {
   const rows: DiscoveryDetailRow[] = [
