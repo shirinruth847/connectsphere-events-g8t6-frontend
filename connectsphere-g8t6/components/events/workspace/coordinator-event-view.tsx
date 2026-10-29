@@ -166,13 +166,14 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             ) : null}
           </ReviewSection>
 
-          <ReviewSection step={3} title="Venue & layout" description="The organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
+          <ReviewSection step={3} title="Venue & layout" description="The event's venue bookings and the organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
             <KeyValuePanel rows={layoutRows(event)} />
             <EventVenueSection
               key={event.venueSuggestion?.version ?? 0}
               event={event}
               onSuggested={() => setHistoryKey((value) => value + 1)}
               onStale={onAccessChanged}
+              onBookingsRequested={() => setHistoryKey((value) => value + 1)}
             />
           </ReviewSection>
 

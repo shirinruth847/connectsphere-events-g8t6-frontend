@@ -99,6 +99,10 @@ async function routeVenueSection(page, { event = eventView(), venueOptions = opt
     if (request.method() === "OPTIONS") return route.fallback();
     if (url.pathname === "/api/events/42") return route.fulfill({ json: { event } });
     if (url.pathname === "/api/events/42/history") return route.fulfill({ json: { history, nextCursor: null } });
+    // SPM-179's booking list in the same section; requests are covered in venue-booking-request.spec.mjs.
+    if (url.pathname === "/api/events/42/venue-bookings") {
+      return route.fulfill({ json: { eventId: 42, requestId: "REQ-000042", eventType: null, eventTypeLabel: null, canRequestVenueBookings: false, bookings: [] } });
+    }
     if (url.pathname === "/api/events/42/venue-options") {
       const params = {};
       for (const [key, value] of url.searchParams) params[key] = key in params ? [].concat(params[key], value) : value;
