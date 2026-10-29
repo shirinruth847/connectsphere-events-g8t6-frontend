@@ -62,6 +62,41 @@ interface BlockFormValues {
 
 const EMPTY_BLOCK_FORM: BlockFormValues = { reason: "", start: "", end: "", note: "" };
 
+type TimeKey = "start" | "end";
+
+// The start and end inputs (Singapore time) of the record and shorten forms.
+function BlockTimeFields({ idPrefix, values, errors, disabled, endHint, onChange }: {
+  idPrefix: string;
+  values: Record<TimeKey, string>;
+  errors: FieldErrors;
+  disabled: boolean;
+  endHint?: string;
+  onChange: (key: TimeKey, value: string) => void;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {(["start", "end"] as const).map((key) => {
+        const fieldId = `${idPrefix}-${key}`;
+        const hint = key === "end" ? endHint : undefined;
+        return (
+          <Field key={key} id={fieldId} label={key === "start" ? "Start (SGT)" : "End (SGT)"} required error={errors[key]} hint={hint}>
+            <input
+              id={fieldId}
+              type="datetime-local"
+              className={fieldClasses}
+              value={values[key]}
+              disabled={disabled}
+              aria-invalid={Boolean(errors[key])}
+              aria-describedby={describedBy(fieldId, errors[key], hint)}
+              onChange={(event) => onChange(key, event.target.value)}
+            />
+          </Field>
+        );
+      })}
+    </div>
+  );
+}
+
 function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
   venueId: number;
   venueName: string;
@@ -82,14 +117,16 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const found = validateBlockForm({ ...values, start: sgtInputToIso(values.start), end: sgtInputToIso(values.end) });
+    const start = sgtInputToIso(values.start);
+    const end = sgtInputToIso(values.end);
+    const found = validateBlockForm({ ...values, start, end });
     setErrors(found);
     setFormError("");
     if (Object.keys(found).length) return;
     const input = {
       reason: values.reason as BlockReason,
-      start: sgtInputToIso(values.start) as string,
-      end: sgtInputToIso(values.end) as string,
+      start: start as string,
+      end: end as string,
       note: values.note.trim(),
     };
     const body = JSON.stringify(input);
@@ -140,26 +177,14 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
             {BLOCK_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </Field>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {(["start", "end"] as const).map((key) => {
-            const fieldId = `${id}-${key}`;
-            const hint = key === "end" ? "After the start and in the future. A block has no setup or turnaround time." : undefined;
-            return (
-              <Field key={key} id={fieldId} label={key === "start" ? "Start (SGT)" : "End (SGT)"} required error={errors[key]} hint={hint}>
-                <input
-                  id={fieldId}
-                  type="datetime-local"
-                  className={fieldClasses}
-                  value={values[key]}
-                  disabled={saving}
-                  aria-invalid={Boolean(errors[key])}
-                  aria-describedby={describedBy(fieldId, errors[key], hint)}
-                  onChange={(event) => change(key, event.target.value)}
-                />
-              </Field>
-            );
-          })}
-        </div>
+        <BlockTimeFields
+          idPrefix={id}
+          values={values}
+          errors={errors}
+          disabled={saving}
+          endHint="After the start and in the future. A block has no setup or turnaround time."
+          onChange={change}
+        />
         <Field id={`${id}-note`} label="Note" required error={errors.note} hint={`Shown to the coordinators of affected events. Up to ${NOTE_LIMIT} characters.`}>
           <textarea
             id={`${id}-note`}
@@ -191,17 +216,24 @@ function ShortenBlockDialog({ venueId, block, onClose, onSaved, onStale }: {
   const [saving, setSaving] = useState(false);
   const id = `shorten-block-${block.blockId}`;
 
+  const change = (key: TimeKey, value: string) => {
+    setValues((current) => ({ ...current, [key]: value }));
+    setErrors((current) => ({ ...current, [key]: undefined }));
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const found = validateShortenForm(block, { start: sgtInputToIso(values.start), end: sgtInputToIso(values.end) });
+    const start = sgtInputToIso(values.start);
+    const end = sgtInputToIso(values.end);
+    const found = validateShortenForm(block, { start, end });
     setErrors(found);
     setFormError("");
     if (Object.keys(found).length) return;
     setSaving(true);
     try {
       const result = await shortenVenueBlock(venueId, block.blockId, {
-        start: sgtInputToIso(values.start) as string,
-        end: sgtInputToIso(values.end) as string,
+        start: start as string,
+        end: end as string,
         version: block.version,
       });
       onSaved(result.message);
@@ -234,25 +266,7 @@ function ShortenBlockDialog({ venueId, block, onClose, onSaved, onStale }: {
         <p className="text-sm text-on-surface">
           Currently blocked {formatEventWindow(block.start, block.end)}. Move the start later or the end earlier; for more time, record a new block.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {(["start", "end"] as const).map((key) => {
-            const fieldId = `${id}-${key}`;
-            return (
-              <Field key={key} id={fieldId} label={key === "start" ? "Start (SGT)" : "End (SGT)"} required error={errors[key]}>
-                <input
-                  id={fieldId}
-                  type="datetime-local"
-                  className={fieldClasses}
-                  value={values[key]}
-                  disabled={saving}
-                  aria-invalid={Boolean(errors[key])}
-                  aria-describedby={describedBy(fieldId, errors[key])}
-                  onChange={(event) => { setValues((current) => ({ ...current, [key]: event.target.value })); setErrors((current) => ({ ...current, [key]: undefined })); }}
-                />
-              </Field>
-            );
-          })}
-        </div>
+        <BlockTimeFields idPrefix={id} values={values} errors={errors} disabled={saving} onChange={change} />
         <p className="text-xs text-on-surface-variant">Affected bookings stay open: restore each one once its whole time is free.</p>
       </form>
     </Dialog>
