@@ -20,6 +20,7 @@ export const FIELD_LABELS: Record<string, string> = {
   isRegistrationEnabled: "Registration",
   registrationCapacity: "Registration capacity",
   suggestedVenue: "Suggested venue",
+  venueBookings: "Venue bookings",
 };
 
 export const fieldLabel = (field: string) => FIELD_LABELS[field] ?? field;

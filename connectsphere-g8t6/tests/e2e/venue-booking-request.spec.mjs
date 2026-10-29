@@ -139,7 +139,7 @@ const saved = (items, eventHasPrimary = false) => ({
 
 // Routes the event page and its venue section; `respond` answers the POST.
 // Returns what the page sent.
-async function routeBookingSection(page, { event = eventView(), bookingList = list(), respond = null, availability = {} } = {}) {
+async function routeBookingSection(page, { event = eventView(), bookingList = list(), respond = null, availability = {}, history = [] } = {}) {
   const sent = { requests: [], availability: [], eventLoads: 0, readinessLoads: 0 };
   let current = bookingList;
   await page.route(/\/api\/events\/42(\/.*)?(\?.*)?$/, async (route) => {
@@ -154,7 +154,7 @@ async function routeBookingSection(page, { event = eventView(), bookingList = li
       sent.readinessLoads += 1;
       return route.fulfill({ json: { ready: false, failures: [{ code: "BOOKING_NOT_APPROVED", message: "Every venue booking must be approved; holds and pending requests do not count." }], status: event.status, version: event.version, arrangementVersion: 3 } });
     }
-    if (url.pathname === "/api/events/42/history") return route.fulfill({ json: { history: [], nextCursor: null } });
+    if (url.pathname === "/api/events/42/history") return route.fulfill({ json: { history, nextCursor: null } });
     if (url.pathname === "/api/events/42/venue-options") return route.fulfill({ json: options() });
     if (url.pathname === "/api/events/42/venue-availability") {
       const venueId = Number(url.searchParams.get("venueId"));
@@ -262,6 +262,30 @@ test("[SPM-179 AC11] after a request the event, readiness and history are loaded
   // The request moves arrangement_version, not the event version.
   await expect.poll(() => sent.eventLoads).toBeGreaterThan(before.event);
   await expect.poll(() => sent.readinessLoads).toBeGreaterThan(before.readiness);
+});
+
+test("[SPM-179 AC11] the history entry lists each requested booking, without empty From/To rows", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeBookingSection(page, {
+    history: [{
+      historyId: 1,
+      action: "VENUE_BOOKINGS_REQUESTED",
+      actor: { userId: 11, name: "Synthetic Coordinator", role: "COORDINATOR" },
+      occurredAt: "2026-10-29T04:00:00.000Z",
+      summary: "Venue booking requested: Synthetic Grand Hall, Synthetic Seminar Room.",
+      changes: [{ field: "venueBookings", before: null, after: ["Synthetic Grand Hall (Booking #501, primary)", "Synthetic Seminar Room (Booking #502)"] }],
+      audience: "STAFF_ONLY",
+    }],
+  });
+  await page.goto("/events/42");
+
+  const history = page.getByRole("region", { name: "Change history" });
+  await expect(history.getByText("Venue bookings requested")).toBeVisible();
+  await expect(history.getByText("Venue bookings", { exact: true })).toBeVisible();
+  await expect(history.getByText("Synthetic Grand Hall (Booking #501, primary)", { exact: true })).toBeVisible();
+  await expect(history.getByText("Synthetic Seminar Room (Booking #502)")).toBeVisible();
+  await expect(history.getByText("From:")).toHaveCount(0);
+  await expect(history.getByText("venueBookings")).toHaveCount(0);
 });
 
 test("[SPM-179 TC-14][AC7] a venue without setup and turnaround times is listed but cannot be chosen", async ({ page }) => {
