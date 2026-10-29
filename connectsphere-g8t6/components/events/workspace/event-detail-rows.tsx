@@ -16,6 +16,7 @@ export const FIELD_LABELS: Record<string, string> = {
   preferredLayoutType: "Layout",
   venuePreferences: "Venue preferences",
   equipmentRequirements: "Equipment",
+  technicalSupportNeeds: "Technical support needs",
   accessibilityNeeds: "Accessibility needs",
   isRegistrationEnabled: "Registration",
   registrationCapacity: "Registration capacity",
