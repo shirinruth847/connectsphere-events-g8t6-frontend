@@ -11,22 +11,30 @@ import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
 import { restoreVenueIncident, type VenueIncident } from "@/lib/api/venue-blocks";
 
 // SPM-195: a booking made unavailable by an operational block. An open
-// incident needs action (error tones); a resolved one is shown with its
-// resolution (success tones). Labels are the backend's.
-const INCIDENT_CHIPS: Record<string, string> = {
-  OPEN: "bg-error-container text-on-error-container",
-  RESOLVED: "bg-success-container text-on-success-container",
+// incident needs action (error tones); a restored one is shown with success
+// tones; one closed because the booking or event ended is neutral. Labels are
+// the backend's.
+type IncidentOutcome = "open" | "restored" | "closed";
+const incidentOutcome = (incident: VenueIncident): IncidentOutcome => {
+  if (incident.status === "OPEN") return "open";
+  return incident.resolution === "RESTORED" ? "restored" : "closed";
 };
-// Closed because the booking or event ended, not restored: neutral tones.
-const CLOSED_CHIP = "bg-surface-container-high text-on-surface-variant";
+
+const KNOWN_STATUSES = new Set(["OPEN", "RESOLVED"]);
+const NEUTRAL_CHIP = "bg-surface-container-high text-on-surface-variant";
+const OUTCOME_CHIPS: Record<IncidentOutcome, string> = {
+  open: "bg-error-container text-on-error-container",
+  restored: "bg-success-container text-on-success-container",
+  closed: NEUTRAL_CHIP,
+};
 
 export function IncidentChip({ incident }: { incident: VenueIncident }) {
   const label = incident.status === "RESOLVED" && incident.resolutionLabel ? incident.resolutionLabel : incident.statusLabel;
-  const tones = incident.status === "RESOLVED" && incident.resolution !== "RESTORED" ? CLOSED_CHIP : INCIDENT_CHIPS[incident.status];
+  const known = KNOWN_STATUSES.has(incident.status);
   return (
     <span
-      className={`inline-flex w-fit items-center rounded-chip px-2 py-1 text-[11px] font-semibold uppercase tracking-label ${tones ?? "bg-surface-container-high text-on-surface-variant"}`}
-      title={INCIDENT_CHIPS[incident.status] ? undefined : `Incident status "${incident.status}" is not recognised`}
+      className={`inline-flex w-fit items-center rounded-chip px-2 py-1 text-[11px] font-semibold uppercase tracking-label ${known ? OUTCOME_CHIPS[incidentOutcome(incident)] : NEUTRAL_CHIP}`}
+      title={known ? undefined : `Incident status "${incident.status}" is not recognised`}
     >
       {label}
     </span>
@@ -147,6 +155,13 @@ function BlockDetails({ incident }: { incident: VenueIncident }) {
   );
 }
 
+// The card's heading per outcome: group name, title, icon and icon tones.
+const OUTCOME_HEADINGS = {
+  open: { group: "Venue unavailable", title: "Venue unavailable during this booking", icon: "warning", tones: "bg-error text-on-primary" },
+  restored: { group: "Venue incident resolved", title: "Venue available again", icon: "check", tones: "bg-success-container text-on-success-container" },
+  closed: { group: "Venue incident closed", title: "Venue incident closed", icon: "info", tones: NEUTRAL_CHIP },
+} as const;
+
 // The incident card under an affected booking. The coordinator sees the block
 // and the options (restore waits for Venue Staff, replace is not available yet,
 // cancel uses the event's cancel action); Venue Staff see the block and, once
@@ -158,23 +173,22 @@ export function BookingIncidentCard({ incident, audience, onRestored, onRefused 
   onRestored?: (message: string) => void;
   onRefused?: () => void;
 }) {
-  const open = incident.status === "OPEN";
-  // A closed incident was either restored, or closed because the booking or
-  // the event ended (the chip shows the backend's resolution label).
-  const restored = incident.resolution === "RESTORED";
+  const outcome = incidentOutcome(incident);
+  const open = outcome === "open";
+  const heading = OUTCOME_HEADINGS[outcome];
   const showsActions = open && audience === "coordinator" && Boolean(incident.actions?.length);
   return (
     <div
       className={`grid gap-3 rounded-control p-3 ${open ? "bg-error-container/50" : "bg-surface-container-lowest"}`}
       role="group"
-      aria-label={open ? "Venue unavailable" : restored ? "Venue incident resolved" : "Venue incident closed"}
+      aria-label={heading.group}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-          <span aria-hidden="true" className={`grid h-7 w-7 place-items-center rounded-control ${open ? "bg-error text-on-primary" : restored ? "bg-success-container text-on-success-container" : "bg-surface-container-high text-on-surface-variant"}`}>
-            <Icon name={open ? "warning" : restored ? "check" : "info"} size={16} />
+          <span aria-hidden="true" className={`grid h-7 w-7 place-items-center rounded-control ${heading.tones}`}>
+            <Icon name={heading.icon} size={16} />
           </span>
-          {open ? "Venue unavailable during this booking" : restored ? "Venue available again" : "Venue incident closed"}
+          {heading.title}
         </p>
         <IncidentChip incident={incident} />
       </div>
