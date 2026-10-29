@@ -43,12 +43,18 @@ function ReviewSection({ step, title, description, action, children }: {
 
 const people = (value: number | null) => (value ? `${value.toLocaleString()} people` : "Not provided");
 
-function BookingRequirements({ booking, onRestored }: { booking: VenueBookingDetail; onRestored: (message: string) => void }) {
+interface IncidentHandlers {
+  onRestored: (message: string) => void;
+  // A refused restore: the bookings are reloaded behind the open dialog.
+  onRefused: () => void;
+}
+
+function BookingRequirements({ booking, onRestored, onRefused }: { booking: VenueBookingDetail } & IncidentHandlers) {
   const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > booking.venue.roomCapacity;
   return (
     <div className="grid gap-4">
       {/* SPM-195 AC9/AC10: an affected booking shows its block and, once free, Restore. */}
-      {booking.incident ? <BookingIncidentCard incident={booking.incident} audience="venue-staff" onRestored={onRestored} /> : null}
+      {booking.incident ? <BookingIncidentCard incident={booking.incident} audience="venue-staff" onRestored={onRestored} onRefused={onRefused} /> : null}
       <KeyValuePanel
         rows={[
           { icon: "venue", label: "Requested venue", value: `${booking.venue.name} · ${booking.venue.address}` },
@@ -91,12 +97,11 @@ function BookingRequirements({ booking, onRestored }: { booking: VenueBookingDet
   );
 }
 
-function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored }: {
+function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored, onRefused }: {
   bookings: VenueBookingDetail[];
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
-  onRestored: (message: string) => void;
-}) {
+} & IncidentHandlers) {
   return (
     <ReviewSection
       step={3}
@@ -135,7 +140,7 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored }: {
               </button>
               <Collapse open={selected} id={panelId}>
                 <div className="border-t border-outline-variant p-3 sm:p-4">
-                  <BookingRequirements booking={booking} onRestored={onRestored} />
+                  <BookingRequirements booking={booking} onRestored={onRestored} onRefused={onRefused} />
                 </div>
               </Collapse>
             </li>
@@ -146,12 +151,11 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored }: {
   );
 }
 
-function LoadedView({ data, selectedId, onSelect, onRestored }: {
+function LoadedView({ data, selectedId, onSelect, onRestored, onRefused }: {
   data: EventVenueBookings;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
-  onRestored: (message: string) => void;
-}) {
+} & IncidentHandlers) {
   const { event, bookings } = data;
   const duration = formatDuration(event.startDatetime, event.endDatetime);
   const selected = bookings.find((booking) => booking.bookingId === selectedId) ?? null;
@@ -200,7 +204,7 @@ function LoadedView({ data, selectedId, onSelect, onRestored }: {
             />
           </ReviewSection>
 
-          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onRestored={onRestored} />
+          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onRestored={onRestored} onRefused={onRefused} />
 
           <div className="grid gap-5 md:grid-cols-2">
             <ReviewSection step={4} title="Accessibility" action={readOnly}>
@@ -345,7 +349,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
       <div aria-live="polite">
         {notice ? <div className="mb-4"><AlertBanner tone="success" live={false}>{notice}</AlertBanner></div> : null}
       </div>
-      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} onRestored={restored} />
+      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} onRestored={restored} onRefused={() => setAttempt((value) => value + 1)} />
     </>
   );
 }

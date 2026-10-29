@@ -46,6 +46,11 @@ function BlockChip({ block }: { block: VenueBlockWithIncidents }) {
 }
 
 const errorText = (caught: unknown, fallback: string) => (caught instanceof Error ? caught.message : fallback);
+
+// The block changed or went away since it was loaded: retrying the same request
+// cannot succeed, so the list is reloaded instead (never retried automatically).
+const STALE_BLOCK_CODES = new Set(["BLOCK_VERSION_CONFLICT", "BLOCK_NOT_ACTIVE", "BLOCK_NOT_FOUND"]);
+const isStaleBlock = (caught: unknown) => caught instanceof ApiError && STALE_BLOCK_CODES.has(caught.code);
 const describedBy = (id: string, error?: string, hint?: string) => (error ? `${id}-error` : hint ? `${id}-hint` : undefined);
 
 interface BlockFormValues {
@@ -173,11 +178,12 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
   );
 }
 
-function ShortenBlockDialog({ venueId, block, onClose, onSaved }: {
+function ShortenBlockDialog({ venueId, block, onClose, onSaved, onStale }: {
   venueId: number;
   block: VenueBlockWithIncidents;
   onClose: () => void;
   onSaved: (message: string) => void;
+  onStale: (message: string) => void;
 }) {
   const [values, setValues] = useState({ start: toSgtInput(block.start), end: toSgtInput(block.end) });
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -200,6 +206,10 @@ function ShortenBlockDialog({ venueId, block, onClose, onSaved }: {
       });
       onSaved(result.message);
     } catch (caught) {
+      if (isStaleBlock(caught)) {
+        onStale(errorText(caught, "This block was changed. Reload it, then try again."));
+        return;
+      }
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
       setFormError(errorText(caught, "The block could not be shortened."));
     } finally {
@@ -249,7 +259,11 @@ function ShortenBlockDialog({ venueId, block, onClose, onSaved }: {
   );
 }
 
-function BlockIncidents({ block, onRestored }: { block: VenueBlockWithIncidents; onRestored: (message: string) => void }) {
+function BlockIncidents({ block, onRestored, onRefused }: {
+  block: VenueBlockWithIncidents;
+  onRestored: (message: string) => void;
+  onRefused: () => void;
+}) {
   if (!block.incidents.length) {
     return <p className="text-xs text-on-surface-variant">No bookings or holds were affected.</p>;
   }
@@ -282,7 +296,7 @@ function BlockIncidents({ block, onRestored }: { block: VenueBlockWithIncidents;
                   Open booking<Icon name="chevron-right" size={16} />
                 </Link>
               ) : null}
-              <RestoreIncidentButton incident={incident} onRestored={onRestored} />
+              <RestoreIncidentButton incident={incident} onRestored={onRestored} onRefused={onRefused} />
             </div>
           </li>
         ))}
@@ -310,13 +324,18 @@ export function VenueBlocksSection({ venueId, venueName }: { venueId: number; ve
   }, [venueId, attempt]);
 
   // Every change is shown only after the backend commits it, then the list reloads.
-  const saved = (message: string) => {
+  const reloadWith = (next: Notice) => {
     setRecording(false);
     setShortening(null);
     setLifting(null);
-    setNotice({ tone: "success", text: message });
+    setNotice(next);
     setAttempt((value) => value + 1);
   };
+  const saved = (message: string) => reloadWith({ tone: "success", text: message });
+  // A refusal that means the list is out of date: say so and show the current blocks.
+  const stale = (message: string) => reloadWith({ tone: "error", text: `${message} The blocks have been reloaded.` });
+  // A refused restore leaves the dialog open with its reason; the list is reloaded behind it.
+  const refresh = () => setAttempt((value) => value + 1);
 
   const lift = async (block: VenueBlockWithIncidents) => {
     setSaving(true);
@@ -325,7 +344,8 @@ export function VenueBlocksSection({ venueId, venueName }: { venueId: number; ve
       const result = await liftVenueBlock(venueId, block.blockId, block.version);
       saved(result.message);
     } catch (caught) {
-      setLiftError(errorText(caught, "The block could not be lifted."));
+      if (isStaleBlock(caught)) stale(errorText(caught, "This block was changed."));
+      else setLiftError(errorText(caught, "The block could not be lifted."));
     } finally {
       setSaving(false);
     }
@@ -374,7 +394,7 @@ export function VenueBlocksSection({ venueId, venueName }: { venueId: number; ve
                   </div>
                 ) : null}
               </div>
-              <BlockIncidents block={block} onRestored={saved} />
+              <BlockIncidents block={block} onRestored={saved} onRefused={refresh} />
             </li>
           ))}
         </ul>
@@ -384,7 +404,7 @@ export function VenueBlocksSection({ venueId, venueName }: { venueId: number; ve
 
       {recording ? <RecordBlockDialog venueId={venueId} venueName={venueName} onClose={() => setRecording(false)} onSaved={saved} /> : null}
       {shortening ? (
-        <ShortenBlockDialog key={`${shortening.blockId}-${shortening.version}`} venueId={venueId} block={shortening} onClose={() => setShortening(null)} onSaved={saved} />
+        <ShortenBlockDialog key={`${shortening.blockId}-${shortening.version}`} venueId={venueId} block={shortening} onClose={() => setShortening(null)} onSaved={saved} onStale={stale} />
       ) : null}
       <Dialog
         open={lifting !== null}

@@ -53,9 +53,12 @@ const restoreError = (caught: unknown) => {
 // Venue Staff confirm a restoration (Master 5.4.4 option 1, AC10). The backend
 // re-checks the whole occupied range under the venue lock; a retry of the same
 // confirmation reuses its key.
-export function RestoreIncidentButton({ incident, onRestored }: {
+export function RestoreIncidentButton({ incident, onRestored, onRefused }: {
   incident: VenueIncident;
   onRestored: (message: string) => void;
+  // A business refusal (404/409) means what is shown is out of date: the
+  // caller reloads it while the dialog keeps the reason. Never a retry.
+  onRefused?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -77,6 +80,7 @@ export function RestoreIncidentButton({ incident, onRestored }: {
     } catch (caught) {
       if (!keepsIdempotencyKey(caught instanceof ApiError ? caught : null)) pendingKey.current = null;
       setError(restoreError(caught));
+      if (caught instanceof ApiError && (caught.status === 404 || caught.status === 409)) onRefused?.();
     } finally {
       setSaving(false);
     }
@@ -145,12 +149,14 @@ function BlockDetails({ incident }: { incident: VenueIncident }) {
 // cancel uses the event's cancel action); Venue Staff see the block and, once
 // the venue is free, the restore action. The supervising Lead reads it
 // without the options ("read-only").
-export function BookingIncidentCard({ incident, audience, onRestored }: {
+export function BookingIncidentCard({ incident, audience, onRestored, onRefused }: {
   incident: VenueIncident;
   audience: "coordinator" | "venue-staff" | "read-only";
   onRestored?: (message: string) => void;
+  onRefused?: () => void;
 }) {
   const open = incident.status === "OPEN";
+  const showsActions = open && audience === "coordinator" && Boolean(incident.actions?.length);
   return (
     <div
       className={`grid gap-3 rounded-control p-3 ${open ? "bg-error-container/50" : "bg-surface-container-lowest"}`}
@@ -170,8 +176,9 @@ export function BookingIncidentCard({ incident, audience, onRestored }: {
       {!open && incident.resolvedAt ? (
         <p className="text-xs text-on-surface-variant">Resolved {formatTimestamp(incident.resolvedAt)}.</p>
       ) : null}
-      {open ? <RestoreStatus incident={incident} /> : null}
-      {open && audience === "coordinator" && incident.actions?.length ? (
+      {/* The coordinator reads the same status in the restore option below. */}
+      {open && !showsActions ? <RestoreStatus incident={incident} /> : null}
+      {showsActions && incident.actions ? (
         <div>
           <h5 className="mb-2 text-xs font-semibold uppercase tracking-label text-on-surface-variant">Next action</h5>
           <ul className="grid gap-1.5">
@@ -188,7 +195,7 @@ export function BookingIncidentCard({ incident, audience, onRestored }: {
       ) : null}
       {open && audience === "venue-staff" && onRestored ? (
         <div className="flex flex-wrap gap-2">
-          <RestoreIncidentButton incident={incident} onRestored={onRestored} />
+          <RestoreIncidentButton incident={incident} onRestored={onRestored} onRefused={onRefused} />
         </div>
       ) : null}
     </div>

@@ -55,6 +55,9 @@ async function routeVenuePage(page, state) {
       state.blocks = [{ ...shortened, incidents: [incident({ block: shortened, canBeRestored: true, restoreLabel: "Can be restored" })] }];
       return json(route, { message: "Block shortened.", block: shortened, incidents: state.blocks[0].incidents, changed: true });
     }
+    if (url.pathname === `/api/venues/7/blocks/${BLOCK_ID}/lift` && state.liftConflict) {
+      return json(route, { error: "This block was changed after you loaded it. Reload it, then try again.", code: "BLOCK_VERSION_CONFLICT" }, 409);
+    }
     if (url.pathname === `/api/venues/7/blocks/${BLOCK_ID}/lift`) {
       const lifted = block({ status: "LIFTED", statusLabel: "Lifted", version: state.blocks[0].version + 1 });
       state.blocks = [{ ...lifted, incidents: state.blocks[0].incidents }];
@@ -71,7 +74,6 @@ async function routeVenuePage(page, state) {
   });
 }
 
-const blocksSection = (page) => page.getByRole("region").filter({ has: page.getByRole("heading", { name: "Operational blocks" }) });
 
 test("[SPM-195-TC-01][TC-02][TC-12][TC-13][TC-11] Venue Staff record, shorten and lift a block and restore the affected booking", async ({ page }) => {
   const state = { requests: [], blocks: [] };
@@ -142,6 +144,22 @@ test("[SPM-195-TC-01][TC-02][TC-12][TC-13][TC-11] Venue Staff record, shorten an
   await expect(section.getByText("Block lifted.")).toBeVisible();
   expect(state.requests.find((item) => item.path.endsWith("/lift")).body).toEqual({ version: 2 });
   await expect(affected.getByText("Lifted", { exact: true })).toBeVisible();
+});
+
+test("[SPM-195-AC9] a lift from a stale page is refused once, explained and the blocks reloaded", async ({ page }) => {
+  const state = { requests: [], blocks: [{ ...block(), incidents: [incident()] }], liftConflict: true };
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeVenuePage(page, state);
+  await page.goto("/venues/7");
+  const section = page.locator("section").filter({ has: page.getByRole("heading", { name: "Operational blocks" }) });
+  await section.getByRole("button", { name: /Lift the block/ }).click();
+  await page.getByRole("dialog", { name: "Lift this block?" }).getByRole("button", { name: "Lift block" }).click();
+
+  await expect(section.getByText("This block was changed after you loaded it. Reload it, then try again. The blocks have been reloaded.")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Lift this block?" })).toBeHidden();
+  // Not retried: one lift request, then a fresh list.
+  expect(state.requests.filter((item) => item.path.endsWith("/lift"))).toHaveLength(1);
+  expect(state.requests.filter((item) => item.method === "GET" && item.path === "/api/venues/7/blocks").length).toBeGreaterThanOrEqual(2);
 });
 
 test("[SPM-195-TC-14] the blocks section reports an unavailable calendar and offers a retry", async ({ page }) => {
