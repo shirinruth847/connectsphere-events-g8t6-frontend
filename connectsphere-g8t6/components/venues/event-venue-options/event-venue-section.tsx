@@ -216,7 +216,8 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
               <div className="mt-2">
                 <p className="font-semibold">Venue Staff will see these warnings:</p>
                 <ul className="list-disc pl-5">
-                  {requested.warnings.flatMap((warning) => warning.messages).map((message) => <li key={message}>{message}</li>)}
+                  {requested.warnings.flatMap((warning) => warning.messages.map((message, at) => ({ key: `${warning.index}-${at}`, message })))
+                    .map(({ key, message }) => <li key={key}>{message}</li>)}
                 </ul>
               </div>
             ) : null}

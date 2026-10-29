@@ -6,7 +6,7 @@ import { Icon } from "@/components/shared/icon";
 import { formatEventWindow } from "@/lib/datetime";
 import type { EventVenueOption } from "@/lib/api/event-venues";
 import { VenueMultiSelect } from "./venue-multi-select";
-import { BOOKING_LIMITS, suitabilityWarnings, type BookingDraft } from "./venue-booking-form-model";
+import { BOOKING_LIMITS, buffersMissing, suitabilityWarnings, type BookingDraft } from "./venue-booking-form-model";
 import { useBookingPeriodCheck, type PeriodCheckState } from "./use-booking-period-check";
 
 export interface VenueChoiceGroups {
@@ -28,6 +28,8 @@ interface VenueBookingSectionProps {
   errors: Record<string, string>;
   // Set when the coordinator must mark one section as the primary venue.
   primaryGroup: string | null;
+  // The "Choose one primary venue" message, when shown, for the radio buttons.
+  primaryErrorId?: string;
   canRemove: boolean;
   disabled: boolean;
   onChange: (patch: Partial<BookingDraft>) => void;
@@ -111,6 +113,7 @@ export function VenueBookingSection({
   choices,
   errors,
   primaryGroup,
+  primaryErrorId,
   canRemove,
   disabled,
   onChange,
@@ -133,11 +136,15 @@ export function VenueBookingSection({
       ...(draft.labelEdited ? {} : { label: next ? next.name.slice(0, BOOKING_LIMITS.label) : "" }),
     });
   };
+  // Booked, chosen elsewhere or without setup/turnaround times: listed, not selectable (AC4, TC-14).
   const option = (choice: EventVenueOption) => {
     const taken = choice.venueId !== draft.venueId && unavailableVenueIds.has(choice.venueId);
-    const note = bookedVenueIds.has(choice.venueId) ? " (already booked for this event)" : taken ? " (in another section)" : "";
+    const noMinutes = choice.venueId !== draft.venueId && buffersMissing(choice);
+    const note = bookedVenueIds.has(choice.venueId)
+      ? " (already booked for this event)"
+      : taken ? " (in another section)" : noMinutes ? " (setup and turnaround times not set)" : "";
     return (
-      <option key={choice.venueId} value={choice.venueId} disabled={taken}>
+      <option key={choice.venueId} value={choice.venueId} disabled={taken || noMinutes}>
         {choice.name} · {choice.maxCapacity.toLocaleString()} people{note}
       </option>
     );
@@ -165,6 +172,7 @@ export function VenueBookingSection({
                 className="size-4 accent-primary"
                 checked={draft.isPrimary}
                 disabled={disabled}
+                aria-describedby={primaryErrorId}
                 onChange={() => onChange({ isPrimary: true })}
               />
               Primary venue
@@ -333,7 +341,7 @@ export function VenueBookingSection({
         <Notice tone="warning" icon="warning">
           <p className="font-semibold">Warnings: you can still send the request, and Venue Staff decide.</p>
           <ul className="mt-1 list-disc pl-4">
-            {warnings.map((message) => <li key={message}>{message}</li>)}
+            {warnings.map((message, at) => <li key={`${at}-${message}`}>{message}</li>)}
           </ul>
         </Notice>
       ) : null}

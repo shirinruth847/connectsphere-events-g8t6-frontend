@@ -9,7 +9,7 @@ import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { eventDisplayStatus, statusPresentation } from "@/lib/events";
-import type { EventView } from "@/lib/api/event-workspace";
+import { getEventView, type EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { editableIdentityFields } from "@/lib/permissions/event-workspace";
 import { ClarificationPanel } from "./clarification-panel";
@@ -173,7 +173,13 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               event={event}
               onSuggested={() => setHistoryKey((value) => value + 1)}
               onStale={onAccessChanged}
-              onBookingsRequested={() => setHistoryKey((value) => value + 1)}
+              onBookingsRequested={() => {
+                // New bookings change the arrangement version, history and
+                // readiness. The bookings are saved either way, so a failed
+                // re-fetch keeps the page as it is instead of showing an error.
+                setHistoryKey((value) => value + 1);
+                getEventView(event.eventId).then(({ event: latest }) => onEventChange(latest)).catch(() => {});
+              }}
             />
           </ReviewSection>
 
@@ -201,6 +207,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               setStatusNotice(message ?? "");
             }}
             onAccessChanged={onAccessChanged}
+            refreshKey={historyKey}
           />
           {clarificationPanel}
           <SafetyReviewSection eventId={event.eventId} refreshKey={historyKey} />

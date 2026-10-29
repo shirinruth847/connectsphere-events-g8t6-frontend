@@ -301,7 +301,10 @@ open the request form in a popup:
 - One section per venue (up to 10): venue, label, start and end (SGT),
   attendance and layout are required; facilities, accessibility needs and
   special requirements (including catering) are optional. With several venues
-  and no primary venue yet, one is marked primary.
+  and no primary venue yet, one is marked primary; `isPrimary` is sent only
+  then (a single venue becomes primary by itself, and an event with a primary
+  keeps it). Venues already booked for the event, chosen in another section or
+  without setup/turnaround times are listed but cannot be chosen.
 - Checks before sending are instant feedback only. Each section's
   availability and operating-hours warning come from
   `GET /api/events/:id/venue-availability` (the SPM-74 period check); layout,
@@ -309,7 +312,9 @@ open the request form in a popup:
 - `POST /api/events/:id/venue-bookings` sends an `Idempotency-Key` that is
   reused while the body is unchanged, so a retry cannot book twice. Refusals
   are shown in their venue section and every value is kept. Closing a changed
-  form asks before discarding it.
+  form asks before discarding it. After a request the event, its readiness and
+  its history are loaded again (the request moves `arrangement_version`, not
+  the event version).
 
 The backend route needs the SPM-179 migrations and `VENUE_LOCK_DATABASE_URL`;
 until then it answers `503`, which the form shows as a retryable error.

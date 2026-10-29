@@ -134,12 +134,20 @@ export function newDraft(key: string, event: BookingEventContext, venue: Pick<Ev
   };
 }
 
+// Venue Staff set the minutes once (Master 5.4.1); null with a current or
+// missing detail means "not set", and such a venue takes no bookings (AC7,
+// TC-14). When the detail service could not be read, the backend decides.
+export const buffersMissing = (venue: EventVenueOption) =>
+  venue.detailStatus !== "NOT_CHECKED" && (venue.setupMinutes == null || venue.turnaroundMinutes == null);
+
 // The venue the first section starts with: the coordinator's suggestion, else
 // the organiser's highest-ranked choice, skipping venues that cannot be
-// requested or already have a booking for this event (AC2, AC4, AC9).
+// requested, cannot take bookings yet, or already have a booking for this
+// event (AC2, AC4, AC9, TC-14).
 export function firstVenueId(candidates: Array<number | null | undefined>, selectable: EventVenueOption[], bookedVenueIds: Set<number>): number | null {
   for (const venueId of candidates) {
-    if (venueId != null && !bookedVenueIds.has(venueId) && selectable.some((venue) => venue.venueId === venueId)) return venueId;
+    const venue = venueId == null ? null : selectable.find((option) => option.venueId === venueId);
+    if (venue && !bookedVenueIds.has(venue.venueId) && !buffersMissing(venue)) return venue.venueId;
   }
   return null;
 }
@@ -162,12 +170,6 @@ export const needsPrimaryChoice = (sectionCount: number, eventHasPrimary: boolea
 // ---------- checks before sending (AC4 to AC10) ----------
 
 const field = (index: number, name: string) => `bookings.${index}.${name}`;
-
-// Venue Staff set the minutes once (Master 5.4.1); null with a current or
-// missing detail means "not set". When the detail service could not be read,
-// the backend decides.
-const buffersMissing = (venue: EventVenueOption) =>
-  venue.detailStatus !== "NOT_CHECKED" && (venue.setupMinutes == null || venue.turnaroundMinutes == null);
 
 export interface DraftCheckContext {
   event: BookingEventContext;
@@ -248,6 +250,9 @@ const cleanList = (items: string[]) => {
 };
 
 // The POST body's bookings, once validateDrafts found nothing to correct.
+// isPrimary is sent only when the coordinator chose among several venues: a
+// single venue becomes the primary by itself when the event has none, and an
+// event that has one keeps it (AC10).
 export function toRequestItems(drafts: BookingDraft[], eventHasPrimary: boolean): VenueBookingRequestItem[] {
   return drafts.map((draft) => ({
     venueId: draft.venueId as number,
@@ -259,7 +264,7 @@ export function toRequestItems(drafts: BookingDraft[], eventHasPrimary: boolean)
     requiredFacilities: cleanList(draft.requiredFacilities),
     accessibilityNeeds: cleanList(draft.accessibilityNeeds),
     specialRequirements: draft.specialRequirements.trim() || null,
-    isPrimary: eventHasPrimary ? false : drafts.length === 1 || draft.isPrimary,
+    isPrimary: needsPrimaryChoice(drafts.length, eventHasPrimary) && draft.isPrimary,
   }));
 }
 

@@ -98,6 +98,10 @@ test('[SPM-179 AC2][AC4][AC9] the first section takes the suggestion, else the f
   assert.equal(firstVenueId([2, 1], VENUES, new Set([2])), 1);
   assert.equal(firstVenueId([99, 3], VENUES, new Set()), 3);
   assert.equal(firstVenueId([99], VENUES, new Set()), null);
+  // TC-14: a venue without setup/turnaround times cannot take bookings, so it is skipped.
+  const noMinutes = [venue(2, { setupMinutes: null }), venue(1)];
+  assert.equal(firstVenueId([2, 1], noMinutes, new Set()), 1);
+  assert.equal(firstVenueId([2], [venue(2, { setupMinutes: null, detailStatus: 'NOT_CHECKED' })], new Set()), 2);
 });
 
 test('[SPM-179 TC-01] a complete section passes', () => {
@@ -167,7 +171,9 @@ test('[SPM-179 AC10][TC-15][TC-16] primary venue rules', () => {
   assert.deepEqual(check([{ ...two[0], isPrimary: true }, two[1]]), {});
   assert.deepEqual(check(two, { eventHasPrimary: true }), {});
 
-  assert.equal(toRequestItems([draft()], false)[0].isPrimary, true);
+  // A single venue is not marked: the backend makes it primary when the event
+  // has none, and an event that has one (even unflagged) keeps it.
+  assert.equal(toRequestItems([draft()], false)[0].isPrimary, false);
   assert.deepEqual(toRequestItems([{ ...two[0], isPrimary: true }, two[1]], false).map((item) => item.isPrimary), [true, false]);
   assert.deepEqual(toRequestItems(two.map((item) => ({ ...item, isPrimary: true })), true).map((item) => item.isPrimary), [false, false]);
 });
@@ -189,7 +195,7 @@ test('[SPM-179] the request body uses the backend field names, ISO times and cle
     requiredFacilities: ['Projector'],
     accessibilityNeeds: ['Wheelchair access'],
     specialRequirements: null,
-    isPrimary: true,
+    isPrimary: false,
   });
 });
 

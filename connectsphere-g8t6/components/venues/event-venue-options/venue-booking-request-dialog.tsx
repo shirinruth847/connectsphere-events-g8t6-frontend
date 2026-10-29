@@ -255,6 +255,7 @@ export function VenueBookingRequestDialog({
                 choices={choices}
                 errors={sectionErrors(errors, index)}
                 primaryGroup={askPrimary ? primaryGroup : null}
+                primaryErrorId={errors["bookings.primary"] ? `${primaryGroup}-error` : undefined}
                 canRemove={drafts.length > 1}
                 disabled={saving}
                 onChange={(patch) => update(index, patch)}

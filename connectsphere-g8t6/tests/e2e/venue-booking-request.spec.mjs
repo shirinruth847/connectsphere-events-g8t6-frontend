@@ -46,10 +46,12 @@ const eventView = (overrides = {}) => ({
 const hall = venue();
 const annex = venue({ venueId: 46, name: "Synthetic Annex", maxCapacity: 80, coverPhotoId: null, supportedLayouts: ["CLASSROOM"], rooms: [{ roomId: 2, layoutType: "CLASSROOM", capacity: 80 }] });
 const terrace = venue({ venueId: 47, name: "Synthetic Terrace", maxCapacity: 120, coverPhotoId: null });
+// Venue Staff have not set its setup/turnaround times, so it takes no bookings (TC-14).
+const workshop = venue({ venueId: 48, name: "Synthetic Workshop", maxCapacity: 60, coverPhotoId: null, setupMinutes: null, turnaroundMinutes: null });
 
 const options = () => ({
   event: { eventId: 42, requestId: "REQ-000042", startDatetime: START, endDatetime: END, expectedAttendance: 150, preferredLayoutType: "THEATRE", accessibilityNeeds: ["Wheelchair accessible entrance"] },
-  venues: [hall, annex, terrace],
+  venues: [hall, annex, terrace, workshop],
   preferredVenues: [
     { rank: 1, venueId: 45, name: hall.name, option: hall },
     { rank: 2, venueId: 46, name: annex.name, option: annex },
@@ -105,7 +107,9 @@ const periodCheck = (venueId, { canRequest = true, hours = null } = {}) => ({
   venueId,
 });
 
-const saved = (items) => ({
+// As the backend answers: with no primary yet, a lone booking becomes primary;
+// otherwise the marked one does, and an event with a primary keeps it.
+const saved = (items, eventHasPrimary = false) => ({
   message: items.length === 1 ? "Venue booking requested. Venue Staff will review it." : `${items.length} venue bookings requested. Venue Staff will review them.`,
   eventId: 42,
   requestId: "REQ-000042",
@@ -125,7 +129,7 @@ const saved = (items) => ({
     requiredFacilities: item.requiredFacilities,
     accessibilityNeeds: item.accessibilityNeeds,
     specialRequirements: item.specialRequirements,
-    isPrimary: item.isPrimary,
+    isPrimary: !eventHasPrimary && (items.length === 1 || item.isPrimary),
     status: "PENDING",
     statusLabel: "Pending",
   })),
@@ -136,13 +140,20 @@ const saved = (items) => ({
 // Routes the event page and its venue section; `respond` answers the POST.
 // Returns what the page sent.
 async function routeBookingSection(page, { event = eventView(), bookingList = list(), respond = null, availability = {} } = {}) {
-  const sent = { requests: [], availability: [] };
+  const sent = { requests: [], availability: [], eventLoads: 0, readinessLoads: 0 };
   let current = bookingList;
   await page.route(/\/api\/events\/42(\/.*)?(\?.*)?$/, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (request.method() === "OPTIONS") return route.fallback();
-    if (url.pathname === "/api/events/42") return route.fulfill({ json: { event } });
+    if (url.pathname === "/api/events/42") {
+      sent.eventLoads += 1;
+      return route.fulfill({ json: { event } });
+    }
+    if (url.pathname === "/api/events/42/readiness") {
+      sent.readinessLoads += 1;
+      return route.fulfill({ json: { ready: false, failures: [{ code: "BOOKING_NOT_APPROVED", message: "Every venue booking must be approved; holds and pending requests do not count." }], status: event.status, version: event.version, arrangementVersion: 3 } });
+    }
     if (url.pathname === "/api/events/42/history") return route.fulfill({ json: { history: [], nextCursor: null } });
     if (url.pathname === "/api/events/42/venue-options") return route.fulfill({ json: options() });
     if (url.pathname === "/api/events/42/venue-availability") {
@@ -156,7 +167,8 @@ async function routeBookingSection(page, { event = eventView(), bookingList = li
     if (url.pathname === "/api/events/42/venue-bookings" && request.method() === "POST") {
       const body = request.postDataJSON();
       sent.requests.push({ body, key: request.headers()["idempotency-key"] });
-      const answer = respond ? respond(body, sent.requests.length) : { status: 201, json: saved(body.bookings) };
+      const hasPrimary = current.bookings.some((item) => item.isPrimary && ["PENDING", "APPROVED"].includes(item.status));
+      const answer = respond ? respond(body, sent.requests.length) : { status: 201, json: saved(body.bookings, hasPrimary) };
       if (answer.status < 300) {
         current = { ...current, bookings: [...current.bookings, ...answer.json.bookings.map((item) => booking({ ...item, rejectionReason: null, requestedAt: "2026-10-28T00:00:00.000Z" }))] };
       }
@@ -222,7 +234,7 @@ test("[SPM-179 TC-01][AC2][AC11][AC12] the coordinator requests one venue and se
       requiredFacilities: [],
       accessibilityNeeds: ["Wheelchair accessible entrance"],
       specialRequirements: "Coffee for 150 at 10:30",
-      isPrimary: true,
+      isPrimary: false,
     }],
   });
 
@@ -234,6 +246,31 @@ test("[SPM-179 TC-01][AC2][AC11][AC12] the coordinator requests one venue and se
   await expect(row.getByText("Pending", { exact: true })).toBeVisible();
   await expect(row.getByText("Primary venue")).toBeVisible();
   await attachScreenshot(testInfo, page, "pending-booking");
+});
+
+test("[SPM-179 AC11] after a request the event, readiness and history are loaded again", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const sent = await routeBookingSection(page);
+  await page.goto("/events/42");
+  await expect(bookingsRegion(page).getByText("No venue bookings have been requested yet.")).toBeVisible();
+  await expect.poll(() => sent.readinessLoads).toBeGreaterThan(0);
+  const before = { event: sent.eventLoads, readiness: sent.readinessLoads };
+
+  await openForm(page);
+  await form(page).getByRole("button", { name: "Send booking request" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Booking request sent" })).toBeVisible();
+  // The request moves arrangement_version, not the event version.
+  await expect.poll(() => sent.eventLoads).toBeGreaterThan(before.event);
+  await expect.poll(() => sent.readinessLoads).toBeGreaterThan(before.readiness);
+});
+
+test("[SPM-179 TC-14][AC7] a venue without setup and turnaround times is listed but cannot be chosen", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeBookingSection(page);
+  await page.goto("/events/42");
+  await openForm(page);
+  const choice = section(page, 1).getByRole("option", { name: /Synthetic Workshop .*setup and turnaround times not set/ });
+  await expect(choice).toBeDisabled();
 });
 
 test("[SPM-179 TC-02][TC-03][AC4][AC5][AC10] several venues need valid sections and one primary", async ({ page }) => {
