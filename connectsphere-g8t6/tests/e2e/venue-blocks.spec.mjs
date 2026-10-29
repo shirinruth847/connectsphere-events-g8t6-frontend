@@ -32,6 +32,24 @@ const incident = (overrides = {}) => ({
   block: block(), canBeRestored: false, restoreLabel: "Venue still blocked", ...overrides,
 });
 
+// The Venue Staff event view (GET /api/venues/bookings/events/42): the event
+// and booking #900 at the venue, approved unless the journey says otherwise.
+const VENUE_STAFF_EVENT = {
+  eventId: 42, requestId: "REQ-000042", title: "Synthetic planning forum", status: "PLANNING", eventType: null, eventTypeLabel: null,
+  purpose: "Planning", description: null, startDatetime: "2030-03-10T01:00:00.000Z", endDatetime: "2030-03-10T09:00:00.000Z",
+  expectedAttendance: 120, preferredLayoutType: "THEATRE", accessibilityNeeds: [], submittedAt: null, organisationName: null, coordinatorName: "Synthetic Coordinator",
+};
+const BOOKING_VENUE = {
+  venueId: 7, name: VENUE.name, address: VENUE.address, maxCapacity: 500, operatingHours: "08:00-22:00",
+  setupTurnaroundMinutes: null, roomId: 70, roomLayoutType: "Theater", roomCapacity: 500,
+};
+const bookingDetail = (overrides = {}) => ({
+  bookingId: 900, label: null, status: "APPROVED", statusLabel: "Approved", venueId: 7, venueName: VENUE.name,
+  startDatetime: "2030-03-10T06:00:00.000Z", endDatetime: "2030-03-10T08:00:00.000Z", expectedAttendance: 120,
+  submittedAt: "2030-02-01T00:00:00.000Z", venue: BOOKING_VENUE, layoutType: "Theater", requiredFacilities: [], accessibilityRequirements: [],
+  specialRequirements: null, rejectionReason: null, ...overrides,
+});
+
 async function routeVenuePage(page, state) {
   await page.route("**/api/venues/**", async (route) => {
     const request = route.request();
@@ -174,13 +192,8 @@ test("[SPM-195-TC-14] the blocks section reports an unavailable calendar and off
 });
 
 test("[SPM-195-AC9][AC10] Venue Staff see an affected booking on the event view and restore it", async ({ page }) => {
-  const venue = { venueId: 7, name: VENUE.name, address: VENUE.address, maxCapacity: 500, operatingHours: "08:00-22:00", setupTurnaroundMinutes: null, roomId: 70, roomLayoutType: "Theater", roomCapacity: 500 };
   let restored = false;
-  const booking = () => ({
-    bookingId: 900, label: null, status: "APPROVED", statusLabel: "Approved", venueId: 7, venueName: VENUE.name,
-    startDatetime: "2030-03-10T06:00:00.000Z", endDatetime: "2030-03-10T08:00:00.000Z", expectedAttendance: 120,
-    submittedAt: "2030-02-01T00:00:00.000Z", venue, layoutType: "Theater", requiredFacilities: [], accessibilityRequirements: [],
-    specialRequirements: null, rejectionReason: null,
+  const booking = () => bookingDetail({
     incident: restored
       ? incident({ status: "RESOLVED", statusLabel: "Resolved", resolution: "RESTORED", resolutionLabel: "Booking restored", resolvedAt: "2030-03-02T00:00:00.000Z", canBeRestored: null, restoreLabel: null })
       : incident({ canBeRestored: true, restoreLabel: "Can be restored", block: block({ status: "LIFTED", statusLabel: "Lifted" }) }),
@@ -191,9 +204,7 @@ test("[SPM-195-AC9][AC10] Venue Staff see an affected booking on the event view 
     const url = new URL(route.request().url());
     if (url.pathname === "/api/venues/bookings/events/42") {
       return json(route, {
-        event: { eventId: 42, requestId: "REQ-000042", title: "Synthetic planning forum", status: "PLANNING", eventType: null, eventTypeLabel: null,
-          purpose: "Planning", description: null, startDatetime: "2030-03-10T01:00:00.000Z", endDatetime: "2030-03-10T09:00:00.000Z",
-          expectedAttendance: 120, preferredLayoutType: "THEATRE", accessibilityNeeds: [], submittedAt: null, organisationName: null, coordinatorName: "Synthetic Coordinator" },
+        event: VENUE_STAFF_EVENT,
         bookings: [booking()],
       });
     }
@@ -257,19 +268,13 @@ test("[SPM-195] an incident closed because its booking ended offers no restore, 
 });
 
 test("[SPM-195] a rejected booking shows its incident as closed, not as available again", async ({ page }) => {
-  const venue = { venueId: 7, name: VENUE.name, address: VENUE.address, maxCapacity: 500, operatingHours: "08:00-22:00", setupTurnaroundMinutes: null, roomId: 70, roomLayoutType: "Theater", roomCapacity: 500 };
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await page.route("**/api/venues/bookings/events/42", (route) => json(route, {
-    event: { eventId: 42, requestId: "REQ-000042", title: "Synthetic planning forum", status: "PLANNING", eventType: null, eventTypeLabel: null,
-      purpose: "Planning", description: null, startDatetime: "2030-03-10T01:00:00.000Z", endDatetime: "2030-03-10T09:00:00.000Z",
-      expectedAttendance: 120, preferredLayoutType: "THEATRE", accessibilityNeeds: [], submittedAt: null, organisationName: null, coordinatorName: "Synthetic Coordinator" },
-    bookings: [{
-      bookingId: 900, label: null, status: "REJECTED", statusLabel: "Rejected", venueId: 7, venueName: VENUE.name,
-      startDatetime: "2030-03-10T06:00:00.000Z", endDatetime: "2030-03-10T08:00:00.000Z", expectedAttendance: 120,
-      submittedAt: "2030-02-01T00:00:00.000Z", venue, layoutType: "Theater", requiredFacilities: [], accessibilityRequirements: [],
-      specialRequirements: null, rejectionReason: "Venue under maintenance",
+    event: VENUE_STAFF_EVENT,
+    bookings: [bookingDetail({
+      status: "REJECTED", statusLabel: "Rejected", rejectionReason: "Venue under maintenance",
       incident: incident({ status: "RESOLVED", statusLabel: "Resolved", resolution: "RELEASED", resolutionLabel: "Booking released", resolvedAt: "2030-03-02T00:00:00.000Z", canBeRestored: null, restoreLabel: null }),
-    }],
+    })],
   }));
   await page.goto("/events/42?booking=900");
   const card = page.getByRole("group", { name: "Venue incident closed" });
