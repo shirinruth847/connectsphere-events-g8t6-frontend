@@ -389,32 +389,35 @@ export function VenueBlocksSection({ venueId, venueName }: { venueId: number; ve
           </div>
         </AlertBanner>
       ) : state.data.blocks.length ? (
-        <ul className="grid gap-3" aria-label="Current and upcoming blocks">
-          {state.data.blocks.map((block) => (
-            <li key={block.blockId} className="grid gap-3 rounded-control bg-surface-container-low p-3 sm:p-4">
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <BlockChip block={block} />
-                    <span className="text-sm font-semibold text-on-surface">{block.reasonLabel}</span>
+        <>
+          <ul className="grid gap-3" aria-label="Current and upcoming blocks">
+            {state.data.blocks.map((block) => (
+              <li key={block.blockId} className="grid gap-3 rounded-control bg-surface-container-low p-3 sm:p-4">
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <BlockChip block={block} />
+                      <span className="text-sm font-semibold text-on-surface">{block.reasonLabel}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-on-surface">{formatEventWindow(block.start, block.end)}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant [overflow-wrap:anywhere]">{block.note}</p>
                   </div>
-                  <p className="mt-1 text-sm text-on-surface">{formatEventWindow(block.start, block.end)}</p>
-                  <p className="mt-1 text-xs text-on-surface-variant [overflow-wrap:anywhere]">{block.note}</p>
+                  {block.status === "ACTIVE" ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="secondary" onClick={() => { setNotice(null); setShortening(block); }} aria-label={`Shorten the block from ${formatEventWindow(block.start, block.end)}`}>Shorten</Button>
+                      <Button variant="quiet" onClick={() => { setNotice(null); setLiftError(""); setLifting(block); }} aria-label={`Lift the block from ${formatEventWindow(block.start, block.end)}`}>Lift block</Button>
+                    </div>
+                  ) : null}
                 </div>
-                {block.status === "ACTIVE" ? (
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={() => { setNotice(null); setShortening(block); }} aria-label={`Shorten the block from ${formatEventWindow(block.start, block.end)}`}>Shorten</Button>
-                    <Button variant="quiet" onClick={() => { setNotice(null); setLiftError(""); setLifting(block); }} aria-label={`Lift the block from ${formatEventWindow(block.start, block.end)}`}>Lift block</Button>
-                  </div>
-                ) : null}
-              </div>
-              <BlockIncidents block={block} onRestored={saved} onRefused={refresh} />
-            </li>
-          ))}
+                <BlockIncidents block={block} onRestored={saved} onRefused={refresh} />
+              </li>
+            ))}
+          </ul>
+          {/* Outside the list, so it is not counted as a block. */}
           {state.data.hasMore ? (
-            <li className="text-xs text-on-surface-variant">Later blocks are not shown. Lift or wait out the earlier ones to see them.</li>
+            <p className="text-xs text-on-surface-variant">Later blocks are not shown. Lift or wait out the earlier ones to see them.</p>
           ) : null}
-        </ul>
+        </>
       ) : (
         <EmptyState title="No current or upcoming blocks" description="The venue is not blocked. Record a block when it cannot be used for a period, for example for maintenance or a safety issue." />
       )}

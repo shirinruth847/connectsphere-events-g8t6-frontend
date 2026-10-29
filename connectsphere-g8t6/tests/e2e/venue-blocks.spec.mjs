@@ -265,6 +265,10 @@ test("[SPM-195] an incident closed because its booking ended offers no restore, 
   await expect(section.getByText("Booking released")).toBeVisible();
   await expect(section.getByRole("button", { name: "Restore booking" })).toHaveCount(0);
   await expect(section.getByText("Later blocks are not shown.", { exact: false })).toBeVisible();
+  // The note is not one of the listed blocks.
+  const list = section.getByRole("list", { name: "Current and upcoming blocks" });
+  await expect(list.getByText("Later blocks are not shown.", { exact: false })).toHaveCount(0);
+  await expect(list.locator(":scope > li")).toHaveCount(1);
 });
 
 test("[SPM-195] a rejected booking shows its incident as closed, not as available again", async ({ page }) => {
