@@ -203,6 +203,8 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
               <div>
                 <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-on-surface"><Icon name="equipment" size={16} className="text-primary" />Requested equipment</h3>
                 <RequirementList items={equipmentItems(event)} empty="None selected" />
+                <h3 className="mb-2 mt-4 text-sm font-semibold text-on-surface">Technical support needs</h3>
+                <p className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">{event.technicalSupportNeeds || "No technical support needs were provided."}</p>
               </div>
             </div>
           </Card>
