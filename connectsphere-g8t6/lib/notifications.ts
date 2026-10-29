@@ -1,4 +1,5 @@
 import type { NotificationItem, NotificationReadState, NotificationTarget } from "@/lib/api/notifications";
+import type { UserRole } from "@/lib/auth";
 
 // Display rules for the notifications inbox and Updates panel (SPM-155).
 // Kept free of runtime imports so the unit tests can load it directly.
@@ -43,6 +44,25 @@ export function notificationTargetHref(target: NotificationTarget | null | undef
   if (target.page === "MY_EVENTS") return `/my-registrations?eventId=${target.event_id}&from=notification`;
   if (target.page === "EVENT_WORKSPACE") return `/events/${target.event_id}`;
   return null;
+}
+
+// Shown when the backend answers 404 NOTIFICATION_NOT_FOUND: the notification is
+// removed from the list and this explains why, in the reader's terms.
+export function notificationGoneText(role: UserRole | null | undefined) {
+  const base = "That notification is no longer available.";
+  if (role === "ATTENDEE") return `${base} It may be about an event you are no longer registered or waitlisted for.`;
+  if (role === "ORGANISER") return `${base} It may be because you no longer have access to this event.`;
+  // A coordinator's notices hide once the event is reassigned (SPM-193 AC10).
+  if (role === "COORDINATOR") return "This event is no longer assigned to you.";
+  return base;
+}
+
+// The empty inbox, naming the updates this role receives.
+export function emptyInboxText(role: UserRole | null | undefined) {
+  if (role === "ATTENDEE") return "Updates about your events, such as registration confirmations, changes and reminders, will appear here.";
+  if (role === "ORGANISER") return "Updates about your event requests, such as submission, clarification requests, review outcomes, coordinator assignment, confirmation and cancellation, will appear here.";
+  if (role === "COORDINATOR") return "Updates about events assigned to you, such as new assignments and reassignments, clarification replies, venue booking decisions and safety review outcomes, will appear here.";
+  return "Updates about your events will appear here.";
 }
 
 // "Just now", "12 mins ago", "2 hrs ago", "Yesterday, 21:57 SGT", then

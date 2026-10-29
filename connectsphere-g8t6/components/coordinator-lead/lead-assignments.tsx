@@ -52,7 +52,7 @@ export function LeadAssignments() {
         <p className="mt-2 text-sm">{formatEventWindow(event.startDatetime, event.endDatetime)}</p>
         <p className="mb-4 mt-2 text-sm">Current coordinator: <strong>{event.coordinatorName}</strong></p>
         {event.hasScheduleConflict && <div className="mb-4"><AlertBanner tone="warning">The current coordinator has an overlapping active event. The Lead must choose which assignment to change.</AlertBanner></div>}
-        <CoordinatorAssignmentAction key={`${event.eventId}-${event.coordinatorId}`} event={event} currentCoordinatorId={event.coordinatorId} coordinators={coordinators} onRefresh={refresh} onSaved={async () => { setNotice(`Coordinator updated for ${event.requestId}.`); await refresh(); }} />
+        <CoordinatorAssignmentAction key={`${event.eventId}-${event.coordinatorId}`} event={event} currentCoordinatorId={event.coordinatorId} coordinators={coordinators} onRefresh={refresh} onSaved={async (replayed) => { setNotice(replayed ? `Previous reassignment confirmed for ${event.requestId}. Current assignments refreshed.` : `Coordinator updated for ${event.requestId}.`); await refresh(); }} />
       </SectionCard>
     </article>)}
   </PageContent>;

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useSessionUser } from "@/components/auth/auth-gate";
 import { ApiError } from "@/lib/api";
 import {
   listNotifications,
@@ -15,6 +16,7 @@ import {
   appendNotifications,
   applyReadState,
   mergeFirstPage,
+  notificationGoneText,
   notificationTargetHref,
 } from "@/lib/notifications";
 
@@ -22,9 +24,6 @@ export const toApiError = (error: unknown) =>
   error instanceof ApiError
     ? error
     : new ApiError(error instanceof Error ? error.message : "The request could not be completed.", 0);
-
-export const NOTIFICATION_GONE =
-  "That notification is no longer available. It may be about an event you are no longer registered or waitlisted for.";
 
 interface ListState {
   status: "loading" | "ready" | "error";
@@ -51,7 +50,7 @@ type ListAction =
   | { type: "moreFailed"; error: ApiError }
   | { type: "busy"; id: number; on: boolean }
   | { type: "read"; state: NotificationReadState; unreadCount: number }
-  | { type: "removed"; id: number }
+  | { type: "removed"; id: number; text: string }
   | { type: "markAllStarted" }
   | { type: "allRead"; unreadCount: number }
   | { type: "markAllFailed"; error: ApiError }
@@ -123,7 +122,7 @@ function reducer(state: ListState, action: ListAction): ListState {
       return {
         ...state,
         items: state.items.filter((item) => item.notification_id !== action.id),
-        notice: { tone: "info", text: NOTIFICATION_GONE },
+        notice: { tone: "info", text: action.text },
       };
     case "markAllStarted":
       return { ...state, markingAll: true, notice: null };
@@ -150,6 +149,7 @@ const isGone = (error: ApiError) => error.status === 404 && error.code === "NOTI
 export function useNotificationList({ pageSize, refreshOnReturn }: { pageSize: number; refreshOnReturn: boolean }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const router = useRouter();
+  const user = useSessionUser();
   const listRequest = useRef<AbortController | null>(null);
   const moreRequest = useRef<AbortController | null>(null);
 
@@ -227,7 +227,11 @@ export function useNotificationList({ pageSize, refreshOnReturn }: { pageSize: n
     } catch (caught) {
       const error = toApiError(caught);
       if (isGone(error)) {
-        dispatch({ type: "removed", id: item.notification_id });
+        dispatch({ type: "removed", id: item.notification_id, text: notificationGoneText(user?.role) });
+        // Reassignment can hide several notices while new ones arrive. Read
+        // the current list/count instead of subtracting one from a stale total;
+        // fetchFirstPage also announces the confirmed count to Updates.
+        await fetchFirstPage({ background: true });
         return "gone";
       }
       dispatch({ type: "notice", notice: { tone: "error", text: `Could not mark "${item.title}" as read. ${error.message}` } });

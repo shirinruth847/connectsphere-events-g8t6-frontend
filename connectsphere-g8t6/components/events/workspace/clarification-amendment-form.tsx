@@ -389,6 +389,13 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
             </div>
           </Group>
 
+          <Group title="Technical support needs">
+            <FormLabel htmlFor={id("technicalSupportNeeds")}>Technical support needs</FormLabel>
+            <textarea id={id("technicalSupportNeeds")} maxLength={2000} rows={4} value={values.technicalSupportNeeds} onChange={(change) => update("technicalSupportNeeds", change.target.value)} className={`${fieldClasses} resize-y`} {...errorProps("technicalSupportNeeds")} />
+            <FieldError id={`${id("technicalSupportNeeds")}-error`} message={fieldErrors.technicalSupportNeeds} />
+            <p className="text-xs text-on-surface-variant">Describe the support you need, up to 2,000 characters.</p>
+          </Group>
+
           <Group title="Equipment">
             <p className="text-xs text-on-surface-variant">Amend the equipment you need. These preferences do not reserve equipment.</p>
             {optionsError ? <AlertBanner tone="warning">{optionsError}</AlertBanner> : null}

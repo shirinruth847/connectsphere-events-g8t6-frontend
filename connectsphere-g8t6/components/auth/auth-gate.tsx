@@ -11,7 +11,8 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 const UserContext = createContext<SessionUser | null>(null);
 export const useSessionUser = () => useContext(UserContext);
 
-export function AuthGate({ children, role }: { children: ReactNode; role?: UserRole }) {
+// `role` limits the page to one role, or to any of several (e.g. the shared inbox).
+export function AuthGate({ children, role }: { children: ReactNode; role?: UserRole | readonly UserRole[] }) {
   const pathname = usePathname(); const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [error, setError] = useState(""); const [checking, setChecking] = useState(true);
@@ -59,6 +60,6 @@ export function AuthGate({ children, role }: { children: ReactNode; role?: UserR
   if (checking) return <main className="mx-auto w-full max-w-5xl space-y-4 p-6"><Skeleton className="h-12 w-1/2" /><Skeleton className="h-48 w-full" /></main>;
   if (error) return <main className="mx-auto mt-16 max-w-xl p-5"><AlertBanner title="Could not open your workspace" tone="error">{error}<button className="ml-3 underline" onClick={() => setRetry(value => value + 1)}>Retry connection</button></AlertBanner></main>;
   if (!user) return null;
-  if (role && user.role !== role) return <main className="mx-auto mt-16 max-w-xl p-5"><AlertBanner title="Access denied" tone="error">This page is not available for your role. <Link className="underline" href={homeForRole(user.role)}>Go to your dashboard</Link></AlertBanner></main>;
+  if (role && !(typeof role === "string" ? [role] : role).includes(user.role)) return <main className="mx-auto mt-16 max-w-xl p-5"><AlertBanner title="Access denied" tone="error">This page is not available for your role. <Link className="underline" href={homeForRole(user.role)}>Go to your dashboard</Link></AlertBanner></main>;
   return <UserContext.Provider value={user}>{children}</UserContext.Provider>;
 }

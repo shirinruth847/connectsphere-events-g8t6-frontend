@@ -1,6 +1,7 @@
 "use client";
 
 import { PageContent } from "@/components/layout/page-content";
+import { EventAssignmentQueue } from "@/components/coordinator-lead/event-assignment-queue";
 import { SectionCard } from "@/components/shared/primitives";
 import { ROLE_LABELS } from "@/lib/auth";
 import Link from "next/link";
@@ -16,5 +17,6 @@ export function CoordinatorLeadDashboard() {
         <Link href="/calendar" className="inline-flex min-h-11 items-center rounded-control bg-surface-container-low px-4 py-2.5 text-sm font-semibold text-primary">Calendar</Link>
       </div>
     </SectionCard>
+    <EventAssignmentQueue />
   </PageContent>;
 }

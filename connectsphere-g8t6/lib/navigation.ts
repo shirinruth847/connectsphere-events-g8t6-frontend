@@ -9,13 +9,16 @@ const organiserItems: NavigationItem[] = [
   { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
   { id: "requests", title: "My Requests", icon: "event", href: ROUTES.requests },
   { id: "registrations-unavailable", title: "Registrations", icon: "registrations" },
-  { id: "notifications", title: "Notifications", icon: "notifications" },
+  // The same inbox attendees use (SPM-192); the Updates panel's See more leads here too.
+  { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
 ];
 
 const mainItems: Record<UserRole, NavigationItem[]> = {
   ORGANISER: organiserItems,
   COORDINATOR: [
-    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }
+    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard },
+    // The same inbox attendees and organisers use (SPM-193).
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
   COORDINATOR_LEAD: [
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
@@ -66,6 +69,8 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     if (pathname === ROUTES.attendeeProfile) return "profile";
     return "home";
   }
+  // Only roles with an inbox reach /notifications; the others are refused before the shell renders.
+  if (pathname === ROUTES.notifications) return "notifications";
   if (role === "TECH_SUPPORT") {
     return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }

@@ -149,7 +149,8 @@ production build and type checks.
 
 ## Lead assignment workspace (SPM-174)
 
-Leads assign submitted unassigned requests on `/events` and reassign their
+Leads see and assign submitted unassigned requests directly on `/dashboard`
+and on `/events`, using the same queue component and backend scope. They reassign their
 supervised or legacy unsupervised active events on `/assignments`. The shared
 shell, trusted session profile and Express API helpers remain in use. Assignment
 requires explicit confirmation; busy coordinators are disabled, the backend
@@ -157,12 +158,18 @@ checks availability again, and success is shown only after its response. Stale
 or uncertain results require refreshing before another attempt. The calendar
 uses half-open Singapore scheduling windows and clamps month-end navigation.
 
-The backend must enable `ENABLE_COORDINATOR_WORKFLOWS=true` and deploy
-`20261020075714_spm174_lead_assignment_conflict_guard.sql` before this frontend.
+The backend must deploy `20261020075714_spm174_lead_assignment_conflict_guard.sql`
+before this frontend. The paired `fix/lead-workflow-availability` backend change
+retires the rollout environment switch; its Lead routes are always registered
+and retain authentication and Lead-only authorization. Older backends still
+require `ENABLE_COORDINATOR_WORKFLOWS=true` until upgraded.
 Existing legacy overlaps are preserved for Lead-controlled reassignment; the
 guard prevents new conflicts while the full exclusion constraint remains
 deferred. See the backend's `docs/test-plans/spm-174.md` for deployment,
 rollback and real hosted/browser verification commands.
+
+The Dashboard home correction and its mocked browser regression coverage are
+documented in `docs/test-plans/lead-dashboard.md`.
 
 `npm run test:e2e -- --grep SPM-174` covers initial assignment, reassignment,
 stale rejection, role restrictions, queue resilience and calendar boundaries
@@ -208,9 +215,19 @@ of the five latest notifications; **See more** and the attendee sidebar's
 - Data comes from the backend `/api/notifications` routes through
   `lib/api/notifications.ts`; display rules (Go to Event targets, SGT times,
   offer expiry, badge text, page merging) are in `lib/notifications.ts`.
-- Components are role-agnostic in `components/notifications/`. Other roles get
-  the inbox by widening `canViewPath`, the page's `DashboardWorkspace` role and
-  placing `NotificationsBell` on their pages (SPM-192/193).
+- Components are role-agnostic in `components/notifications/`. A role gets
+  the inbox by joining `NOTIFICATION_ROLES` in `lib/auth.ts` (used by
+  `canViewPath` and the page's `DashboardWorkspace`), linking its sidebar tab
+  and placing `NotificationsBell` on its pages. Organisers joined with SPM-192
+  (Updates after the search box on `/dashboard`); coordinators with SPM-193
+  (Updates in the Assigned Events header, Notifications sidebar tab). The
+  Coordinator Lead and other staff roles have no inbox yet and get 403.
+- A coordinator sees notifications only for events assigned to them now, plus
+  the "Event assignment ended" notice (`ASSIGNMENT_ENDED`) after a
+  reassignment; the backend decides. Go to Event on that notice opens
+  `/events/<id>`, which shows "Event not available"; Go to Event on a notice
+  hidden since the list loaded removes it with "This event is no longer
+  assigned to you."
 - Read state and the unread count change only after the backend confirms them.
   The count refreshes on window focus, on tab visibility and after each read
   action; nothing promises instant delivery. After an action that writes a
@@ -218,12 +235,15 @@ of the five latest notifications; **See more** and the attendee sidebar's
   `announceNotificationsChanged()` without a count and the badge fetches it again.
 - **Go to Event** marks the notification read, then opens
   `/my-registrations?eventId=<id>&from=notification` (attendees) or
-  `/events/<id>` (staff workspace, other roles later). On My Events that URL
+  `/events/<id>` (the event workspace, for organisers and staff). On My Events that URL
   opens the event details dialog (frame `282:1271`) over the outlined card, labelled "Opened from your
   notification"; **View Event Details** on a card opens the same dialog
   without that label, and closing removes the parameters. A notification the
   backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
-  navigating, and a background refresh drops any it no longer returns.
+  navigating, with a role-worded reason (`notificationGoneText`), and a
+  background refresh reads the current list and unread count and updates the
+  Updates badge. It can drop other hidden notices and include new arrivals;
+  the client does not estimate the count by subtracting one.
 - Event Discovery and My Events share that dialog
   (`components/attendee/discovery/event-details-dialog.tsx`), and each reads
   its own endpoint through `useAttendeeEvent`. From Event Discovery it reads
@@ -249,6 +269,13 @@ of the five latest notifications; **See more** and the attendee sidebar's
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
+
+SPM-193's user-approved staged delivery explicitly defers technical decision
+notifications (AC6), hold warning/expiry notifications (AC8) and the
+operational-block portion of AC5 until their owning workflows exist. Their
+backend helpers alone do not complete those criteria. See
+[the coordinator test plan](docs/test-plans/spm-193.md) for the scope and stale
+Jira wording; existing venue status changes remain supported.
 
 ## Event venue search and calendar fixes (SPM-72 / SPM-75)
 
