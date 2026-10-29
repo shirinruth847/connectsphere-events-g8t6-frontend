@@ -1,5 +1,13 @@
 # SPM-38 submitted support needs
 
+Current deployment: fixes are merged to main and Supabase migration
+`20261028120000_spm38_submitted_support_needs` was applied to development on
+29 October 2026. All 12 hosted SQL RPC smoke checks passed, including support-needs
+draft/save/submission and clarification amendments. Fixtures were rolled back
+and none remained; the new column reads successfully through Supabase REST.
+Earlier pending-deployment notes below describe their execution-time state.
+See the backend test plan for the deployment record and verification limits.
+
 The user confirmed support needs are provided by the organiser at submission,
 separate from formal Planning arrangements. The wizard now captures optional
 `technicalSupportNeeds` text (up to 2,000 characters), preserves it across draft
