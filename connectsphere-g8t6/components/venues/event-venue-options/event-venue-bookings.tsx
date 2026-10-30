@@ -5,6 +5,7 @@ import { Icon } from "@/components/shared/icon";
 import { BookingStatusChip, BOOKING_BORDERS } from "@/components/venue-staff/booking-requests/booking-status-chip";
 import { formatEventWindow } from "@/lib/datetime";
 import type { EventVenueBookingList } from "@/lib/api/event-venues";
+import { BookingIncidentCard } from "@/components/venues/booking-incident";
 import { VenueBadge } from "./venue-option-card";
 
 export type BookingListState =
@@ -24,7 +25,8 @@ interface EventVenueBookingsProps {
 // The event's venue bookings in its venue section (SPM-179 AC1, AC12): each
 // booking's venue, label, times, attendance, status (the backend's label) and
 // the primary venue. The request button shows only when the backend allows a
-// request now; the supervising Lead reads the list without it.
+// request now; the supervising Lead reads the list without it. A booking a
+// venue block affects shows its incident card (SPM-195 AC7).
 export function EventVenueBookings({ state, isCoordinator, canRequest, onRequest, onRetry }: EventVenueBookingsProps) {
   const allowed = state.status === "ready" && state.data.canRequestVenueBookings;
 
@@ -85,6 +87,7 @@ export function EventVenueBookings({ state, isCoordinator, canRequest, onRequest
                   {booking.status === "REJECTED" && booking.rejectionReason ? (
                     <p className="text-xs text-on-surface"><span className="font-semibold">Reason:</span> {booking.rejectionReason}</p>
                   ) : null}
+                  {booking.incident ? <BookingIncidentCard incident={booking.incident} audience={isCoordinator ? "coordinator" : "read-only"} /> : null}
                 </li>
               ))}
             </ul>
