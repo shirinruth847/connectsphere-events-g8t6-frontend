@@ -62,11 +62,19 @@ export function VenueFacts({ venue, onOpenVenue }: { venue: EventVenueOption; on
         <ul className="grid grid-cols-[minmax(0,1fr)] gap-1.5 @lg:grid-cols-2">
           {venue.requirements.map((item) => <RequirementRow key={item.key} requirement={item} venueValue={venueValue(item, venue)} />)}
         </ul>
+        {/* The event's own occupied time at this venue (SPM-185 AC1); without
+            recorded setup/turnaround it would be just the event window. */}
+        {venue.availability.occupiedStart && venue.availability.occupiedEnd && venue.setupMinutes != null && venue.turnaroundMinutes != null ? (
+          <p className="text-sm text-on-surface-variant">
+            Occupied {formatEventWindow(venue.availability.occupiedStart, venue.availability.occupiedEnd)} with setup and turnaround
+          </p>
+        ) : null}
         {venue.availability.conflicts.length ? (
           <ul className="grid gap-1 text-sm text-on-surface" aria-label="Conflicts">
             {venue.availability.conflicts.map((conflict, index) => (
               <li key={`${conflict.type}-${index}`} className="rounded-control bg-[#FEF2F2] px-3 py-1.5">
-                {conflict.label}{conflict.reasonLabel ? ` · ${conflict.reasonLabel}` : ""}: {formatEventWindow(conflict.occupiedStart, conflict.occupiedEnd)}
+                {conflict.message
+                  || `${conflict.label}${conflict.reasonLabel ? ` · ${conflict.reasonLabel}` : ""}: ${formatEventWindow(conflict.occupiedStart, conflict.occupiedEnd)}`}
                 {conflict.holdExpiresAt ? ` · hold expires ${formatTimestamp(conflict.holdExpiresAt)}` : ""}
               </li>
             ))}
