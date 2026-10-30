@@ -272,6 +272,32 @@ test("[T16] setup and turnaround times are set once, then locked", async ({ page
   await expect(page.getByText("Set once; it cannot be changed.")).toHaveCount(2);
 });
 
+test("[SPM-185 AC5][TC5] a time recorded elsewhere is refused with VENUE_BUFFERS_LOCKED and the reason is shown", async ({ page }) => {
+  const state = managementState();
+  state.details = details({ setupMinutes: null, turnaroundMinutes: null });
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  // Another Venue Staff member set 30/45 after this page loaded.
+  await page.route((url) => url.pathname === "/api/venues/7/details", (route) => route.fulfill({
+    status: 409,
+    json: {
+      error: "Setup and turnaround times can be set only once and cannot be changed.",
+      code: "VENUE_BUFFERS_LOCKED",
+      fields: { setupMinutes: "Setup time has already been set and cannot be changed.", turnaroundMinutes: "Turnaround time has already been set and cannot be changed." },
+    },
+  }));
+  await page.goto("/venues/7");
+
+  await page.getByLabel("Setup time (minutes)").fill("60");
+  await page.getByLabel("Turnaround time (minutes)").fill("90");
+  await page.getByRole("button", { name: "Save details" }).click();
+
+  await expect(page.getByText("Setup and turnaround times can be set only once and cannot be changed. Nothing was saved. Reload the venue to see the recorded times.")).toBeVisible();
+  await expect(page.getByText("Setup time has already been set and cannot be changed.")).toBeVisible();
+  await expect(page.getByText("Turnaround time has already been set and cannot be changed.")).toBeVisible();
+  await expect(page.getByText("Venue details updated.")).toHaveCount(0);
+});
+
 test("[SPM-73 TC9] other roles cannot open venue management", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await page.goto("/venues/7");
