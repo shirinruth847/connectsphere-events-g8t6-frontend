@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import type { EventHistoryEntry } from "@/lib/api/event-workspace";
 import { bookingFilterQuery, type VenueBookingFilters } from "@/components/venue-staff/booking-requests/booking-filters";
 
 export type { VenueBookingFilters };
@@ -42,7 +43,10 @@ export interface VenueBookingDetail extends VenueBookingSummary {
     address: string;
     maxCapacity: number;
     operatingHours: string | null;
-    setupTurnaroundMinutes: number | null;
+    // From MongoDB venue_details; null when not recorded or when detailsAvailable is false.
+    setupMinutes: number | null;
+    turnaroundMinutes: number | null;
+    detailsAvailable: boolean;
     roomId: number;
     roomLayoutType: string;
     roomCapacity: number;
@@ -92,6 +96,17 @@ export interface EventVenueBookings {
 
 export const listVenueBookings = (filters: VenueBookingFilters = {}) =>
   apiRequest<VenueBookingList>(`/venues/bookings${bookingFilterQuery(filters)}`);
+
+
+const historyQuery = ({ limit, cursor }: { limit: number; cursor?: string }) => {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return query.toString();
+};
+
+// The venue-relevant part of an event's history (SPM-186).
+export const getEventBookingHistory = (eventId: number, options: { limit: number; cursor?: string }) =>
+  apiRequest<{ history: EventHistoryEntry[]; nextCursor: string | null }>(`/venues/bookings/events/${eventId}/history?${historyQuery(options)}`);
 
 export const getEventVenueBookings = (eventId: number) =>
   apiRequest<EventVenueBookings>(`/venues/bookings/events/${eventId}`);

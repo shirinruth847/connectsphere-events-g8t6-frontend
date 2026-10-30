@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AlertBanner, Button, buttonClasses, EmptyState, PageHeader, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { RequirementList, layoutLabel } from "@/components/events/workspace/event-detail-rows";
+import { HistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { useHistory, type HistoryLoader } from "@/components/events/workspace/use-event-history";
 import { ApiError } from "@/lib/api";
 import { formatDuration, formatEventWindow, formatTimestamp } from "@/lib/datetime";
-import { getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
+import { getEventBookingHistory, getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
 import { formatBookingId } from "./booking-filters";
 import { BookingDecision, type DecisionNotice } from "./booking-decision";
 import { BookingStatusChip } from "./booking-status-chip";
@@ -43,45 +45,72 @@ function ReviewSection({ step, title, description, action, children }: {
 
 const people = (value: number | null) => (value ? `${value.toLocaleString()} people` : "Not provided");
 
-function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
-  const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > booking.venue.roomCapacity;
+const subheading = "text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant";
+
+function Fact({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) {
   return (
-    <div className="grid gap-4">
-      <KeyValuePanel
-        rows={[
-          { icon: "venue", label: "Requested venue", value: `${booking.venue.name} · ${booking.venue.address}` },
-          { icon: "calendar", label: "Booking window", value: formatEventWindow(booking.startDatetime, booking.endDatetime) },
-          { icon: "attendees", label: "Venue attendance", value: people(booking.expectedAttendance) },
-          { icon: "layout", label: "Layout", value: layoutLabel(booking.layoutType) },
-          { icon: "organisation", label: "Room capacity", value: `${booking.venue.roomCapacity.toLocaleString()} (${booking.venue.roomLayoutType})` },
-          { icon: "schedule", label: "Operating hours", value: booking.venue.operatingHours ?? "Not recorded" },
-          {
-            icon: "schedule",
-            label: "Setup & turnaround",
-            value: booking.venue.setupTurnaroundMinutes != null ? `${booking.venue.setupTurnaroundMinutes} min` : "Not recorded",
-          },
-          { icon: "history", label: "Submitted", value: formatTimestamp(booking.submittedAt) },
-        ]}
-      />
-      {overCapacity ? (
-        <AlertBanner tone="warning" live={false}>
-          Venue attendance ({booking.expectedAttendance?.toLocaleString()}) is above the room capacity ({booking.venue.roomCapacity.toLocaleString()}).
-        </AlertBanner>
-      ) : null}
+    <div className={`rounded-control border px-3 py-2 ${alert ? "border-error bg-error-container/40" : "border-outline-variant"}`}>
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{label}</dt>
+      <dd className={`mt-0.5 text-sm font-semibold ${alert ? "text-error" : "text-on-surface"}`}>{value}</dd>
+    </div>
+  );
+}
+
+function Chips({ items, empty }: { items: string[]; empty: string }) {
+  if (!items.length) return <p className="text-sm text-on-surface-variant">{empty}</p>;
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {items.map((item) => <li key={item} className="rounded-pill bg-primary-fixed/50 px-3 py-1 text-xs font-medium text-on-surface">{item}</li>)}
+    </ul>
+  );
+}
+
+const buffers = (venue: VenueBookingDetail["venue"]) => {
+  if (!venue.detailsAvailable) return "Unavailable";
+  if (venue.setupMinutes == null || venue.turnaroundMinutes == null) return "Not recorded";
+  return `${venue.setupMinutes} / ${venue.turnaroundMinutes} min`;
+};
+
+// What Venue Staff decide on (SPM-186): the venue and how the request fits it,
+// then the requirements. The booking window is in the row header only.
+function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
+  const { venue } = booking;
+  const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > venue.roomCapacity;
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-3">
+        <p className="flex items-start gap-2 text-sm text-on-surface">
+          <Icon name="venue" size={16} />
+          <span><span className="font-semibold">{venue.name}</span> · <span className="text-on-surface-variant">{venue.address}</span></span>
+        </p>
+        <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <Fact
+            label="Attendance / capacity"
+            value={`${booking.expectedAttendance != null ? booking.expectedAttendance.toLocaleString() : "?"} / ${venue.roomCapacity.toLocaleString()}`}
+            alert={overCapacity}
+          />
+          <Fact label="Layout" value={`${layoutLabel(booking.layoutType)}${venue.roomLayoutType ? ` (room: ${layoutLabel(venue.roomLayoutType)})` : ""}`} />
+          <Fact label="Operating hours" value={venue.operatingHours ?? "Not recorded"} />
+          <Fact label="Setup / turnaround" value={buffers(venue)} />
+        </dl>
+        {overCapacity ? <p className="text-xs font-semibold text-error">Attendance is above the room capacity.</p> : null}
+      </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Required facilities</h4>
-          <RequirementList items={booking.requiredFacilities} empty="No facilities were requested." />
+        <div className="grid gap-2">
+          <h4 className={subheading}>Facilities</h4>
+          <Chips items={booking.requiredFacilities} empty="None requested." />
         </div>
-        <div>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Accessibility requirements</h4>
-          <RequirementList items={booking.accessibilityRequirements} empty="No accessibility requirements were requested." />
+        <div className="grid gap-2">
+          <h4 className={subheading}>Accessibility</h4>
+          <Chips items={booking.accessibilityRequirements} empty="None requested." />
         </div>
       </div>
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Special requirements</h4>
-        <p className="text-sm text-on-surface">{booking.specialRequirements || "None."}</p>
-      </div>
+      {booking.specialRequirements ? (
+        <div className="grid gap-1">
+          <h4 className={subheading}>Special requirements</h4>
+          <p className="text-sm text-on-surface">{booking.specialRequirements}</p>
+        </div>
+      ) : null}
       {booking.rejectionReason ? (
         <AlertBanner tone="error" live={false} title="Rejection reason">{booking.rejectionReason}</AlertBanner>
       ) : null}
@@ -99,7 +128,7 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
     <ReviewSection
       step={3}
       title="Venue bookings"
-      description={`${bookings.length} venue ${bookings.length === 1 ? "booking" : "bookings"} under this event, each with its own status. Select one to review its requirements and decide it.`}
+      description={`${bookings.length} ${bookings.length === 1 ? "booking" : "bookings"}, each decided on its own.`}
       action={<PermissionPill tone="edit">Venue Staff review</PermissionPill>}
     >
       <ul className="grid gap-3">
@@ -107,7 +136,7 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
           const selected = booking.bookingId === selectedId;
           const panelId = `booking-panel-${booking.bookingId}`;
           return (
-            <li key={booking.bookingId} className={`rounded-control border ${selected ? "border-primary bg-primary-fixed/30" : "border-outline-variant bg-surface-container-lowest"}`}>
+            <li key={booking.bookingId} className={`rounded-control border bg-surface-container-lowest ${selected ? "border-primary shadow-elevation-1" : "border-outline-variant"}`}>
               <button
                 type="button"
                 className="flex min-h-11 w-full flex-wrap items-center justify-between gap-3 p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -119,8 +148,8 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
                   <span className="text-sm font-bold text-on-surface">
                     {booking.venueName}{booking.label ? ` · ${booking.label}` : ""}
                   </span>
-                  <span className="text-xs text-on-surface-variant">
-                    <span className="font-mono">{formatBookingId(booking.bookingId)}</span> · {formatEventWindow(booking.startDatetime, booking.endDatetime)}
+                  <span className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                    <Icon name="calendar" size={16} />{formatEventWindow(booking.startDatetime, booking.endDatetime)}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
@@ -131,9 +160,9 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
                 </span>
               </button>
               <Collapse open={selected} id={panelId}>
-                <div className="grid gap-4 border-t border-outline-variant p-3 sm:p-4">
-                  <BookingDecision booking={booking} onDecided={onDecided} />
+                <div className="grid gap-5 border-t border-outline-variant p-4">
                   <BookingRequirements booking={booking} />
+                  <BookingDecision booking={booking} onDecided={onDecided} />
                 </div>
               </Collapse>
             </li>
@@ -144,12 +173,27 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
   );
 }
 
-function LoadedView({ data, selectedId, onSelect, notice, onDecided }: {
+// The venue-relevant part of the event's history (SPM-186, Master 4.2).
+function BookingHistory({ eventId, refreshKey }: { eventId: number; refreshKey: number }) {
+  const load = useCallback<HistoryLoader>((options) => getEventBookingHistory(eventId, options), [eventId]);
+  const history = useHistory(load, refreshKey);
+  return (
+    <HistoryPanel
+      id={`event-${eventId}-venue-history`}
+      description="Venue bookings and decisions, and changes to the dates, attendance, layout and access they depend on."
+      emptyText="No venue changes have been recorded for this event yet."
+      history={history}
+    />
+  );
+}
+
+function LoadedView({ data, selectedId, onSelect, notice, onDecided, refreshKey }: {
   data: EventVenueBookings;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
   notice: DecisionNotice | null;
   onDecided: (notice: DecisionNotice) => void;
+  refreshKey: number;
 }) {
   const { event, bookings } = data;
   const duration = formatDuration(event.startDatetime, event.endDatetime);
@@ -172,7 +216,6 @@ function LoadedView({ data, selectedId, onSelect, notice, onDecided }: {
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <ReferenceIdTag value={event.requestId} />
         {selected ? <ReferenceIdTag value={formatBookingId(selected.bookingId)} /> : null}
-        <span className="text-sm text-on-surface-variant">{formatEventWindow(event.startDatetime, event.endDatetime)}</span>
         <PermissionPill tone="read-only">Venue Staff • Event details read-only</PermissionPill>
       </div>
 
@@ -253,6 +296,8 @@ function LoadedView({ data, selectedId, onSelect, notice, onDecided }: {
               <p className="mt-4 text-sm text-on-surface-variant">This event has no other venue bookings.</p>
             )}
           </section>
+
+          <BookingHistory eventId={event.eventId} refreshKey={refreshKey} />
         </aside>
       </div>
     </div>
@@ -346,7 +391,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
       {bookingMissing ? (
         <div className="mb-4"><AlertBanner tone="warning">That booking is not part of this event. Showing every booking under the event instead.</AlertBanner></div>
       ) : null}
-      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} notice={notice} onDecided={decided} />
+      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} notice={notice} onDecided={decided} refreshKey={attempt} />
     </>
   );
 }

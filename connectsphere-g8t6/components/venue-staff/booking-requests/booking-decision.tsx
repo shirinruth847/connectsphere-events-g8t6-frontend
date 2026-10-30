@@ -89,17 +89,14 @@ export function BookingDecision({ booking, onDecided }: {
   if (!actions) return null;
 
   return (
-    <div className="grid gap-3 rounded-control border border-outline-variant bg-surface-container-low p-3">
+    <div className="grid gap-2 border-t border-outline-variant pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid gap-0.5">
-          <h4 className="text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Decision</h4>
-          <p className="text-sm text-on-surface">
-            {decisionLine
-              ?? (booking.status === "PENDING"
-                ? actions.canApprove ? "Awaiting your decision." : "This booking can be approved once the event is in planning."
-                : "No decision recorded.")}
-          </p>
-        </div>
+        <p className="text-sm text-on-surface-variant">
+          {decisionLine
+            ?? (booking.status === "PENDING"
+              ? actions.canApprove ? "Awaiting your decision." : "Can be approved once the event is in planning."
+              : "No decision recorded.")}
+        </p>
         {actions.canApprove || actions.canReject ? (
           <div className="flex flex-wrap gap-2">
             {actions.canReject ? (
@@ -117,7 +114,7 @@ export function BookingDecision({ booking, onDecided }: {
       </div>
       {approved && actions.canReject ? (
         <p className="text-xs text-on-surface-variant">
-          Only if the venue can no longer host this booking, for example because of maintenance. The event is not cancelled; its coordinator arranges another venue with the organiser.
+          Only if the venue can no longer host it (e.g. maintenance). The event is not cancelled.
         </p>
       ) : null}
 

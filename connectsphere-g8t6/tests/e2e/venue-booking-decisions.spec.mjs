@@ -7,7 +7,7 @@ import { installConnectSphereMocks } from "./support.mjs";
 // staff member decided first.
 const venue = (venueId, name) => ({
   venueId, name, address: `${name} Road`, maxCapacity: 300, operatingHours: "08:00-22:00",
-  setupTurnaroundMinutes: null, roomId: venueId * 10, roomLayoutType: "Theater", roomCapacity: 200,
+  setupMinutes: 30, turnaroundMinutes: 45, detailsAvailable: true, roomId: venueId * 10, roomLayoutType: "Theater", roomCapacity: 200,
 });
 
 const LABELS = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected" };
@@ -38,6 +38,10 @@ async function routeDecisions(page, state) {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/venues/bookings/events/442") return json(route, { event: state.event, bookings: state.bookings });
+    if (url.pathname === "/api/venues/bookings/events/442/history") {
+      state.historyQueries = (state.historyQueries ?? 0) + 1;
+      return json(route, { history: state.history ?? [], nextCursor: null });
+    }
     const match = url.pathname.match(/^\/api\/venues\/bookings\/(\d+)\/(approve|reject)$/);
     if (!match || request.method() !== "POST") return route.fallback();
     const body = request.postDataJSON();
@@ -146,7 +150,7 @@ test("[T32] an approved booking can be rejected when the venue can no longer hos
   await page.goto("/events/442?booking=110");
 
   const selected = panel(page, 110);
-  await expect(selected.getByText(/The event is not cancelled; its coordinator arranges another venue with the organiser\./)).toBeVisible();
+  await expect(selected.getByText("Only if the venue can no longer host it (e.g. maintenance). The event is not cancelled.")).toBeVisible();
   await selected.getByRole("button", { name: "Reject approved booking" }).click();
   const dialog = page.getByRole("dialog", { name: "Reject this approved booking?" });
   await expect(dialog.getByText(/The organiser is told the venue is no longer available/)).toBeVisible();
@@ -164,7 +168,7 @@ test("a booking whose event is not in planning cannot be approved yet", async ({
   await routeDecisions(page, state);
   await page.goto("/events/442?booking=110");
 
-  await expect(panel(page, 110).getByText("This booking can be approved once the event is in planning.")).toBeVisible();
+  await expect(panel(page, 110).getByText("Can be approved once the event is in planning.")).toBeVisible();
   await expect(panel(page, 110).getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
 });
 
@@ -179,4 +183,41 @@ test("[SPM-186] My Requests shows the pending and approved counts at the top rig
   await expect(tile).toHaveText("3Pending");
   await expect(tile.locator("strong")).toHaveText("3");
   await expect(header.locator("span").filter({ hasText: /^\d+Approved$/ })).toHaveText("7Approved");
+});
+
+test("[SPM-186-AC14] the booking panel leads with the venue and requirements and gives the date once", async ({ page }) => {
+  const state = decisionState([booking(110, "PENDING", 45, "Synthetic Hall")]);
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeDecisions(page, state);
+  await page.goto("/events/442?booking=110");
+
+  const selected = panel(page, 110);
+  await expect(selected.getByText("Setup / turnaround")).toBeVisible();
+  await expect(selected.getByText("30 / 45 min")).toBeVisible();
+  await expect(selected.getByText("Attendance / capacity")).toBeVisible();
+  // The booking window is in the row header only, not repeated in the panel or the page header.
+  await expect(selected.getByText(/4 Nov 2026/).filter({ visible: true })).toHaveCount(0);
+  await expect(page.getByText("Booking window")).toHaveCount(0);
+  await expect(page.getByText("Submitted", { exact: true })).toHaveCount(0);
+});
+
+test("[SPM-186-AC15] Venue Staff see the venue-relevant history of the event", async ({ page }) => {
+  const state = decisionState([booking(110, "PENDING", 45, "Synthetic Hall")]);
+  state.history = [{
+    historyId: 9, action: "VENUE_BOOKING_APPROVED", actor: { userId: 8, name: "Other Venue Staff", role: "VENUE_STAFF" },
+    occurredAt: "2026-10-29T01:00:00.000Z", summary: "Venue booking approved", changes: [], audience: "ORGANISER_SAFE",
+  }];
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeDecisions(page, state);
+  await page.goto("/events/442?booking=110");
+
+  const history = page.getByRole("region", { name: "Change history" });
+  await expect(history.getByText("Venue booking approved")).toBeVisible();
+  await expect(history.getByText(/Other Venue Staff · Venue Staff/)).toBeVisible();
+  const before = state.historyQueries;
+
+  // A decision reloads the history.
+  await panel(page, 110).getByRole("button", { name: "Approve", exact: true }).click();
+  await page.getByRole("dialog", { name: "Approve this venue booking?" }).getByRole("button", { name: "Approve booking" }).click();
+  await expect.poll(() => state.historyQueries).toBeGreaterThan(before);
 });
