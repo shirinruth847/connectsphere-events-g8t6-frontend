@@ -174,7 +174,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
 
   return (
     <div className="grid gap-4">
-      <div className={`grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 ${fixed ? "" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"}`}>
+      <div className={`grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 ${fixed ? "" : "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"}`}>
         {fixed ? null : <div className="grid content-start gap-1">
           <FormLabel htmlFor="calendar-venues">Venues ({selected.length}/{MAX_VENUES} selected)</FormLabel>
           {picker.error ? <AlertBanner tone="error">{picker.error}</AlertBanner> : null}
@@ -194,7 +194,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
         </div>}
 
         <form onSubmit={applyCheck} aria-label="Check a requested period" className="grid content-start gap-3">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <div>
               <FormLabel htmlFor="check-date">Date</FormLabel>
               <input id="check-date" type="date" className={fieldClasses} value={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, date: event.target.value })} />
