@@ -21,6 +21,7 @@ import { VenueInfoDialog } from "./venue-info-dialog";
 import { BookingStatusChip } from "./booking-status-chip";
 import { Collapse } from "./collapse";
 import { useOpenedBookings } from "./use-opened-bookings";
+import { BookingIncidentCard, IncidentChip } from "@/components/venues/booking-incident";
 
 type ViewState =
   | { status: "loading" }
@@ -46,6 +47,12 @@ function ReviewSection({ step, title, description, action, children }: {
 }
 
 const people = (value: number | null) => (value ? `${value.toLocaleString()} people` : "Not provided");
+
+interface IncidentHandlers {
+  onRestored: (message: string) => void;
+  // A refused restore: the bookings are reloaded behind the open dialog.
+  onRefused: () => void;
+}
 
 const subheading = "text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant";
 
@@ -75,12 +82,14 @@ const buffers = (venue: VenueBookingDetail["venue"]) => {
 
 // What Venue Staff decide on (SPM-186): the venue and how the request fits it,
 // then the requirements. The booking window is in the row header only.
-function BookingRequirements({ booking, requestId }: { booking: VenueBookingDetail; requestId: string }) {
+function BookingRequirements({ booking, onRestored, onRefused, requestId }: { booking: VenueBookingDetail; requestId: string } & IncidentHandlers) {
   const [venueOpen, setVenueOpen] = useState(false);
   const { venue } = booking;
   const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > venue.roomCapacity;
   return (
     <div className="grid gap-5">
+      {/* SPM-195 AC9/AC10: an affected booking shows its block and, once free, Restore. */}
+      {booking.incident ? <BookingIncidentCard incident={booking.incident} audience="venue-staff" onRestored={onRestored} onRefused={onRefused} /> : null}
       <div className="grid gap-3">
         <p className="flex items-start gap-2 text-sm text-on-surface">
           <Icon name="venue" size={16} />
@@ -139,13 +148,13 @@ function BookingRequirements({ booking, requestId }: { booking: VenueBookingDeta
   );
 }
 
-function VenueBookingsSection({ bookings, requestId, selectedId, onSelect, onDecided }: {
+function VenueBookingsSection({ bookings, requestId, selectedId, onSelect, onDecided, onRestored, onRefused }: {
   bookings: VenueBookingDetail[];
   requestId: string;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
   onDecided: (notice: DecisionNotice) => void;
-}) {
+} & IncidentHandlers) {
   return (
     <ReviewSection
       step={3}
@@ -175,6 +184,7 @@ function VenueBookingsSection({ bookings, requestId, selectedId, onSelect, onDec
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
+                  {booking.incident?.status === "OPEN" ? <IncidentChip incident={booking.incident} /> : null}
                   <BookingStatusChip status={booking.status} label={booking.statusLabel} />
                   <span className={`inline-flex transition-transform duration-200 ease-out ${selected ? "rotate-90" : ""}`}>
                     <Icon name="arrow-forward" size={16} />
@@ -183,7 +193,7 @@ function VenueBookingsSection({ bookings, requestId, selectedId, onSelect, onDec
               </button>
               <Collapse open={selected} id={panelId}>
                 <div className="grid gap-5 border-t border-outline-variant p-4">
-                  <BookingRequirements booking={booking} requestId={requestId} />
+                  <BookingRequirements booking={booking} onRestored={onRestored} onRefused={onRefused} requestId={requestId} />
                   <BookingDecision booking={booking} onDecided={onDecided} />
                 </div>
               </Collapse>
@@ -209,14 +219,14 @@ function BookingHistory({ eventId, refreshKey }: { eventId: number; refreshKey: 
   );
 }
 
-function LoadedView({ data, selectedId, onSelect, notice, onDecided, refreshKey }: {
+function LoadedView({ data, selectedId, onSelect, notice, onDecided, refreshKey, onRestored, onRefused }: {
   data: EventVenueBookings;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
   notice: DecisionNotice | null;
   onDecided: (notice: DecisionNotice) => void;
   refreshKey: number;
-}) {
+} & IncidentHandlers) {
   const { event, bookings } = data;
   const duration = formatDuration(event.startDatetime, event.endDatetime);
   const selected = bookings.find((booking) => booking.bookingId === selectedId) ?? null;
@@ -266,7 +276,7 @@ function LoadedView({ data, selectedId, onSelect, notice, onDecided, refreshKey 
             />
           </ReviewSection>
 
-          <VenueBookingsSection bookings={bookings} requestId={event.requestId} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onDecided={onDecided} />
+          <VenueBookingsSection bookings={bookings} requestId={event.requestId} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onDecided={onDecided} onRestored={onRestored} onRefused={onRefused} />
 
           <div className="grid gap-5 md:grid-cols-2">
             <ReviewSection step={4} title="Accessibility" action={readOnly}>
@@ -338,6 +348,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState<DecisionNotice | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const rawBooking = searchParams.get("booking");
   const selectedId = rawBooking && /^[1-9]\d{0,9}$/.test(rawBooking) ? Number(rawBooking) : null;
   const { markOpened } = useOpenedBookings();
@@ -408,12 +419,20 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
     );
   }
   const bookingMissing = selectedId !== null && !state.data.bookings.some((booking) => booking.bookingId === selectedId);
+  // The page reloads the bookings once the backend has committed the restore.
+  const restored = (message: string) => {
+    setNotice(message);
+    setAttempt((value) => value + 1);
+  };
   return (
     <>
       {bookingMissing ? (
         <div className="mb-4"><AlertBanner tone="warning">That booking is not part of this event. Showing every booking under the event instead.</AlertBanner></div>
       ) : null}
-      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} notice={notice} onDecided={decided} refreshKey={attempt} />
+      <div aria-live="polite">
+        {notice ? <div className="mb-4"><AlertBanner tone="success" live={false}>{notice}</AlertBanner></div> : null}
+      </div>
+      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} onRestored={restored} onRefused={() => setAttempt((value) => value + 1)} notice={notice} onDecided={decided} refreshKey={attempt} />
     </>
   );
 }

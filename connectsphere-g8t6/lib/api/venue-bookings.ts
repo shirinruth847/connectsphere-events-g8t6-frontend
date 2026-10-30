@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import type { VenueIncident } from "@/lib/api/venue-blocks";
 import type { EventHistoryEntry } from "@/lib/api/event-workspace";
 import { bookingFilterQuery, type VenueBookingFilters } from "@/components/venue-staff/booking-requests/booking-filters";
 
@@ -69,6 +70,8 @@ export interface VenueBookingDetail extends VenueBookingSummary {
   accessibilityRequirements: string[];
   specialRequirements: string | null;
   rejectionReason: string | null;
+  // SPM-195: the open incident, otherwise the latest resolved one.
+  incident?: VenueIncident | null;
   // Who decided the booking and when (SPM-186 AC1); null while pending.
   reviewedAt?: string | null;
   reviewedByName?: string | null;

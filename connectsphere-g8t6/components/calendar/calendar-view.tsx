@@ -7,6 +7,7 @@ import {
   type ReactElement,
 } from "react";
 import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
+import styles from "./calendar-view.module.css";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
 
@@ -1569,165 +1570,169 @@ export function CalendarView({
 
   if (coordinators.length === 0) {
     return (
-      <div className="calendar-view">
-        <div className="calendar-empty">
-          <p>No {entityLabel.plural} with events to display.</p>
+      <div className={styles.scope}>
+        <div className="calendar-view">
+          <div className="calendar-empty">
+            <p>No {entityLabel.plural} with events to display.</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="calendar-view" onClick={() => setPopoverEvent(null)}>
-      <div className="calendar-toolbar">
-        <div className="calendar-nav">
-          <button
-            className="cal-btn"
-            onClick={handlePrev}
-            aria-label="Previous"
+    <div className={styles.scope}>
+      <div className="calendar-view" onClick={() => setPopoverEvent(null)}>
+        <div className="calendar-toolbar">
+          <div className="calendar-nav">
+            <button
+              className="cal-btn"
+              onClick={handlePrev}
+              aria-label="Previous"
+            >
+              ‹
+            </button>
+            <button
+              className="cal-btn cal-btn--today"
+              onClick={handleToday}
+            >
+              Today
+            </button>
+            <button className="cal-btn" onClick={handleNext} aria-label="Next">
+              ›
+            </button>
+          </div>
+          <div className="calendar-title">{title}</div>
+          <div
+            className="calendar-views"
+            role="group"
+            aria-label="Calendar views"
           >
-            ‹
-          </button>
-          <button
-            className="cal-btn cal-btn--today"
-            onClick={handleToday}
-          >
-            Today
-          </button>
-          <button className="cal-btn" onClick={handleNext} aria-label="Next">
-            ›
-          </button>
+            {(["year", "month", "week", "day"] as CalendarViewMode[]).map(
+              (mode) => (
+                <button
+                  key={mode}
+                  className={`cal-view-btn ${
+                    effectiveViewMode === mode ? "active" : ""
+                  }`}
+                  onClick={() => handleViewModeChange(mode)}
+                  aria-pressed={effectiveViewMode === mode}
+                >
+                  {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              ),
+            )}
+          </div>
         </div>
-        <div className="calendar-title">{title}</div>
-        <div
-          className="calendar-views"
-          role="group"
-          aria-label="Calendar views"
-        >
-          {(["year", "month", "week", "day"] as CalendarViewMode[]).map(
-            (mode) => (
-              <button
-                key={mode}
-                className={`cal-view-btn ${
-                  effectiveViewMode === mode ? "active" : ""
-                }`}
-                onClick={() => handleViewModeChange(mode)}
-                aria-pressed={effectiveViewMode === mode}
-              >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </button>
-            ),
-          )}
-        </div>
-      </div>
 
 
       {laneFilter ? (
-        <CoordinatorLegend
-          coordinators={coordinators}
-          visibleIds={visibleIds}
-          onToggle={toggleCoordinator}
-          onSetVisibleIds={setManualVisibleIds}
-          colorMap={colorMap}
-          entityLabel={entityLabel}
-        />
+          <CoordinatorLegend
+            coordinators={coordinators}
+            visibleIds={visibleIds}
+            onToggle={toggleCoordinator}
+            onSetVisibleIds={setManualVisibleIds}
+            colorMap={colorMap}
+            entityLabel={entityLabel}
+          />
       ) : null}
 
-      <div className="calendar-grid-wrapper">
-        {visibleCoordinators.length === 0 ? (
-          <div className="calendar-empty">
-            <p>
-              No {entityLabel.plural} selected. Click a name in the legend above to
-              show their events.
-            </p>
-          </div>
-        ) : (
-          <>
-            {effectiveViewMode === "year" && (
-              <YearView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                onMonthClick={handleMonthClick}
-                bars={monthBars}
-                overlays={overlays}
-              />
-            )}
-            {effectiveViewMode === "month" && (
-              <MonthView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                onDayClick={handleDayClick}
-                bars={monthBars}
-                overlays={overlays}
-                onEventClick={onEventClick}
-              />
-            )}
-            {effectiveViewMode === "week" && (
-              <WeekView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                visibleIds={visibleIds}
-                onEventClick={(e) => {
-                  if (onEventClick) {
-                    onEventClick(e);
-                  } else {
-                    setPopoverEvent(e);
-                  }
-                }}
-                onEventHover={(e, x, y) => {
-                  if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
-                  else setTooltipEvent(null);
-                }}
-                selectedEvent={selectedEvent}
-                overlays={overlays}
-              />
-            )}
-            {effectiveViewMode === "day" && (
-              <DayView
-                coordinators={visibleCoordinators}
-                currentDate={effectiveCurrentDate}
-                colorMap={colorMap}
-                visibleIds={visibleIds}
-                onEventClick={(e) => {
-                  if (onEventClick) {
-                    onEventClick(e);
-                  } else {
-                    setPopoverEvent(e);
-                  }
-                }}
-                onEventHover={(e, x, y) => {
-                  if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
-                  else setTooltipEvent(null);
-                }}
-                selectedEvent={selectedEvent}
-                overlays={overlays}
-              />
-            )}
-          </>
+        <div className="calendar-grid-wrapper">
+          {visibleCoordinators.length === 0 ? (
+            <div className="calendar-empty">
+              <p>
+                No {entityLabel.plural} selected. Click a name in the legend above to
+                show their events.
+              </p>
+            </div>
+          ) : (
+            <>
+              {effectiveViewMode === "year" && (
+                <YearView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  onMonthClick={handleMonthClick}
+                  bars={monthBars}
+                  overlays={overlays}
+                />
+              )}
+              {effectiveViewMode === "month" && (
+                <MonthView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  onDayClick={handleDayClick}
+                  bars={monthBars}
+                  overlays={overlays}
+                  onEventClick={onEventClick}
+                />
+              )}
+              {effectiveViewMode === "week" && (
+                <WeekView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  visibleIds={visibleIds}
+                  onEventClick={(e) => {
+                    if (onEventClick) {
+                      onEventClick(e);
+                    } else {
+                      setPopoverEvent(e);
+                    }
+                  }}
+                  onEventHover={(e, x, y) => {
+                    if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
+                    else setTooltipEvent(null);
+                  }}
+                  selectedEvent={selectedEvent}
+                  overlays={overlays}
+                />
+              )}
+              {effectiveViewMode === "day" && (
+                <DayView
+                  coordinators={visibleCoordinators}
+                  currentDate={effectiveCurrentDate}
+                  colorMap={colorMap}
+                  visibleIds={visibleIds}
+                  onEventClick={(e) => {
+                    if (onEventClick) {
+                      onEventClick(e);
+                    } else {
+                      setPopoverEvent(e);
+                    }
+                  }}
+                  onEventHover={(e, x, y) => {
+                    if (e) setTooltipEvent({ event: e, x: x ?? 0, y: y ?? 0 });
+                    else setTooltipEvent(null);
+                  }}
+                  selectedEvent={selectedEvent}
+                  overlays={overlays}
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        {tooltipEvent && (
+          <CalendarTooltip
+            event={tooltipEvent.event}
+            coordinators={coordinators}
+            x={tooltipEvent.x}
+            y={tooltipEvent.y}
+          />
+        )}
+
+        {popoverEvent && (
+          <EventPopover
+            event={popoverEvent}
+            coordinators={coordinators}
+            onClose={() => setPopoverEvent(null)}
+            selectedCoordinatorId={selectedCoordinatorId}
+            onSelectCoordinator={onSelectCoordinator}
+          />
         )}
       </div>
-
-      {tooltipEvent && (
-        <CalendarTooltip
-          event={tooltipEvent.event}
-          coordinators={coordinators}
-          x={tooltipEvent.x}
-          y={tooltipEvent.y}
-        />
-      )}
-
-      {popoverEvent && (
-        <EventPopover
-          event={popoverEvent}
-          coordinators={coordinators}
-          onClose={() => setPopoverEvent(null)}
-          selectedCoordinatorId={selectedCoordinatorId}
-          onSelectCoordinator={onSelectCoordinator}
-        />
-      )}
     </div>
   );
 }
