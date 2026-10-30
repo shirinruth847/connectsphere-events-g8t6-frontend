@@ -14,7 +14,7 @@ const backendRoot = process.env.CONNECTSPHERE_BACKEND_DIR || path.resolve(import
 require(path.join(backendRoot, 'node_modules/dotenv')).config({ path: path.join(backendRoot, '.env'), quiet: true });
 const supabase = require(path.join(backendRoot, 'config/supabase'));
 const { newRunId, cleanupAuthFixtures, recordFixtureIds } = require(path.join(backendRoot, 'tests/fixtures/authFixtures'));
-const { createRegistrationFixtures } = require(path.join(backendRoot, 'tests/fixtures/registrationFixtures'));
+const { createRegistrationFixtures, bookPrimaryVenue } = require(path.join(backendRoot, 'tests/fixtures/registrationFixtures'));
 const { signInWithPassword } = require(path.join(backendRoot, 'tests/fixtures/browserAuthClient'));
 
 const API = process.env.LIVE_BACKEND_URL || 'http://localhost:8000';
@@ -31,7 +31,9 @@ let fixtures;
 let eventCount = 0;
 
 // Trusted setup only: an event the attendee can see, OPEN unless overridden.
-async function createEvent(name, overrides = {}) {
+// Each gets its own primary venue, whose capacity the backend reads; without
+// one (venueCapacity null) the backend reports UNAVAILABLE.
+async function createEvent(name, overrides = {}, { venueCapacity = 50 } = {}) {
   eventCount += 1;
   const startsAt = Date.now() + (12 + eventCount) * DAY;
   const { data, error } = await supabase.from('event').insert({
@@ -51,10 +53,19 @@ async function createEvent(name, overrides = {}) {
     registration_open_at: new Date(Date.now() - DAY).toISOString(),
     registration_close_at: new Date(startsAt - DAY).toISOString(),
     ...overrides,
-  }).select('event_id, title').single();
+  }).select('event_id, title, start_datetime, end_datetime').single();
   if (error) throw new Error(`Fixture event insert failed: ${error.message}`);
   recordFixtureIds(runId, 'eventIds', [data.event_id]);
   eventIds.push(data.event_id);
+  if (venueCapacity !== null) {
+    await bookPrimaryVenue(runId, {
+      eventId: data.event_id,
+      requestedBy: fixtures.accounts.organiser.userId,
+      startDatetime: data.start_datetime,
+      endDatetime: data.end_datetime,
+      capacity: venueCapacity,
+    });
+  }
   return { id: data.event_id, title: data.title };
 }
 
@@ -64,9 +75,9 @@ async function updateEvent(event, patch) {
 }
 
 // A place taken outside the browser (another attendee, or this one elsewhere).
-async function takePlace(event, accountKey) {
+async function takePlace(event, accountKey, status = 'REGISTERED') {
   const { data, error } = await supabase.from('registration').insert({
-    event_id: event.id, attendee_id: fixtures.accounts[accountKey].userId, registration_status: 'REGISTERED',
+    event_id: event.id, attendee_id: fixtures.accounts[accountKey].userId, registration_status: status,
   }).select('registration_id').single();
   if (error) throw new Error(`Fixture registration insert failed: ${error.message}`);
   recordFixtureIds(runId, 'registrationIds', [data.registration_id]);
@@ -156,6 +167,13 @@ const dietary = (scope) => scope.getByLabel('Dietary restrictions', { exact: tru
 const accessibility = (scope) => scope.getByLabel('Accessibility requirements', { exact: true });
 const submit = (scope) => scope.getByRole('button', { name: 'Register', exact: true });
 const registered = (scope) => scope.getByText("You're registered", { exact: true });
+// The registration area's control for any state but Register Now: visible, inert.
+const stateControl = (scope, event, label) => scope.getByRole('button', { name: `${label} for ${event.title}`, exact: true });
+async function expectDisabledState(scope, event, label) {
+  await expect(stateControl(scope, event, label)).toBeVisible();
+  await expect(stateControl(scope, event, label)).toHaveAttribute('aria-disabled', 'true');
+  await expect(registerNow(scope, event)).toHaveCount(0);
+}
 
 // Opens Event Discovery and loads pages until the event's card is listed.
 async function openDiscoveryCard(page, event) {
@@ -230,7 +248,7 @@ test('[SPM-134 TC-REG-001/003/005/006/007/011/012/014 AC1/AC3/AC4/AC8/AC9/AC10] 
   await expect.poll(() => seen.unread.at(-1)).toBe(unreadBefore + 1);
 
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(eventCard.getByText('Registered', { exact: true })).toBeVisible();
+  await expectDisabledState(eventCard, event, 'Registered');
   await expect(registerNow(eventCard, event)).toHaveCount(0);
   await expect(page.getByRole('button', { name: `View event details for ${event.title}`, exact: true })).toBeFocused();
 
@@ -290,30 +308,47 @@ test('[SPM-134 TC-REG-002/004 AC5] should_register_by_keyboard_at_390px_on_the_d
   await expect(registerNow(page, event)).toHaveCount(0);
 });
 
-for (const { ids, state, overrides, chip, placeHolder } of [
-  { ids: 'TC-REG-017 AC12', state: 'full', overrides: { registration_capacity: 1 }, chip: 'Full - Waitlist', placeHolder: 'other' },
-  { ids: 'TC-REG-018 AC13', state: 'closed', overrides: { registration_close_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() }, chip: 'Registration Closed', placeHolder: null },
-  { ids: 'TC-REG-019 AC14', state: 'not_enabled', overrides: { is_registration_enabled: false }, chip: null, placeHolder: null },
-  { ids: 'TC-REG-020 AC15', state: 'already_registered', overrides: {}, chip: 'Registered', placeHolder: 'attendee' },
+// Every state the backend decides, from real event data: the card and the
+// details page show the same disabled control and never Register Now.
+for (const { ids, state, overrides = {}, venueCapacity = 50, label, place = null } of [
+  { ids: 'AC12', state: 'not_yet_open', overrides: { registration_open_at: new Date(Date.now() + DAY).toISOString() }, label: 'Registration Not Yet Open' },
+  { ids: 'TC-REG-017 AC12', state: 'full', overrides: { registration_capacity: 1 }, label: 'Registration Full', place: ['other', 'REGISTERED'] },
+  // No organiser capacity (allowed only with the flag off, which no longer gates registration).
+  { ids: 'TC-REG-017 AC12', state: 'full_at_the_venue_capacity', overrides: { is_registration_enabled: false, registration_capacity: null }, venueCapacity: 1, label: 'Registration Full', place: ['other', 'REGISTERED'] },
+  { ids: 'TC-REG-018 AC13', state: 'closed', overrides: { registration_close_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() }, label: 'Registration Closed' },
+  { ids: 'AC13', state: 'unavailable_without_a_primary_venue', venueCapacity: null, label: 'Registration Unavailable' },
+  { ids: 'AC13', state: 'unavailable_without_a_registration_start_time', overrides: { registration_open_at: null }, label: 'Registration Unavailable' },
+  { ids: 'TC-REG-020 AC15', state: 'already_registered', label: 'Registered', place: ['attendee', 'REGISTERED'] },
+  { ids: 'AC15', state: 'already_waitlisted', label: 'On the waitlist', place: ['attendee', 'WAITLISTED'] },
 ]) {
-  test(`[SPM-134 ${ids}] should_not_offer_register_now_when_the_event_is_${state}_on_a_fresh_load`, async ({ page }) => {
-    const event = await createEvent(`fresh ${state}`, overrides);
-    if (placeHolder) await takePlace(event, placeHolder);
+  test(`[SPM-134 ${ids}] should_show_${label.replaceAll(' ', '_')}_and_no_register_now_when_the_event_is_${state}_on_a_fresh_load`, async ({ page }) => {
+    const event = await createEvent(`fresh ${state}`, overrides, { venueCapacity });
+    if (place) await takePlace(event, ...place);
     const seen = watchBackend(page);
     await signIn(page, 'attendee');
+    const eventCard = await openDiscoveryCard(page, event);
+    await expect(eventCard.getByRole('button', { name: `View event details for ${event.title}`, exact: true })).toBeVisible();
+    await expectDisabledState(eventCard, event, label);
+    if (label === 'Registration Unavailable') await expect(eventCard).not.toContainText(/full|closed/i);
+
     await openDetailsPage(page, event);
-    if (chip) await expect(page.getByText(chip, { exact: true }).first()).toBeVisible();
-    else await expect(page.getByText(/^Registration (Open|Closed)$|^Full - Waitlist$/)).toHaveCount(0);
-    await expect(registerNow(page, event)).toHaveCount(0);
+    const main = page.locator('main');
+    await expectDisabledState(main, event, label);
+    if (label === 'Registration Unavailable') await expect(main).not.toContainText(/full|closed|Registration opens|venue capacity/i);
+    if (state === 'not_yet_open') await expect(stateControl(main, event, label)).toHaveAccessibleDescription(/^Registration opens /);
+    await stateControl(main, event, label).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(seen.posts).toEqual([]);
   });
 }
 
 // The event changes after the form opened; the backend's answer decides (AC16).
 for (const [state, change, title, after] of [
-  ['capacity_fills', (event) => takePlace(event, 'other'), 'This event is now full', 'Full - Waitlist'],
+  ['capacity_fills', (event) => takePlace(event, 'other'), 'This event is now full', 'Registration Full'],
   ['registration_closes', (event) => updateEvent(event, { registration_close_at: new Date(Date.now() - 60 * 1000).toISOString() }), 'Registration has closed', 'Registration Closed'],
-  ['registration_is_disabled', (event) => updateEvent(event, { is_registration_enabled: false }), "Registration isn't available", null],
+  ['registration_start_moves_later', (event) => updateEvent(event, { registration_open_at: new Date(Date.now() + DAY).toISOString() }), "Registration hasn't opened yet", 'Registration Not Yet Open'],
+  ['registration_end_time_is_removed', (event) => updateEvent(event, { registration_close_at: null }), 'Registration is currently unavailable', 'Registration Unavailable'],
   ['attendee_registers_elsewhere', (event) => takePlace(event, 'attendee'), "You're already registered", 'Registered'],
 ]) {
   test(`[SPM-134 TC-REG-021 AC16] should_keep_answers_and_show_the_backend_refusal_without_retrying_when_${state}_after_the_form_opens`, async ({ page }) => {
@@ -332,9 +367,12 @@ for (const [state, change, title, after] of [
     await page.waitForTimeout(1500);
     expect(seen.posts).toHaveLength(1);
 
+    // The refusal itself names nothing internal (the event title may).
+    await expect(dialog.getByText(title, { exact: true }).locator('xpath=..')).not.toContainText(/venue|capacity|configur/i);
+
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
-    if (after) await expect(page.getByText(after, { exact: true }).first()).toBeVisible();
-    await expect(registerNow(page, event)).toHaveCount(0);
+    // The refreshed event shows the backend's new state.
+    await expectDisabledState(page.locator('main'), event, after);
     const placesHeld = (await registrationsOn(event)).filter((row) => row.attendee_id === fixtures.accounts.attendee.userId);
     expect(placesHeld).toHaveLength(state === 'attendee_registers_elsewhere' ? 1 : 0);
   });
@@ -456,6 +494,9 @@ test('[SPM-134 TC-REG-023 AC18] should_send_a_signed_out_visitor_to_login_and_ba
 test('[SPM-134] should_hide_register_now_until_registrations_load_and_recover_when_the_first_read_fails', async ({ page }) => {
   const event = await createEvent('places read');
   await signIn(page, 'attendee');
+  // Leave the signed-in landing page first, so its own read of the places is
+  // not the one held and failed below.
+  await page.goto('about:blank');
   // Only the network fails; the retry goes to the real backend.
   let release;
   const held = new Promise((resolve) => { release = resolve; });

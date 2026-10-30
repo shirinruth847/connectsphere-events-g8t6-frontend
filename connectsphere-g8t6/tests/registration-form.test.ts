@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   REGISTRATION_RECOVERY_MAX_AGE_MS,
   attemptFor,
-  canRegister,
   parseRegistrationRecovery,
   registrationOutcome,
   registrationRecoveryKey,
   toRegistrationAnswers,
   validateRegistrationValues,
 } from "@/components/attendee/registration/registration-form";
+import { getRegistrationState } from "@/components/attendee/discovery/registration-availability";
 
 const place = { status: "REGISTERED", registeredAt: "2026-10-29T02:00:00.000Z" };
 
@@ -32,22 +32,40 @@ describe("[SPM-134] registration answers", () => {
   });
 });
 
-describe("[SPM-134 AC1/AC12/AC13/AC14/AC15] Register Now eligibility", () => {
-  const none = new Map();
+describe("[SPM-134 AC1/AC12/AC13/AC15] registration area state", () => {
   it("should_offer_register_now_only_when_open_and_the_attendee_holds_no_place", () => {
-    expect(canRegister("OPEN", none, 5)).toBe(true);
-    expect(canRegister("OPEN", new Map([[5, place]]), 5)).toBe(false);
+    expect(getRegistrationState("OPEN", null, true)).toEqual({ kind: "register", label: "Register Now" });
+    expect(getRegistrationState("OPEN", place, true)).toEqual({ kind: "place", label: "Registered" });
   });
 
-  it.each(["FULL_WAITLIST", "CLOSED", "NOT_ENABLED", "SOMETHING_NEW", undefined])(
-    "should_not_offer_register_now_when_availability_is_%s",
+  it.each([
+    ["NOT_YET_OPEN", "Registration Not Yet Open"],
+    ["FULL_WAITLIST", "Registration Full"],
+    ["CLOSED", "Registration Closed"],
+    ["UNAVAILABLE", "Registration Unavailable"],
+  ])("should_show_a_disabled_state_and_no_register_now_when_availability_is_%s", (availability, label) => {
+    expect(getRegistrationState(availability, null, true)).toEqual({ kind: "unavailable", label });
+    expect(getRegistrationState(availability, null, false)).toEqual({ kind: "unavailable", label });
+  });
+
+  it("should_never_label_an_unavailable_event_as_full_or_closed", () => {
+    expect(getRegistrationState("UNAVAILABLE", null, true)?.label).not.toMatch(/full|closed/i);
+  });
+
+  it.each(["NOT_ENABLED", "SOMETHING_NEW", ""])("should_show_an_unknown_availability_%s_as_unavailable_rather_than_open", (availability) => {
+    expect(getRegistrationState(availability, null, true)).toEqual({ kind: "unavailable", label: "Registration Unavailable" });
+  });
+
+  it.each(["NOT_YET_OPEN", "OPEN", "FULL_WAITLIST", "CLOSED", "UNAVAILABLE"])(
+    "should_show_the_held_place_instead_of_availability_%s",
     (availability) => {
-      expect(canRegister(availability, none, 5)).toBe(false);
+      expect(getRegistrationState(availability, place, true)).toEqual({ kind: "place", label: "Registered" });
+      expect(getRegistrationState(availability, { ...place, status: "WAITLISTED" }, true)).toEqual({ kind: "place", label: "On the waitlist" });
     },
   );
 
   it("should_not_offer_register_now_while_the_attendee_places_are_unknown", () => {
-    expect(canRegister("OPEN", null, 5)).toBe(false);
+    expect(getRegistrationState("OPEN", null, false)).toBeNull();
   });
 });
 
@@ -70,7 +88,7 @@ describe("[SPM-134] idempotency key per logical submission", () => {
 describe("[SPM-134 AC16/AC17] outcomes of a refused or failed registration", () => {
   const conflict = (code: string) => registrationOutcome({ status: 409, code, message: "raw backend text" });
 
-  it.each(["REGISTRATION_FULL", "REGISTRATION_CLOSED", "REGISTRATION_NOT_ENABLED", "ALREADY_REGISTERED", "ALREADY_WAITLISTED"])(
+  it.each(["REGISTRATION_NOT_YET_OPEN", "REGISTRATION_FULL", "REGISTRATION_CLOSED", "REGISTRATION_UNAVAILABLE", "ALREADY_REGISTERED", "ALREADY_WAITLISTED"])(
     "should_refresh_and_stop_resubmitting_when_the_backend_returns_%s",
     (code) => {
       const outcome = conflict(code);
@@ -83,6 +101,13 @@ describe("[SPM-134 AC16/AC17] outcomes of a refused or failed registration", () 
   it("should_name_the_full_and_already_registered_cases_specifically", () => {
     expect(conflict("REGISTRATION_FULL").title).toBe("This event is now full");
     expect(conflict("ALREADY_REGISTERED").title).toBe("You're already registered");
+    expect(conflict("REGISTRATION_NOT_YET_OPEN").title).toBe("Registration hasn't opened yet");
+  });
+
+  it("should_say_unavailable_without_calling_the_event_full_or_closed_or_naming_its_setup", () => {
+    const outcome = conflict("REGISTRATION_UNAVAILABLE");
+    expect(outcome.title).toBe("Registration is currently unavailable");
+    expect(`${outcome.title} ${outcome.message}`).not.toMatch(/full|closed|venue|capacity|configur/i);
   });
 
   it("should_allow_an_explicit_retry_with_the_same_key_when_the_request_is_in_progress", () => {

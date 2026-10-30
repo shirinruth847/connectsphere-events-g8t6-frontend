@@ -95,29 +95,133 @@ async function openFromCard(page, title = 'SMU Tech Summit') {
   return dialog;
 }
 
-test('[SPM-134 TC-REG-001] should_show_view_details_and_register_now_only_for_an_open_event_the_attendee_has_no_place_on', async ({ page }) => {
-  await installRegistrationMocks(page, {
-    events: [
-      makeEvent(),
-      makeEvent({ eventId: 102, title: 'Full Event', registrationAvailability: 'FULL_WAITLIST' }),
-      makeEvent({ eventId: 103, title: 'Closed Event', registrationAvailability: 'CLOSED', registrationOpenAt: null }),
-      makeEvent({ eventId: 104, title: 'No Registration Event', registrationAvailability: 'NOT_ENABLED' }),
-      makeEvent({ eventId: 105, title: 'Already Registered Event' }),
-      makeEvent({ eventId: 106, title: 'Waitlisted Event', registrationAvailability: 'FULL_WAITLIST' }),
-    ],
-    places: { 105: 'REGISTERED', 106: 'WAITLISTED' },
-  });
-  await page.goto('/events');
-  await expect(card(page, 'SMU Tech Summit').getByRole('button', { name: 'View event details for SMU Tech Summit', exact: true })).toBeVisible();
-  await expect(registerOn(card(page, 'SMU Tech Summit'), 'SMU Tech Summit')).toBeVisible();
-  for (const title of ['Full Event', 'Closed Event', 'No Registration Event', 'Already Registered Event', 'Waitlisted Event']) {
-    await expect(card(page, title).getByRole('button', { name: /^register now/i })).toHaveCount(0);
+// One event per registration state the backend can report, plus the two held
+// places. `label` is the registration-area control every surface shows.
+const STATE_EVENTS = [
+  { event: makeEvent(), label: 'Register Now' },
+  { event: makeEvent({ eventId: 107, title: 'Upcoming Event', registrationAvailability: 'NOT_YET_OPEN', registrationOpenAt: '2099-01-01T01:00:00.000Z', registrationCloseAt: '2099-01-05T01:00:00.000Z' }), label: 'Registration Not Yet Open' },
+  { event: makeEvent({ eventId: 102, title: 'Full Event', registrationAvailability: 'FULL_WAITLIST' }), label: 'Registration Full' },
+  { event: makeEvent({ eventId: 103, title: 'Closed Event', registrationAvailability: 'CLOSED' }), label: 'Registration Closed' },
+  { event: makeEvent({ eventId: 104, title: 'Unavailable Event', registrationAvailability: 'UNAVAILABLE', registrationOpenAt: null, registrationCloseAt: null }), label: 'Registration Unavailable' },
+  { event: makeEvent({ eventId: 105, title: 'Already Registered Event' }), label: 'Registered' },
+  { event: makeEvent({ eventId: 106, title: 'Waitlisted Event', registrationAvailability: 'FULL_WAITLIST' }), label: 'On the waitlist' },
+];
+const STATE_PLACES = { 105: 'REGISTERED', 106: 'WAITLISTED' };
+
+// The registration area of one surface: Register Now for an OPEN event the
+// attendee holds no place on, otherwise one visible control that does nothing.
+async function expectRegistrationState(scope, title, label) {
+  const register = registerOn(scope, title);
+  if (label === 'Register Now') {
+    await expect(register).toBeEnabled();
+    await expect(register).not.toHaveAttribute('aria-disabled', 'true');
+    return;
   }
-  // TC-REG-017: the existing full state stays; joining the waitlist is not built here.
-  await expect(card(page, 'Full Event')).toContainText('Full - Waitlist');
-  await expect(card(page, 'Already Registered Event')).toContainText('Registered');
+  await expect(register).toHaveCount(0);
+  const control = scope.getByRole('button', { name: `${label} for ${title}`, exact: true });
+  await expect(control).toHaveText(label);
+  await expect(control).toHaveAttribute('aria-disabled', 'true');
+  await expect(control).toHaveCSS('pointer-events', 'none');
+}
+
+test('[SPM-134 TC-REG-001/017/018/020] should_show_one_registration_state_per_event_alongside_view_details_on_every_card', async ({ page }) => {
+  await installRegistrationMocks(page, { events: STATE_EVENTS.map(({ event }) => event), places: STATE_PLACES });
+  await page.goto('/events');
+  for (const { event, label } of STATE_EVENTS) {
+    const eventCard = card(page, event.title);
+    await expect(eventCard.getByRole('button', { name: `View event details for ${event.title}`, exact: true })).toBeVisible();
+    await expectRegistrationState(eventCard, event.title, label);
+  }
+  // TC-REG-017: direct registration is full; joining the waitlist is not built here.
+  await expect(card(page, 'Full Event').getByRole('button', { name: /waitlist/i })).toHaveCount(0);
+  // UNAVAILABLE is never described as full or closed.
+  await expect(card(page, 'Unavailable Event')).not.toContainText(/full|closed/i);
   await expect(card(page, 'Already Registered Event')).not.toContainText('Registration Open');
-  await expect(card(page, 'Waitlisted Event')).toContainText('On the waitlist');
+});
+
+test('[SPM-134 TC-REG-001/002] should_show_the_same_registration_state_in_the_details_dialog_and_on_the_event_page', async ({ page }) => {
+  await installRegistrationMocks(page, { events: STATE_EVENTS.map(({ event }) => event), places: STATE_PLACES });
+  await page.goto('/events');
+  for (const { event, label } of STATE_EVENTS) {
+    await card(page, event.title).getByRole('button', { name: `View event details for ${event.title}`, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: event.title, exact: true });
+    await expectRegistrationState(dialog, event.title, label);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  }
+  for (const { event, label } of STATE_EVENTS) {
+    await page.goto(`/events/${event.eventId}`);
+    const main = page.locator('main');
+    await expect(main.getByRole('heading', { level: 1, name: event.title, exact: true })).toBeVisible();
+    await expectRegistrationState(main, event.title, label);
+  }
+});
+
+test('[SPM-134] should_say_when_registration_opens_and_show_no_window_for_an_unavailable_event_on_the_event_page', async ({ page }) => {
+  await installRegistrationMocks(page, { events: STATE_EVENTS.map(({ event }) => event) });
+  await page.goto('/events/107');
+  const notYetOpen = page.getByRole('button', { name: 'Registration Not Yet Open for Upcoming Event', exact: true });
+  await expect(notYetOpen).toHaveAccessibleDescription('Registration opens 1 Jan 2099, 09:00 SGT.');
+  await expect(page.locator('main').getByText('Registration opens', { exact: true })).toBeVisible();
+
+  await page.goto('/events/104');
+  const main = page.locator('main');
+  await expect(main.getByRole('button', { name: 'Registration Unavailable for Unavailable Event', exact: true })).toBeVisible();
+  await expect(main).not.toContainText(/Registration opens|Registration closes|Immediately|No closing date|full|closed/i);
+});
+
+// Master 5.6: availability is decided by database time. The browser clock is
+// fixed so every event's own times contradict the backend's state; the
+// backend's state must win on the card and on the event page.
+test('[SPM-134] should_show_the_backend_availability_and_never_recalculate_it_from_the_browser_clock_when_the_times_disagree', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-03T10:00:00+08:00'));
+  const events = [
+    // Opening time already passed in the browser, but the backend says not yet open.
+    makeEvent({ eventId: 111, title: 'Clock Says Open', registrationAvailability: 'NOT_YET_OPEN', registrationOpenAt: '2026-10-01T00:00:00.000Z', registrationCloseAt: '2026-11-27T15:59:00.000Z' }),
+    // Opening time still ahead in the browser, but the backend says open.
+    makeEvent({ eventId: 112, title: 'Clock Says Not Open', registrationAvailability: 'OPEN', registrationOpenAt: '2026-12-01T00:00:00.000Z' }),
+    // Closing time already passed in the browser, but the backend says open.
+    makeEvent({ eventId: 113, title: 'Clock Says Closed', registrationAvailability: 'OPEN', registrationCloseAt: '2026-10-15T00:00:00.000Z' }),
+  ];
+  const { calls } = await installRegistrationMocks(page, { events });
+  await page.goto('/events');
+  await expectRegistrationState(card(page, 'Clock Says Open'), 'Clock Says Open', 'Registration Not Yet Open');
+  await expectRegistrationState(card(page, 'Clock Says Not Open'), 'Clock Says Not Open', 'Register Now');
+  await expectRegistrationState(card(page, 'Clock Says Closed'), 'Clock Says Closed', 'Register Now');
+  for (const { eventId, title } of events) {
+    await page.goto(`/events/${eventId}`);
+    const main = page.locator('main');
+    await expect(main.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible();
+    await expectRegistrationState(main, title, eventId === 111 ? 'Registration Not Yet Open' : 'Register Now');
+  }
+  // The not-yet-open note repeats the backend's time; it does not decide the state.
+  await page.goto('/events/111');
+  await expect(page.getByRole('button', { name: 'Registration Not Yet Open for Clock Says Open', exact: true }))
+    .toHaveAccessibleDescription('Registration opens 1 Oct 2026, 08:00 SGT.');
+  expect(calls.posts).toEqual([]);
+});
+
+test('[SPM-134] should_send_no_registration_and_open_no_form_when_a_disabled_state_is_clicked_or_activated_by_keyboard', async ({ page }) => {
+  const { calls } = await installRegistrationMocks(page, { events: STATE_EVENTS.map(({ event }) => event), places: STATE_PLACES });
+  await page.goto('/events');
+  for (const { event, label } of STATE_EVENTS.filter((item) => item.label !== 'Register Now')) {
+    const control = card(page, event.title).getByRole('button', { name: `${label} for ${event.title}`, exact: true });
+    await control.dispatchEvent('click');
+    // Still reachable by keyboard, and inert there too.
+    await control.focus();
+    await expect(control).toBeFocused();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  }
+  await page.goto('/events/107');
+  const notYetOpen = page.getByRole('button', { name: 'Registration Not Yet Open for Upcoming Event', exact: true });
+  await notYetOpen.dispatchEvent('click');
+  await notYetOpen.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(calls.posts).toEqual([]);
+  expect(calls.profileGet).toBe(0);
 });
 
 test('[SPM-134 TC-REG-003/005] should_prefill_read_only_name_and_email_and_editable_saved_preferences_when_the_form_opens', async ({ page }) => {
@@ -210,10 +314,11 @@ test('[SPM-134] should_show_success_only_after_the_backend_returns_201', async (
   await expect(dialog.getByText("You're registered", { exact: true })).toBeVisible();
 });
 
-for (const [code, title, refreshedAvailability] of [
-  ['REGISTRATION_FULL', 'This event is now full', 'FULL_WAITLIST'],
-  ['REGISTRATION_CLOSED', 'Registration has closed', 'CLOSED'],
-  ['REGISTRATION_NOT_ENABLED', "Registration isn't available", 'NOT_ENABLED'],
+for (const [code, title, refreshedAvailability, refreshedLabel] of [
+  ['REGISTRATION_NOT_YET_OPEN', "Registration hasn't opened yet", 'NOT_YET_OPEN', 'Registration Not Yet Open'],
+  ['REGISTRATION_FULL', 'This event is now full', 'FULL_WAITLIST', 'Registration Full'],
+  ['REGISTRATION_CLOSED', 'Registration has closed', 'CLOSED', 'Registration Closed'],
+  ['REGISTRATION_UNAVAILABLE', 'Registration is currently unavailable', 'UNAVAILABLE', 'Registration Unavailable'],
 ]) {
   test(`[SPM-134 TC-REG-021 AC16] should_keep_answers_refresh_and_drop_register_now_when_the_backend_returns_${code}`, async ({ page }) => {
     const { calls } = await installRegistrationMocks(page, {
@@ -228,13 +333,14 @@ for (const [code, title, refreshedAvailability] of [
     await submit(dialog).click();
     await expect(dialog.getByText(title, { exact: true })).toBeVisible();
     await expect(dialog).not.toContainText('raw backend wording');
+    await expect(dialog).not.toContainText(/venue|capacity|configur/i);
     await expect(dialog.getByText("You're registered", { exact: true })).toHaveCount(0);
     await expect(dietary(dialog)).toHaveValue('Typed before the refusal');
     // Nothing more to submit; the attendee closes, and no retry is made.
     await expect(submit(dialog)).toHaveCount(0);
     await expect.poll(() => calls.detail).toContain(101);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
-    await expect(registerOn(card(page, 'SMU Tech Summit'), 'SMU Tech Summit')).toHaveCount(0);
+    await expectRegistrationState(card(page, 'SMU Tech Summit'), 'SMU Tech Summit', refreshedLabel);
     expect(calls.posts).toHaveLength(1);
   });
 }
