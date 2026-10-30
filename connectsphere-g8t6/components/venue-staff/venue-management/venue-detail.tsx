@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/venues";
 import { BufferFields, Field, VenueCoreFields, VenueStatusChip, type FieldErrors } from "./venue-fields";
 import { VenueGallery } from "./venue-gallery";
+import { VenueBlocksSection } from "./venue-blocks";
 import { EMPTY_VENUE_FORM, formatList, parseList, validateVenueForm, type VenueFormValues } from "./venue-form-rules";
 
 type Loaded = { venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus };
@@ -392,6 +393,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
             detailStatus={detailStatus}
             onSaved={(updated, message) => { setState({ status: "ready", data: { ...state.data, details: updated, detailStatus: "CURRENT" } }); saved(message); }}
           />
+          <VenueBlocksSection venueId={venue.venueId} venueName={venue.name} />
         </div>
         <aside className="grid gap-5 xl:col-span-4" aria-label="Record history">
           <section className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">

@@ -22,6 +22,10 @@ export const FIELD_LABELS: Record<string, string> = {
   registrationCapacity: "Registration capacity",
   suggestedVenue: "Suggested venue",
   venueBookings: "Venue bookings",
+  // SPM-195 block, restore and incident entries (staff-only history).
+  venueAvailability: "Venue availability",
+  venueBlock: "Venue block",
+  incident: "Venue incident",
 };
 
 export const fieldLabel = (field: string) => FIELD_LABELS[field] ?? field;

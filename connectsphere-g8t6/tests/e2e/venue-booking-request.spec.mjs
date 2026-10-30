@@ -289,6 +289,34 @@ test("[SPM-179 AC11] the history entry lists each requested booking, without emp
   await expect(history.getByText("venueBookings")).toHaveCount(0);
 });
 
+test("[SPM-195-AC14] block and incident history entries keep their summary and name each change", async ({ page }) => {
+  const entry = (historyId, action, summary, changes) => ({
+    historyId, action, summary, changes, audience: "STAFF_ONLY", occurredAt: "2026-10-30T04:00:00.000Z",
+    actor: { userId: 7, name: "Synthetic Venue Staff", role: "VENUE_STAFF" },
+  });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeBookingSection(page, {
+    history: [
+      entry(3, "VENUE_INCIDENT_CLOSED", "Venue incident closed: booking #501 was rejected by Venue Staff.",
+        [{ field: "incident", before: "OPEN", after: "RELEASED" }]),
+      entry(2, "VENUE_BLOCK_SHORTENED", "The block on Synthetic Grand Hall was shortened. Venue Staff confirm whether the booking can be restored.",
+        [{ field: "venueBlock", before: "4 Nov 2026 13:00 to 4 Nov 2026 15:00", after: "4 Nov 2026 13:00 to 4 Nov 2026 14:00" }]),
+      entry(1, "VENUE_BLOCK_AFFECTED_EVENT", "Synthetic Grand Hall is blocked (Maintenance) from 4 Nov 2026 13:00 to 4 Nov 2026 15:00. The venue arrangement is affected.",
+        [{ field: "venueAvailability", before: "Synthetic Grand Hall available", after: "Synthetic Grand Hall blocked (Maintenance)" }]),
+    ],
+  });
+  await page.goto("/events/42");
+
+  const history = page.getByRole("region", { name: "Change history" });
+  await expect(history.getByText("Venue incident closed: booking #501 was rejected by Venue Staff.")).toBeVisible();
+  for (const label of ["Venue incident", "Venue block", "Venue availability"]) {
+    await expect(history.getByText(label, { exact: true })).toBeVisible();
+  }
+  for (const key of ["incident", "venueBlock", "venueAvailability"]) {
+    await expect(history.getByText(key, { exact: true })).toHaveCount(0);
+  }
+});
+
 test("[SPM-179 TC-14][AC7] a venue without setup and turnaround times is listed but cannot be chosen", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await routeBookingSection(page);
@@ -629,4 +657,15 @@ test('[SPM-185] a definitive refusal still checks availability before retrying',
   await form(page).getByRole('button', { name: 'Send booking request', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'This venue is not available at that time' })).toBeVisible();
   expect(sent.requests).toHaveLength(1);
+});
+
+test('[SPM-195] coordinator sees cancellation integration as unavailable', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  await routeBookingSection(page, { bookingList: list({ bookings: [booking({ incident: {
+    incidentId: 5, eventId: 42, status: 'OPEN', statusLabel: 'Open', block: null,
+    actions: [{ action: 'CANCEL', available: true, label: 'Cancel the event.' }],
+  } })] }) });
+  await page.goto('/events/42');
+  const card = page.getByRole('group', { name: 'Venue unavailable' });
+  await expect(card).toContainText('Cancel event: Not available yet: the event cancellation workflow is not integrated.');
 });

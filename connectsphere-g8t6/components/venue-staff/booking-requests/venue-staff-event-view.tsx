@@ -16,6 +16,7 @@ import { formatBookingId } from "./booking-filters";
 import { BookingStatusChip } from "./booking-status-chip";
 import { Collapse } from "./collapse";
 import { useOpenedBookings } from "./use-opened-bookings";
+import { BookingIncidentCard, IncidentChip } from "@/components/venues/booking-incident";
 
 type ViewState =
   | { status: "loading" }
@@ -42,10 +43,18 @@ function ReviewSection({ step, title, description, action, children }: {
 
 const people = (value: number | null) => (value ? `${value.toLocaleString()} people` : "Not provided");
 
-function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
+interface IncidentHandlers {
+  onRestored: (message: string) => void;
+  // A refused restore: the bookings are reloaded behind the open dialog.
+  onRefused: () => void;
+}
+
+function BookingRequirements({ booking, onRestored, onRefused }: { booking: VenueBookingDetail } & IncidentHandlers) {
   const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > booking.venue.roomCapacity;
   return (
     <div className="grid gap-4">
+      {/* SPM-195 AC9/AC10: an affected booking shows its block and, once free, Restore. */}
+      {booking.incident ? <BookingIncidentCard incident={booking.incident} audience="venue-staff" onRestored={onRestored} onRefused={onRefused} /> : null}
       <KeyValuePanel
         rows={[
           { icon: "venue", label: "Requested venue", value: `${booking.venue.name} · ${booking.venue.address}` },
@@ -88,11 +97,11 @@ function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
   );
 }
 
-function VenueBookingsSection({ bookings, selectedId, onSelect }: {
+function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored, onRefused }: {
   bookings: VenueBookingDetail[];
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
-}) {
+} & IncidentHandlers) {
   return (
     <ReviewSection
       step={3}
@@ -122,6 +131,7 @@ function VenueBookingsSection({ bookings, selectedId, onSelect }: {
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
+                  {booking.incident?.status === "OPEN" ? <IncidentChip incident={booking.incident} /> : null}
                   <BookingStatusChip status={booking.status} label={booking.statusLabel} />
                   <span className={`inline-flex transition-transform duration-200 ease-out ${selected ? "rotate-90" : ""}`}>
                     <Icon name="arrow-forward" size={16} />
@@ -130,7 +140,7 @@ function VenueBookingsSection({ bookings, selectedId, onSelect }: {
               </button>
               <Collapse open={selected} id={panelId}>
                 <div className="border-t border-outline-variant p-3 sm:p-4">
-                  <BookingRequirements booking={booking} />
+                  <BookingRequirements booking={booking} onRestored={onRestored} onRefused={onRefused} />
                 </div>
               </Collapse>
             </li>
@@ -141,11 +151,11 @@ function VenueBookingsSection({ bookings, selectedId, onSelect }: {
   );
 }
 
-function LoadedView({ data, selectedId, onSelect }: {
+function LoadedView({ data, selectedId, onSelect, onRestored, onRefused }: {
   data: EventVenueBookings;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
-}) {
+} & IncidentHandlers) {
   const { event, bookings } = data;
   const duration = formatDuration(event.startDatetime, event.endDatetime);
   const selected = bookings.find((booking) => booking.bookingId === selectedId) ?? null;
@@ -194,7 +204,7 @@ function LoadedView({ data, selectedId, onSelect }: {
             />
           </ReviewSection>
 
-          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} />
+          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onRestored={onRestored} onRefused={onRefused} />
 
           <div className="grid gap-5 md:grid-cols-2">
             <ReviewSection step={4} title="Accessibility" action={readOnly}>
@@ -262,6 +272,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const searchParams = useSearchParams();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
   const rawBooking = searchParams.get("booking");
   const selectedId = rawBooking && /^[1-9]\d{0,9}$/.test(rawBooking) ? Number(rawBooking) : null;
   const { markOpened } = useOpenedBookings();
@@ -325,12 +336,20 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
     );
   }
   const bookingMissing = selectedId !== null && !state.data.bookings.some((booking) => booking.bookingId === selectedId);
+  // The page reloads the bookings once the backend has committed the restore.
+  const restored = (message: string) => {
+    setNotice(message);
+    setAttempt((value) => value + 1);
+  };
   return (
     <>
       {bookingMissing ? (
         <div className="mb-4"><AlertBanner tone="warning">That booking is not part of this event. Showing every booking under the event instead.</AlertBanner></div>
       ) : null}
-      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} />
+      <div aria-live="polite">
+        {notice ? <div className="mb-4"><AlertBanner tone="success" live={false}>{notice}</AlertBanner></div> : null}
+      </div>
+      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} onRestored={restored} onRefused={() => setAttempt((value) => value + 1)} />
     </>
   );
 }

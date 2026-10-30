@@ -7,6 +7,7 @@ import { getAccessToken } from "@/lib/supabase";
 import { venueOptionsQuery, type VenueOptionsQuery } from "@/components/venues/venue-queries";
 import type { Venue, VenuePhoto } from "@/lib/api/venues";
 import type { VenueSuggestion } from "@/lib/api/event-workspace";
+import type { VenueIncident } from "@/lib/api/venue-blocks";
 
 export type { VenueOptionsQuery };
 
@@ -148,6 +149,8 @@ export interface EventVenueBooking {
   specialRequirements: string | null;
   rejectionReason: string | null;
   requestedAt: string | null;
+  // SPM-195: the open incident, otherwise the latest resolved one.
+  incident?: VenueIncident | null;
 }
 
 export interface EventVenueBookingList {
