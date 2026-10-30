@@ -469,6 +469,11 @@ test("[SPM-185 AC2] a setup/turnaround clash found before sending opens a dialog
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const turnaround = "Venue's turnaround period (10:00am–10:45am) overlaps with your requested booking, including its 30-minute setup from 10:00am.";
   const sent = await routeBookingSection(page, { availability: { 45: { canRequest: false, message: turnaround }, 46: { canRequest: false } } });
+  // The advisory answer was available; a clash appears before the send-time check.
+  await page.route('**/api/events/42/venue-bookings/check', route => {
+    const items = route.request().postDataJSON().bookings;
+    return route.fulfill({ json: { bookings: items.map((item, index) => checkResult(item, index)) } });
+  });
   await page.goto("/events/42");
   await openForm(page);
   await form(page).getByRole("button", { name: "Add another venue" }).click();
@@ -478,9 +483,7 @@ test("[SPM-185 AC2] a setup/turnaround clash found before sending opens a dialog
   await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
   await section(page, 1).getByRole("radio", { name: "Primary venue" }).check();
 
-  // The section's own advisory check already warns.
-  await expect(second.getByText("Unavailable – booking")).toBeVisible();
-  await expect(second.getByText(/Taken 10:30–13:45 SGT by another booking/)).toBeVisible();
+  await expect(second.getByText("Available", { exact: true })).toBeVisible();
 
   await form(page).getByRole("button", { name: "Send booking request" }).click();
   const clash = page.getByRole("dialog", { name: "Some venues are not available at those times" });
