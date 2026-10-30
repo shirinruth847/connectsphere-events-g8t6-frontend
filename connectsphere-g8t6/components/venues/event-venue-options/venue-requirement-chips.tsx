@@ -1,4 +1,4 @@
-import { Icon } from "@/components/shared/icon";
+import { Icon, type IconName } from "@/components/shared/icon";
 import type { RequirementStatus, VenueOptionAvailability, VenueRequirement } from "@/lib/api/event-venues";
 
 // Met requirements are light green; unmet and not-checked ones light grey
@@ -16,6 +16,20 @@ export const requirementStatusWord = (requirement: VenueRequirement) => {
   if (requirement.status === "UNMET") return "Not met";
   return requirement.key === "availability" ? "Not checked" : "Error loading details";
 };
+// A venue exactly as large as the expected attendance is met but has no spare
+// space (SPM-198), so it is amber rather than green.
+const EXACT_STYLE = "border-[#FCD34D] bg-[#FEF3C7] text-[#92400E]";
+const isExact = (requirement: VenueRequirement) => requirement.assessment?.level === "EXACT";
+const styleOf = (requirement: VenueRequirement) => (isExact(requirement) ? EXACT_STYLE : REQUIREMENT_STYLES[requirement.status]);
+const iconOf = (requirement: VenueRequirement): IconName => {
+  if (isExact(requirement)) return "warning";
+  if (requirement.status === "MET") return "check";
+  return requirement.status === "NOT_CHECKED" ? "info" : "close";
+};
+// The capacity assessment's mark, as the ticket shows it: ✓ sufficient,
+// ~ adequate (exactly full), ✗ insufficient.
+const ASSESSMENT_MARK = { SUFFICIENT: "✓", EXACT: "~", INSUFFICIENT: "✗" } as const;
+
 // Short chip text so a card stays compact: "Capacity" and "Availability"
 // say themselves; a layout, accessibility or facility shows the need itself.
 // The full "label: detail (status)" is the tooltip and what screen readers hear.
@@ -28,14 +42,15 @@ const chipText = (requirement: VenueRequirement) => {
 
 // text replaces the chip's short wording, e.g. "Capacity 300".
 export function RequirementChip({ requirement, text }: { requirement: VenueRequirement; text?: string }) {
-  const met = requirement.status === "MET";
-  const full = `${requirement.label}: ${requirement.detail} (${requirementStatusWord(requirement)})`;
+  const full = requirement.assessment
+    ? `${requirement.assessment.title}: ${requirement.assessment.message}`
+    : `${requirement.label}: ${requirement.detail} (${requirementStatusWord(requirement)})`;
   return (
     <li
-      className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-chip border px-1.5 py-0.5 text-[11px] font-medium ${REQUIREMENT_STYLES[requirement.status]}`}
+      className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-chip border px-1.5 py-0.5 text-[11px] font-medium ${styleOf(requirement)}`}
       title={full}
     >
-      <Icon name={met ? "check" : requirement.status === "NOT_CHECKED" ? "info" : "close"} size={16} />
+      <Icon name={iconOf(requirement)} size={16} />
       <span aria-hidden="true" className="truncate">{text ?? chipText(requirement)}</span>
       <span className="sr-only">{full}</span>
     </li>
@@ -45,11 +60,21 @@ export function RequirementChip({ requirement, text }: { requirement: VenueRequi
 // venueValue is what the venue has for this need, e.g. its layouts, so the
 // details need no separate rows for them.
 export function RequirementRow({ requirement, venueValue }: { requirement: VenueRequirement; venueValue?: string }) {
+  const { assessment } = requirement;
   return (
-    <li className={`flex items-start justify-between gap-3 rounded-control border px-3 py-1.5 text-sm ${REQUIREMENT_STYLES[requirement.status]}`}>
+    <li className={`flex items-start justify-between gap-3 rounded-control border px-3 py-1.5 text-sm ${styleOf(requirement)}`}>
       <span className="min-w-0">
-        <span className="font-semibold">{requirement.label}</span>
-        <span className="block [overflow-wrap:anywhere]">{requirement.detail}</span>
+        {assessment ? (
+          <>
+            <span className="font-semibold"><span aria-hidden="true">{ASSESSMENT_MARK[assessment.level]} </span>{assessment.title}</span>
+            <span className="block [overflow-wrap:anywhere]">{assessment.message}</span>
+          </>
+        ) : (
+          <>
+            <span className="font-semibold">{requirement.label}</span>
+            <span className="block [overflow-wrap:anywhere]">{requirement.detail}</span>
+          </>
+        )}
         {venueValue ? <span className="block text-xs [overflow-wrap:anywhere]">Venue has: {venueValue}</span> : null}
       </span>
       <span className="shrink-0 text-xs font-semibold uppercase tracking-label">{requirementStatusWord(requirement)}</span>

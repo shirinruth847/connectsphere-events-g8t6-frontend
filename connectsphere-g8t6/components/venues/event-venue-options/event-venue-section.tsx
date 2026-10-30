@@ -54,6 +54,8 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   const [attempt, setAttempt] = useState(0);
   const [canSuggest, setCanSuggest] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // The search opened from "Find Alternative Venues" starts filtered (SPM-198).
+  const [searchAlternatives, setSearchAlternatives] = useState(false);
   const [viewId, setViewId] = useState<number | null>(null);
   // A related venue (e.g. a room of a chosen hall), opened from Related venues.
   const [relatedId, setRelatedId] = useState<number | null>(null);
@@ -215,6 +217,14 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   // A choice's card opens its details in place (developer requests of 24 and
   // 25 October 2026); one at a time.
   const toggleView = (venueId: number) => setViewId((current) => (current === venueId ? null : venueId));
+  const openSearch = (alternatives: boolean) => {
+    setRelatedId(null);
+    setSearchAlternatives(alternatives);
+    setSearchOpen(true);
+  };
+  // A venue too small for the expected attendance offers venues at least that
+  // large (SPM-198 AC4); without an expected attendance there is no assessment.
+  const findAlternatives = event.expectedAttendance ? () => openSearch(true) : undefined;
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
@@ -271,7 +281,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
         <section aria-label="Suggested venue" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <h3 className="text-sm font-semibold text-on-surface">Suggested venue</h3>
           {suggestedOption ? (
-            <VenueChoiceCard venue={suggestedOption} expanded={suggestedOption.venueId === viewId} onToggle={() => toggleView(suggestedOption.venueId)} badge={badge(suggestedOption)} onOpenVenue={setRelatedId} calendar={calendar} />
+            <VenueChoiceCard venue={suggestedOption} expanded={suggestedOption.venueId === viewId} onToggle={() => toggleView(suggestedOption.venueId)} badge={badge(suggestedOption)} onOpenVenue={setRelatedId} onFindAlternatives={findAlternatives} calendar={calendar} />
           ) : (
             <article aria-label={suggestedElsewhere.name ?? `Venue ${suggestedElsewhere.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
               <div><VenueBadge tone="success"><Icon name="check" size={16} />Suggested</VenueBadge></div>
@@ -310,6 +320,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
                 badge={badge(choice.option)}
                 action={action(choice.option, "card")}
                 onOpenVenue={setRelatedId}
+                onFindAlternatives={findAlternatives}
                 calendar={calendar}
               />
             ) : (
@@ -324,7 +335,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
       </section>
 
       <div>
-        <Button type="button" variant="secondary" aria-haspopup="dialog" onClick={() => setSearchOpen(true)}>
+        <Button type="button" variant="secondary" aria-haspopup="dialog" onClick={() => openSearch(false)}>
           <Icon name="venue" size={16} />Find another venue
         </Button>
       </div>
@@ -338,13 +349,15 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
             calendar={calendar}
             badge={badge}
             action={action}
+            alternativeCapacity={event.expectedAttendance}
+            startWithAlternatives={searchAlternatives}
           />
         ) : null}
       </Dialog>
 
       <Dialog open={related !== null} onClose={() => setRelatedId(null)} title="Venue details" size="wide">
         {related ? (
-          <VenueDetails key={related.venueId} venue={related} badge={badge(related)} action={action(related, "panel")} onOpenVenue={setRelatedId} calendar={calendar} />
+          <VenueDetails key={related.venueId} venue={related} badge={badge(related)} action={action(related, "panel")} onOpenVenue={setRelatedId} onFindAlternatives={findAlternatives} calendar={calendar} />
         ) : null}
       </Dialog>
 
