@@ -19,6 +19,7 @@ import {
 } from "@/lib/api/venues";
 import { availabilityOverlays, calendarRange, civilDate, toCalendarLanes, type CalendarEntryRef } from "./availability-calendar-model";
 import { useVenueOptions } from "./use-venue-options";
+import { OptionDropdown } from "@/components/shared/option-dropdown";
 
 const MAX_VENUES = 20;
 
@@ -105,12 +106,10 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
   const initialVenue = Number(searchParams.get("venueId"));
   // Every non-deleted venue for Venue Staff, live (SPM-181).
   const picker = useVenueOptions(!fixed && user?.role === "VENUE_STAFF");
-  const [venueSearch, setVenueSearch] = useState("");
   const [pickedVenues, setSelected] = useState<number[]>(Number.isInteger(initialVenue) && initialVenue > 0 ? [initialVenue] : []);
   const selected = fixed ? fixed.venueIds : pickedVenues;
   const [viewMode, setViewMode] = useState<CalendarViewMode>(fixed ? "week" : "month");
   const [currentDate, setCurrentDate] = useState(() => fixed?.date ?? calendarDate(new Date()));
-  const [checkOn, setCheckOn] = useState(Boolean(fixed?.check));
   const [checkDraft, setCheckDraft] = useState(() => fixed?.check ?? { date: civilDate(calendarDate(new Date())), startTime: "10:00", endDate: "", endTime: "12:00" });
   const [check, setCheck] = useState<AvailabilityParams["check"]>(fixed?.check ?? null);
   const [state, setState] = useState<CalendarState>({ status: "idle" });
@@ -147,11 +146,12 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
     return () => { alive = false; };
   }, [params, attempt]);
 
-  const visibleVenues = useMemo(() => {
-    const text = venueSearch.trim().toLowerCase();
-    return (picker.venues ?? []).filter((venue) => !text || venue.name.toLowerCase().includes(text));
-  }, [picker.venues, venueSearch]);
-  const calendar = useMemo(() => (state.status === "ready" ? toCalendarLanes(state.data) : null), [state]);
+  const venueChoices = useMemo(
+    () => (picker.venues ?? []).map((venue) => ({ value: String(venue.venueId), label: venue.name })),
+    [picker.venues],
+  );
+  // Each entry is labelled with its event and start and end (SPM-186).
+  const calendar = useMemo(() => (state.status === "ready" ? toCalendarLanes(state.data, formatEventWindow) : null), [state]);
   const overlays = useMemo(
     () => (state.status === "ready" ? availabilityOverlays(state.data, range, { label: fixed?.label ?? "Requested period", formatWindow: formatEventWindow, formatTimes }) : []),
     // range is rebuilt each render; its fields are what matter.
@@ -162,65 +162,60 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
   const overlapping = state.status === "ready" ? state.data.venues.filter((venue) => venue.overlaps.length) : [];
   const outOfService = state.status === "ready" ? state.data.venues.filter((venue) => venue.status !== "ACTIVE") : [];
 
-  const toggle = (venueId: number) =>
-    setSelected((current) => (current.includes(venueId) ? current.filter((id) => id !== venueId) : current.length >= MAX_VENUES ? current : [...current, venueId]));
-
+  // The period fields are always shown (SPM-186); a period is drawn and
+  // checked only once applied, and Clear removes it.
   const applyCheck = (event: FormEvent) => {
     event.preventDefault();
-    setCheck(checkOn ? { ...checkDraft } : null);
+    setCheck({ ...checkDraft });
     // Show the checked period: the calendar moves to its first day.
     const [year, month, day] = checkDraft.date.split("-").map(Number);
-    if (checkOn && year && month && day) setCurrentDate(new Date(year, month - 1, day));
+    if (year && month && day) setCurrentDate(new Date(year, month - 1, day));
   };
 
   return (
     <div className="grid gap-4">
       <div className={`grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 ${fixed ? "" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"}`}>
-        {fixed ? null : <fieldset className="grid content-start gap-2">
-          <legend className="mb-1 text-xs font-semibold text-on-surface">Venues ({selected.length}/{MAX_VENUES} selected)</legend>
-          <input aria-label="Find a venue" type="search" className={fieldClasses} placeholder="Find a venue" value={venueSearch} onChange={(event) => setVenueSearch(event.target.value)} />
+        {fixed ? null : <div className="grid content-start gap-1">
+          <FormLabel htmlFor="calendar-venues">Venues ({selected.length}/{MAX_VENUES} selected)</FormLabel>
           {picker.error ? <AlertBanner tone="error">{picker.error}</AlertBanner> : null}
-          {picker.venues === null && !picker.error ? <Skeleton className="h-24 w-full" /> : null}
+          {picker.venues === null && !picker.error ? <Skeleton className="h-11 w-full" /> : null}
           {picker.venues ? (
-            <div className="max-h-56 overflow-y-auto rounded-control border border-outline-variant p-2">
-              {visibleVenues.length ? visibleVenues.map((venue) => (
-                <label key={venue.venueId} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-control px-2 text-sm hover:bg-surface-container-low">
-                  <input type="checkbox" checked={selected.includes(venue.venueId)} onChange={() => toggle(venue.venueId)} disabled={!selected.includes(venue.venueId) && selected.length >= MAX_VENUES} />
-                  <span className="min-w-0 truncate">{venue.name}</span>
-                </label>
-              )) : <p className="p-2 text-sm text-on-surface-variant">No venues match.</p>}
-            </div>
+            <OptionDropdown
+              multiple
+              id="calendar-venues"
+              label="Venues"
+              placeholder="Choose venues"
+              max={MAX_VENUES}
+              options={venueChoices}
+              value={selected.map(String)}
+              onChange={(values) => setSelected(values.map(Number))}
+            />
           ) : null}
-        </fieldset>}
+        </div>}
 
         <form onSubmit={applyCheck} aria-label="Check a requested period" className="grid content-start gap-3">
-          <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-on-surface">
-            <input type="checkbox" checked={checkOn} onChange={(event) => { setCheckOn(event.target.checked); if (!event.target.checked) setCheck(null); }} />
-            Check a requested period
-          </label>
-          {checkOn ? (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div>
-                  <FormLabel htmlFor="check-date">Date</FormLabel>
-                  <input id="check-date" type="date" className={fieldClasses} value={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, date: event.target.value })} />
-                </div>
-                <div>
-                  <FormLabel htmlFor="check-start">Start</FormLabel>
-                  <input id="check-start" type="time" className={fieldClasses} value={checkDraft.startTime} onChange={(event) => setCheckDraft({ ...checkDraft, startTime: event.target.value })} />
-                </div>
-                <div>
-                  <FormLabel htmlFor="check-end-date">End date</FormLabel>
-                  <input id="check-end-date" type="date" className={fieldClasses} value={checkDraft.endDate ?? ""} min={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, endDate: event.target.value })} />
-                </div>
-                <div>
-                  <FormLabel htmlFor="check-end">End</FormLabel>
-                  <input id="check-end" type="time" className={fieldClasses} value={checkDraft.endTime} onChange={(event) => setCheckDraft({ ...checkDraft, endTime: event.target.value })} />
-                </div>
-              </div>
-              <div><Button type="submit" disabled={!selected.length}><Icon name="check" size={16} />Check period</Button></div>
-            </>
-          ) : null}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <FormLabel htmlFor="check-date">Date</FormLabel>
+              <input id="check-date" type="date" className={fieldClasses} value={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, date: event.target.value })} />
+            </div>
+            <div>
+              <FormLabel htmlFor="check-start">Start</FormLabel>
+              <input id="check-start" type="time" className={fieldClasses} value={checkDraft.startTime} onChange={(event) => setCheckDraft({ ...checkDraft, startTime: event.target.value })} />
+            </div>
+            <div>
+              <FormLabel htmlFor="check-end-date">End date</FormLabel>
+              <input id="check-end-date" type="date" className={fieldClasses} value={checkDraft.endDate ?? ""} min={checkDraft.date} onChange={(event) => setCheckDraft({ ...checkDraft, endDate: event.target.value })} />
+            </div>
+            <div>
+              <FormLabel htmlFor="check-end">End</FormLabel>
+              <input id="check-end" type="time" className={fieldClasses} value={checkDraft.endTime} onChange={(event) => setCheckDraft({ ...checkDraft, endTime: event.target.value })} />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={!selected.length}><Icon name="check" size={16} />Check period</Button>
+            {check ? <Button type="button" variant="quiet" onClick={() => setCheck(null)}>Clear period</Button> : null}
+          </div>
           <p className="text-xs text-on-surface-variant">
             Occupied time includes each venue&apos;s setup and turnaround. Click an entry in the calendar for its details.
           </p>
@@ -282,6 +277,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
                 currentDate={currentDate}
                 onCurrentDateChange={setCurrentDate}
                 entityLabel={{ singular: "venue", plural: "venues" }}
+                laneFilter={false}
                 onEventClick={(event) => setOpenEntry(calendar.refs.get(event.eventId) ?? null)}
               />
             </section>

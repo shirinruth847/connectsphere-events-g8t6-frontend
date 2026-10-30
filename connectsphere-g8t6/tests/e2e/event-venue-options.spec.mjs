@@ -868,7 +868,8 @@ test("[SPM-74][SPM-72 AC6] the month view shows entries as labelled bars and the
   // A three-day booking: one labelled bar, continued on the next two days in the same lane.
   const bars = calendar.locator(".cal-month-bar:not(.cal-month-bar--request)");
   await expect(bars).toHaveCount(3);
-  await expect(bars.first()).toHaveText("08:30 Confirmed booking · Booking #9");
+  // SPM-186: each entry names its event and its start and end.
+  await expect(bars.first()).toHaveText(/^08:30 Synthetic summit · Tue, 17 Nov 2026 09:00 – Thu, 19 Nov 2026 17:00 SGT$/);
   const tops = await bars.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().top)));
   expect(new Set(tops).size).toBe(1);
   await expect(calendar.locator(".cal-month-bar--request")).toHaveText(/^REQ-000042 · 10:00–12:00/);
