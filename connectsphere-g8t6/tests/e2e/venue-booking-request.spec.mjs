@@ -761,7 +761,7 @@ test("[SPM-186-AC17][SPM-186-TC20] each venue is checked on its own window as th
 
 test("[SPM-186-AC18][SPM-186-TC21] a time outside the event shows on its field and is not checked", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
-  await routeBookingSection(page);
+  const sent = await routeBookingSection(page);
   await page.goto("/events/42");
   await openForm(page);
 
@@ -770,9 +770,13 @@ test("[SPM-186-AC18][SPM-186-TC21] a time outside the event shows on its field a
 
   await expect(first.getByText("Must be within the event's dates and times.")).toBeVisible();
   await expect(first.getByTestId("booking-checks")).toHaveCount(0);
+  const send = form(page).getByRole("button", { name: "Send booking request", exact: true });
+  await expect(send).toBeDisabled();
+  expect(sent.requests).toHaveLength(0);
   await first.getByLabel("End (SGT)").fill("2030-03-10T12:00");
   await expect(first.getByText("Must be within the event's dates and times.")).toHaveCount(0);
   await expect(first.getByText("Available", { exact: true })).toBeVisible();
+  await expect(send).toBeEnabled();
 });
 
 test('[SPM-186] advisory blockers permit only an unchanged uncertain request to recover', async ({ page }) => {

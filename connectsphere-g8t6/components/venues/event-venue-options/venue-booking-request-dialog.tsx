@@ -123,6 +123,10 @@ export function VenueBookingRequestDialog({
   const checks = useVenueBookingChecks(event.eventId, checkItems);
   const recoveringRequest = uncertainBody !== null && uncertainBody === JSON.stringify(toRequestItems(drafts, eventHasPrimary));
   const blockingCount = checks.checking ? 0 : checks.results.filter((result) => result.checked && result.blocking.length).length;
+  // Invalid windows are returned unchecked, with field errors rather than blockers.
+  const hasCheckFieldErrors = !checks.checking && checks.results.some((result) =>
+    Object.keys(result.fields).some((field) => /\.(start|end)$/.test(field)),
+  );
   // A time the server cannot check yet (e.g. outside the event) shows on its field (AC18).
   const liveErrors = (index: number) => {
     const fields = checks.results[index]?.fields ?? {};
@@ -258,7 +262,7 @@ export function VenueBookingRequestDialog({
               </span>
             ) : null}
             {recoveringRequest ? <span className="self-center text-xs text-on-surface-variant">Retry to recover the previous request&apos;s result.</span> : null}
-            <Button type="button" disabled={saving || Boolean(banner?.stale) || (!recoveringRequest && blockingCount > 0)} onClick={() => void submit()}>
+            <Button type="button" disabled={saving || Boolean(banner?.stale) || (!recoveringRequest && (blockingCount > 0 || hasCheckFieldErrors))} onClick={() => void submit()}>
               {checking ? "Checking availability…" : saving ? "Sending…" : "Send booking request"}
             </Button>
           </>
