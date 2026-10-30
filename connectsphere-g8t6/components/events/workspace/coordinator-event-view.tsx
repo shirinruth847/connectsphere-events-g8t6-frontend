@@ -9,7 +9,7 @@ import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { eventDisplayStatus, statusPresentation } from "@/lib/events";
-import type { EventView } from "@/lib/api/event-workspace";
+import { getEventView, type EventView } from "@/lib/api/event-workspace";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { editableIdentityFields } from "@/lib/permissions/event-workspace";
 import { ClarificationPanel } from "./clarification-panel";
@@ -166,13 +166,20 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             ) : null}
           </ReviewSection>
 
-          <ReviewSection step={3} title="Venue & layout" description="The organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
+          <ReviewSection step={3} title="Venue & layout" description="The event's venue bookings and the organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
             <KeyValuePanel rows={layoutRows(event)} />
             <EventVenueSection
               key={event.venueSuggestion?.version ?? 0}
               event={event}
               onSuggested={() => setHistoryKey((value) => value + 1)}
               onStale={onAccessChanged}
+              onBookingsRequested={() => {
+                // New bookings change the arrangement version, history and
+                // readiness. The bookings are saved either way, so a failed
+                // re-fetch keeps the page as it is instead of showing an error.
+                setHistoryKey((value) => value + 1);
+                getEventView(event.eventId).then(({ event: latest }) => onEventChange(latest)).catch(() => {});
+              }}
             />
           </ReviewSection>
 
@@ -181,7 +188,8 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
             </ReviewSection>
             <ReviewSection step={5} title="Technical & equipment" action={significantPill}>
-              <RequirementList items={equipmentItems(event)} empty="No equipment was requested." />
+              <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Equipment requirements</h3><RequirementList items={equipmentItems(event)} empty="No equipment was requested." /></div>
+              <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Technical support needs</h3><p className="whitespace-pre-wrap text-sm text-on-surface [overflow-wrap:anywhere]">{event.technicalSupportNeeds || "No technical support needs were provided."}</p></div>
             </ReviewSection>
           </div>
 
@@ -200,6 +208,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               setStatusNotice(message ?? "");
             }}
             onAccessChanged={onAccessChanged}
+            refreshKey={historyKey}
           />
           {clarificationPanel}
           <SafetyReviewSection eventId={event.eventId} refreshKey={historyKey} />
@@ -210,6 +219,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
               rows={[
                 { icon: "person", label: "Coordinator", value: "You" },
                 { icon: "person", label: "Organiser", value: event.organiser?.name ?? "Not available" },
+                ...(event.organiser?.email ? [{ label: "Organiser email", value: <a className="text-primary underline underline-offset-2 [overflow-wrap:anywhere]" href={`mailto:${event.organiser.email}`}>{event.organiser.email}</a> }] : []),
                 { icon: "organisation", label: "Organisation", value: event.organisation?.name ?? "Not provided" },
                 { icon: "history", label: "Last updated", value: formatTimestamp(event.updatedAt) },
               ]}

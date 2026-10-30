@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import type { VenueIncident } from "@/lib/api/venue-blocks";
 import { bookingFilterQuery, type VenueBookingFilters } from "@/components/venue-staff/booking-requests/booking-filters";
 
 export type { VenueBookingFilters };
@@ -52,6 +53,8 @@ export interface VenueBookingDetail extends VenueBookingSummary {
   accessibilityRequirements: string[];
   specialRequirements: string | null;
   rejectionReason: string | null;
+  // SPM-195: the open incident, otherwise the latest resolved one.
+  incident?: VenueIncident | null;
 }
 
 export interface VenueBookingEvent {

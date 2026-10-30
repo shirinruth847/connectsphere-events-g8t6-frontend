@@ -86,3 +86,25 @@ test("[SPM-37 autosave timing] sends no request at 29 seconds and autosaves at 3
   await expect(page.getByText(/^Last auto-saved at /)).toBeVisible();
   await attachScreenshot(testInfo, page, "SPM-37-autosave-30-seconds-pass");
 });
+
+
+test("[SPM-38] organiser support needs persist through draft save, resume and submission", async ({ page }) => {
+  const state = await installConnectSphereMocks(page);
+  const needs = "AV setup and on-site presentation assistance.";
+  await page.goto("/events/new");
+  await enterCompleteRequestThroughSubmit(page);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByLabel("Technical support needs", { exact: true }).fill(needs);
+  await page.getByRole("button", { name: "Save as Draft", exact: false }).click();
+  await expect(page).toHaveURL(/dashboard/);
+  expect(state.draftCreateRequests[0].technicalSupportNeeds).toBe(needs);
+  await page.goto("/events/new?draft=501");
+  await enterCompleteRequestThroughSubmit(page);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.getByLabel("Technical support needs", { exact: true })).toHaveValue(needs);
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: /Submit request/i }).click();
+  await expect(page).toHaveURL(/dashboard/);
+  expect(state.submitDraftRequests.at(-1).technicalSupportNeeds).toBe(needs);
+  expect(state.events[0].technicalSupportNeeds).toBe(needs);
+});

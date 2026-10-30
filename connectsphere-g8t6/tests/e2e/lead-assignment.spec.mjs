@@ -8,6 +8,38 @@ const coordinators = () => [
  {coordinatorId:23,name:'Busy Coordinator',events:[{...event,eventId:72,title:'Other commitment'}]},
 ];
 
+for (const width of [1440, 390]) {
+ test(`[SPM-180] shared keyboard focus and reassignment dialog elevation remain visible at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const state = await installConnectSphereMocks(page, { role: 'COORDINATOR_LEAD' });
+  state.assignments = [{ ...event }];
+  state.coordinators = coordinators();
+  await page.goto('/assignments');
+  const refresh = page.getByRole('button', { name: 'Refresh assignments' });
+  await expect(refresh).toBeEnabled();
+  await refresh.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(refresh).toBeFocused();
+  await expect(refresh).toHaveCSS('outline-style', 'solid');
+  await expect.poll(() => refresh.evaluate((element) => {
+   const style = getComputedStyle(element);
+   const luminance = (color) => {
+    const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => value / 255);
+    return channels.reduce((total, value, index) => total + [0.2126, 0.7152, 0.0722][index]
+      * (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4), 0);
+   };
+   const values = [luminance(style.outlineColor), luminance(style.backgroundColor)].sort((a, b) => a - b);
+   return (values[1] + 0.05) / (values[0] + 0.05);
+  })).toBeGreaterThanOrEqual(3);
+  await page.getByRole('combobox').selectOption('22');
+  await page.getByRole('button', { name: 'Reassign coordinator', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog')).not.toHaveCSS('box-shadow', 'none');
+  expect(state.coordinatorChanges).toHaveLength(0);
+ });
+}
+
 test('[SPM-174] Lead confirms an initial assignment and the request leaves the queue',async({page})=>{
  const state=await installConnectSphereMocks(page,{role:'COORDINATOR_LEAD'});
  state.coordinators=coordinators();state.queueEvents=[{...event,status:'SUBMITTED',coordinatorId:undefined}];state.delay=300;

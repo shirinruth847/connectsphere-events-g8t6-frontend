@@ -58,6 +58,7 @@ export interface EventView {
   title: string;
   purpose: string | null;
   description: string | null;
+  technicalSupportNeeds?: string | null;
   startDatetime: string | null;
   endDatetime: string | null;
   expectedAttendance: number | null;
@@ -80,7 +81,7 @@ export interface EventView {
   permissions: EventPermissions;
   // Only returned to the assigned coordinator.
   coordinatorId?: number | null;
-  organiser?: { userId: number; name: string } | null;
+  organiser?: { userId: number; name: string; email?: string | null } | null;
   // SPM-173: counts changes to venue bookings, technical arrangements and
   // attendance; a safety approval is valid only for the version it reviewed.
   arrangementVersion?: number;
@@ -95,6 +96,8 @@ export interface EventHistoryChange {
   field: string;
   before: unknown;
   after: unknown;
+  beforeLabel?: string;
+  afterLabel?: string;
 }
 
 export interface EventHistoryEntry {
