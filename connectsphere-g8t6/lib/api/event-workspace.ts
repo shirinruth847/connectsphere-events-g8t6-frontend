@@ -204,6 +204,7 @@ export interface EventReadiness {
 }
 
 export const LIFECYCLE_ACTION_PATHS = {
+  acceptFeasibility: "accept-feasibility",
   submitForSafetyReview: "submit-for-safety-review",
   confirm: "confirm",
   startPreparation: "start-preparation",
