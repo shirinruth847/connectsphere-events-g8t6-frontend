@@ -286,3 +286,35 @@ The coordinator's embedded calendar uses
 The backend must deploy this route before the frontend: it verifies assigned
 coordinator access and excludes that event's own bookings and holds. Venue
 Staff continue to use `/api/venues/availability`. No schema migration is needed.
+
+## Venue booking requests (SPM-179)
+
+The event's venue section (`/events/[eventId]`, step 3 "Venue & layout")
+lists the event's venue bookings for the assigned coordinator and the
+supervising Lead, from `GET /api/events/:id/venue-bookings`. When the
+backend's `canRequestVenueBookings` is true (assigned coordinator, event in
+`PLANNING`), "Request venue bookings" and each venue card's "Request booking"
+open the request form in a popup:
+
+- Event details are read-only; the first venue section starts with the
+  coordinator's suggestion or the organiser's first choice (or the card's venue).
+- One section per venue (up to 10): venue, label, start and end (SGT),
+  attendance and layout are required; facilities, accessibility needs and
+  special requirements (including catering) are optional. With several venues
+  and no primary venue yet, one is marked primary; `isPrimary` is sent only
+  then (a single venue becomes primary by itself, and an event with a primary
+  keeps it). Venues already booked for the event, chosen in another section or
+  without setup/turnaround times are listed but cannot be chosen.
+- Checks before sending are instant feedback only. Each section's
+  availability and operating-hours warning come from
+  `GET /api/events/:id/venue-availability` (the SPM-74 period check); layout,
+  facility and accessibility warnings never block.
+- `POST /api/events/:id/venue-bookings` sends an `Idempotency-Key` that is
+  reused while the body is unchanged, so a retry cannot book twice. Refusals
+  are shown in their venue section and every value is kept. Closing a changed
+  form asks before discarding it. After a request the event, its readiness and
+  its history are loaded again (the request moves `arrangement_version`, not
+  the event version).
+
+The backend route needs the SPM-179 migrations and `VENUE_LOCK_DATABASE_URL`;
+until then it answers `503`, which the form shows as a retryable error.
