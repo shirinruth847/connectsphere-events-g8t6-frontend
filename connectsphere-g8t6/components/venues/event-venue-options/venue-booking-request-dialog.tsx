@@ -32,6 +32,7 @@ import {
   type BookingDraft,
 } from "./venue-booking-form-model";
 import { VenueBookingSection, type VenueChoiceGroups } from "./venue-booking-section";
+import { useVenueBookingChecks } from "./use-venue-booking-checks";
 
 interface VenueBookingRequestDialogProps {
   // Kept mounted while closing, so focus returns to the button that opened it;
@@ -107,6 +108,23 @@ export function VenueBookingRequestDialog({
     const found = venueFilterChoices(venues);
     return { ...found, accessibility: [...new Set([...found.accessibility, ...(event.accessibilityNeeds ?? [])])] };
   }, [venues, event.accessibilityNeeds]);
+
+  // Each section is checked on its own venue and window as it changes (SPM-186
+  // AC17); a section without a venue and both times is not checked yet.
+  const checkItems = useMemo(
+    () => (drafts.some((draft) => draft.venueId != null && draft.start && draft.end) ? toRequestItems(drafts, eventHasPrimary) : null),
+    [drafts, eventHasPrimary],
+  );
+  const checks = useVenueBookingChecks(event.eventId, checkItems);
+  const blockingCount = checks.checking ? 0 : checks.results.filter((result) => result.checked && result.blocking.length).length;
+  // A time the server cannot check yet (e.g. outside the event) shows on its field (AC18).
+  const liveErrors = (index: number) => {
+    const fields = checks.results[index]?.fields ?? {};
+    return Object.fromEntries(["start", "end"].flatMap((name) => {
+      const message = fields[`bookings.${index}.${name}`];
+      return message ? [[name, message]] : [];
+    }));
+  };
 
   const askPrimary = needsPrimaryChoice(drafts.length, eventHasPrimary);
   const primaryGroup = `primary-${event.eventId}`;
@@ -205,7 +223,12 @@ export function VenueBookingRequestDialog({
         footer={(
           <>
             <Button type="button" variant="quiet" disabled={saving} onClick={close}>Cancel</Button>
-            <Button type="button" disabled={saving || Boolean(banner?.stale)} onClick={() => void submit()}>
+            {blockingCount ? (
+              <span className="self-center text-xs font-semibold text-error">
+                {blockingCount === 1 ? "1 venue has" : `${blockingCount} venues have`} a problem to fix first.
+              </span>
+            ) : null}
+            <Button type="button" disabled={saving || Boolean(banner?.stale) || blockingCount > 0} onClick={() => void submit()}>
               {saving ? "Sending…" : "Send booking request"}
             </Button>
           </>
@@ -248,14 +271,15 @@ export function VenueBookingRequestDialog({
               <VenueBookingSection
                 key={draft.key}
                 index={index}
-                eventId={event.eventId}
                 draft={draft}
                 venue={draft.venueId == null ? null : venueById.get(draft.venueId) ?? null}
                 venueGroups={groups}
                 unavailableVenueIds={unavailableFor(index)}
                 bookedVenueIds={booked}
                 choices={choices}
-                errors={sectionErrors(errors, index)}
+                errors={{ ...liveErrors(index), ...sectionErrors(errors, index) }}
+                checks={checks.results[index]?.checked ? checks.results[index] : null}
+                checking={checks.checking}
                 primaryGroup={askPrimary ? primaryGroup : null}
                 primaryErrorId={errors["bookings.primary"] ? `${primaryGroup}-error` : undefined}
                 canRemove={drafts.length > 1}
