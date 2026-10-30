@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageContent } from "@/components/layout/page-content";
 import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
+import { OptionDropdown } from "@/components/shared/option-dropdown";
 import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { useDebouncedValue } from "@/components/venues/use-debounced-value";
 import { useVenueOptions } from "@/components/venues/use-venue-options";
@@ -16,7 +17,7 @@ import {
   type VenueBookingFilters,
   type VenueBookingListItem,
 } from "@/lib/api/venue-bookings";
-import { BOOKING_SORT_OPTIONS, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
+import { BOOKING_SORT_OPTIONS, MAX_SEARCH_LENGTH, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
 import { BOOKING_BORDERS, BookingStatusChip } from "./booking-status-chip";
 import { useOpenedBookings } from "./use-opened-bookings";
 
@@ -184,6 +185,7 @@ export function BookingRequestList() {
       }
     >
       <section aria-label="Search, sort and filter booking requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
+        {/* Clear is always present (disabled when empty), so typing never resizes the box. */}
         <div className="grid min-w-[14rem] flex-1 gap-1">
           <label htmlFor="booking-search" className="text-xs font-semibold text-on-surface-variant">Search</label>
           <input
@@ -191,6 +193,7 @@ export function BookingRequestList() {
             type="search"
             className={fieldClasses}
             placeholder="Booking ID, event, venue or label"
+            maxLength={MAX_SEARCH_LENGTH}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             aria-describedby="booking-search-hint"
@@ -199,7 +202,10 @@ export function BookingRequestList() {
         </div>
         <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[9.5rem]"
           options={VENUE_BOOKING_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))} onChange={update("status")} />
-        <FilterSelect id="booking-venue" label="Venue" value={filters.venueId} allLabel="All venues" width="w-[13rem]" options={venueChoices} onChange={update("venueId")} />
+        <div className="grid gap-1">
+          <label htmlFor="booking-venue" className="text-xs font-semibold text-on-surface-variant">Venue</label>
+          <OptionDropdown id="booking-venue" label="Venue" allLabel="All venues" className="w-[13rem]" value={filters.venueId} options={venueChoices} onChange={update("venueId")} />
+        </div>
         <div className="grid gap-1">
           <label htmlFor="booking-date" className="text-xs font-semibold text-on-surface-variant">Date (SGT)</label>
           <input id="booking-date" type="date" className={`${compactField} w-[10.5rem]`} value={filters.date} onChange={(event) => update("date")(event.target.value)} />
@@ -209,9 +215,7 @@ export function BookingRequestList() {
             onChange={(value) => { setSort(value as BookingSort); setOrder(DEFAULT_ORDER[value as BookingSort]); }} />
           <SortOrderToggle order={order} onChange={setOrder} />
         </div>
-        {filtered || search ? (
-          <Button variant="quiet" className="px-3" onClick={clearAll}>Clear</Button>
-        ) : null}
+        <Button variant="quiet" className="px-3" disabled={!filtered && !search} onClick={clearAll}>Clear</Button>
         {venueOptions.error ? <p className="basis-full text-xs text-error">Venue list unavailable: {venueOptions.error}</p> : null}
       </section>
 
