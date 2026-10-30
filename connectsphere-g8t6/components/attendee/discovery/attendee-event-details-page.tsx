@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { type RefObject, useRef } from "react";
 import { MyPlaceCard, MyPlaceChip, RegistrationActionBar } from "@/components/attendee/event-details/event-details-parts";
-import { canRegister } from "@/components/attendee/registration/registration-form";
 import { useRegistration } from "@/components/attendee/registration/use-registration";
 import { PageContent } from "@/components/layout/page-content";
 import { Icon } from "@/components/shared/icon";
@@ -101,7 +100,7 @@ function EventDetailsState({
           <RegistrationActionBar
             event={{ ...event, myRegistration: place }}
             register={{
-              canRegister: canRegister(event.registrationAvailability, registration.places, event.eventId),
+              placesKnown: registration.places !== null,
               onRegister: (trigger) => registration.open({ eventId: event.eventId, title: event.title, startDatetime: event.startDatetime, endDatetime: event.endDatetime }, trigger),
             }}
             className="border-t border-outline-variant/40 pt-4"

@@ -19,7 +19,6 @@ import type {
   AttendeeEventSummary,
 } from "@/lib/api/discovery";
 import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
-import { canRegister } from "@/components/attendee/registration/registration-form";
 import { discoveryErrorMessage } from "./discovery-state";
 import { DiscoveryIcon } from "./discovery-icon";
 import { DiscoveryDetailsPanel } from "./discovery-details-panel";
@@ -278,7 +277,7 @@ function EventDetailsContent({
         <EventDetailsFooter
           event={{ ...event, myRegistration }}
           register={onRegister && detailsFrom === "discovery" ? {
-            canRegister: canRegister(event.registrationAvailability, places, event.eventId),
+            placesKnown: places !== null,
             onRegister: (trigger) => onRegister(event, trigger),
           } : undefined}
         />

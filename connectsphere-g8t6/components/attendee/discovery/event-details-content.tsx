@@ -1,8 +1,8 @@
 import type { AttendeeEventDetail } from "@/lib/api/discovery";
 import { DiscoveryDetailsPanel, type DiscoveryDetailRow } from "./discovery-details-panel";
 import { LOCATION_PENDING_LABEL } from "./event-discovery-card";
-import { formatEventDate, formatEventTime, formatTimestamp } from "./format-event-time";
-import { isRegistrationEnabled } from "./registration-availability";
+import { registrationWindowRows } from "@/components/attendee/event-details/event-details-parts";
+import { formatEventDate, formatEventTime } from "./format-event-time";
 
 // The body of the /events/[eventId] page, from a GET /api/events/discovery/:id
 // response, never list data. Its registration action is the shared
@@ -17,13 +17,7 @@ export function EventDetailsBody({ event }: { event: AttendeeEventDetail }) {
   if (event.organisationName) {
     rows.push({ label: "Organised by", icon: "organisation", value: event.organisationName });
   }
-  // Events without attendee registration carry no registration wording (SPM-34 AC4).
-  if (isRegistrationEnabled(event.registrationAvailability)) {
-    rows.push(
-      { label: "Registration opens", icon: "registration", value: formatTimestamp(event.registrationOpenAt) ?? "Immediately" },
-      { label: "Registration closes", icon: "registration", value: formatTimestamp(event.registrationCloseAt) ?? "No closing date" },
-    );
-  }
+  rows.push(...registrationWindowRows(event));
 
   return (
     <div className="flex flex-col gap-4">

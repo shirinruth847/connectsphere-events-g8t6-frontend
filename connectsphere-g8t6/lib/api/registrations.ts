@@ -29,9 +29,10 @@ export interface RegistrationConfirmation {
 
 // Stable 409 codes for a refused registration (POST /api/registrations/mine/:eventId).
 export const REGISTRATION_CONFLICT_CODES = [
-  "REGISTRATION_NOT_ENABLED",
+  "REGISTRATION_NOT_YET_OPEN",
   "REGISTRATION_CLOSED",
   "REGISTRATION_FULL",
+  "REGISTRATION_UNAVAILABLE",
   "ALREADY_REGISTERED",
   "ALREADY_WAITLISTED",
   "IDEMPOTENCY_KEY_REUSED",

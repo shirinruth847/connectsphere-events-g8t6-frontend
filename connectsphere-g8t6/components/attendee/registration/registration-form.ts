@@ -1,4 +1,3 @@
-import type { AttendeeRegistration } from "@/lib/api/my-events";
 import type { RegistrationAnswers } from "@/lib/api/registrations";
 import { PROFILE_FIELDS, validateProfileText, type ProfileField, type ProfileValues } from "../profile/profile-form";
 
@@ -26,13 +25,6 @@ export const toRegistrationAnswers = (values: RegistrationValues): RegistrationA
   dietaryRestrictions: values.dietaryRestrictions.trim() ? values.dietaryRestrictions : null,
   accessibilityRequirements: values.accessibilityRequirements.trim() ? values.accessibilityRequirements : null,
 });
-
-// Register Now is offered only when the backend says registration is OPEN and
-// the attendee's own places have loaded and hold none for this event. Unknown
-// places (still loading or failed) offer nothing; the backend would refuse a
-// duplicate anyway.
-export const canRegister = (availability: string | undefined, places: ReadonlyMap<number, AttendeeRegistration> | null, eventId: number) =>
-  availability === "OPEN" && places !== null && !places.has(eventId);
 
 // One logical submission keeps one Idempotency-Key, so an explicit retry of the
 // same answers is replayed rather than registered twice. Changed answers are a
@@ -68,10 +60,16 @@ const OUTCOMES: Record<string, RegistrationOutcome> = {
     title: "Registration has closed",
     message: "The registration period for this event ended before your registration was submitted.",
   },
-  REGISTRATION_NOT_ENABLED: {
+  REGISTRATION_NOT_YET_OPEN: {
     tone: "warning", refresh: true, canRetry: false,
-    title: "Registration isn't available",
-    message: "Registration is not open for this event, so your registration was not submitted.",
+    title: "Registration hasn't opened yet",
+    message: "Registration for this event has not opened yet, so your registration was not submitted. Your answers are still here.",
+  },
+  // Neither full nor closed; the reason is internal to the event's set-up.
+  REGISTRATION_UNAVAILABLE: {
+    tone: "warning", refresh: true, canRetry: false,
+    title: "Registration is currently unavailable",
+    message: "Your registration was not submitted. Please check this event again later. Your answers are still here.",
   },
   ALREADY_REGISTERED: {
     tone: "info", refresh: true, canRetry: false,

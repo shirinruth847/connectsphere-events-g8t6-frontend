@@ -4,8 +4,9 @@ import type { AttendeeEventSummary } from "@/lib/api/discovery";
 import type { AttendeeRegistration } from "@/lib/api/my-events";
 import { DiscoveryIcon } from "./discovery-icon";
 import { formatDateTile, formatEventDate, formatEventTime } from "./format-event-time";
-import { getAvailabilityPresentation } from "./registration-availability";
+import { getAvailabilityPresentation, getRegistrationState } from "./registration-availability";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
+import { RegistrationStateControl } from "./registration-state-control";
 
 // The backend does not expose the primary venue yet, so location is null; this
 // says nothing about whether the venue itself is confirmed.
@@ -16,15 +17,16 @@ interface EventDiscoveryCardProps {
   onViewDetails: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
   // The attendee's own place on this event, from their registrations (SPM-134).
   place?: AttendeeRegistration | null;
-  // Offered only when the backend says OPEN and the attendee holds no place.
-  canRegister?: boolean;
+  // Whether the attendee's places have loaded; Register Now waits for them.
+  placesKnown?: boolean;
   onRegister?: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
 }
 
 // List-row card from the "Event Discovery" Figma frame (282:346), limited to
 // fields the backend returns: no photos, tracks, speakers or capacity numbers.
-export function EventDiscoveryCard({ event, onViewDetails, place = null, canRegister = false, onRegister }: EventDiscoveryCardProps) {
+export function EventDiscoveryCard({ event, onViewDetails, place = null, placesKnown = false, onRegister }: EventDiscoveryCardProps) {
   const availability = getAvailabilityPresentation(event.registrationAvailability);
+  const registrationState = onRegister ? getRegistrationState(event.registrationAvailability, place, placesKnown) : null;
   const tile = formatDateTile(event.startDatetime);
   const titleId = `discovery-event-${event.eventId}-title`;
 
@@ -99,14 +101,12 @@ export function EventDiscoveryCard({ event, onViewDetails, place = null, canRegi
         >
           View Event Details
         </Button>
-        {canRegister && onRegister ? (
-          <Button
-            className="w-full max-lg:min-h-11 sm:w-auto"
-            aria-label={`Register now for ${event.title}`}
-            onClick={(clickEvent) => onRegister(event, clickEvent.currentTarget)}
-          >
-            Register Now
-          </Button>
+        {registrationState && onRegister ? (
+          <RegistrationStateControl
+            state={registrationState}
+            eventTitle={event.title}
+            onRegister={(trigger) => onRegister(event, trigger)}
+          />
         ) : null}
       </div>
     </article>

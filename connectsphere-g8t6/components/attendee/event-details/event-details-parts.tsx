@@ -5,8 +5,9 @@ import { DiscoveryIcon } from "@/components/attendee/discovery/discovery-icon";
 import type { DiscoveryDetailRow } from "@/components/attendee/discovery/discovery-details-panel";
 import { LOCATION_PENDING_LABEL } from "@/components/attendee/discovery/event-discovery-card";
 import { formatEventDate, formatEventTime, formatTimestamp } from "@/components/attendee/discovery/format-event-time";
-import { getRegistrationAction, isRegistrationEnabled } from "@/components/attendee/discovery/registration-availability";
-import { AlertBanner, Button } from "@/components/shared/primitives";
+import { getRegistrationState, showsRegistrationWindow } from "@/components/attendee/discovery/registration-availability";
+import { RegistrationStateControl } from "@/components/attendee/discovery/registration-state-control";
+import { AlertBanner } from "@/components/shared/primitives";
 import type { AttendeeEventDetail } from "@/lib/api/discovery";
 import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
 
@@ -115,20 +116,26 @@ export function MyPlaceCard({ registration }: { registration: AttendeeRegistrati
   );
 }
 
-// Date, time and (when attendees can sign up) the registration window, in SGT.
+// The registration start and end times, in SGT. None for UNAVAILABLE, whose
+// times may be missing; a missing time is left out rather than read as
+// "open immediately" or "no closing date", which it no longer means (SPM-134).
+export function registrationWindowRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
+  if (!showsRegistrationWindow(event.registrationAvailability)) return [];
+  const rows: DiscoveryDetailRow[] = [];
+  const opens = formatTimestamp(event.registrationOpenAt);
+  const closes = formatTimestamp(event.registrationCloseAt);
+  if (opens) rows.push({ label: "Registration opens", icon: "registration", value: opens });
+  if (closes) rows.push({ label: "Registration closes", icon: "registration", value: closes });
+  return rows;
+}
+
+// Date, time and the registration window, in SGT.
 export function scheduleRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
-  const rows: DiscoveryDetailRow[] = [
+  return [
     { label: "Date", icon: "calendar", value: formatEventDate(event.startDatetime, event.endDatetime) },
     { label: "Time", icon: "schedule", value: formatEventTime(event.startDatetime, event.endDatetime) },
+    ...registrationWindowRows(event),
   ];
-  // Events without attendee registration carry no registration wording (SPM-34 AC4).
-  if (isRegistrationEnabled(event.registrationAvailability)) {
-    rows.push(
-      { label: "Registration opens", icon: "registration", value: formatTimestamp(event.registrationOpenAt) ?? "Immediately" },
-      { label: "Registration closes", icon: "registration", value: formatTimestamp(event.registrationCloseAt) ?? "No closing date" },
-    );
-  }
-  return rows;
 }
 
 export function placeRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
@@ -137,58 +144,34 @@ export function placeRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
   return rows;
 }
 
-// How an event surface offers direct registration (SPM-134). canRegister is
-// decided by the caller from the backend's availability and the attendee's own
-// registrations; onRegister opens the shared registration form.
+// How an event surface offers direct registration (SPM-134). placesKnown says
+// whether the attendee's own registrations have loaded; onRegister opens the
+// shared registration form.
 export interface RegistrationEntry {
-  canRegister: boolean;
+  placesKnown: boolean;
   onRegister: (trigger: HTMLButtonElement) => void;
 }
 
-// The registration action for an event, shared by the event details dialog and
-// the /events/[eventId] page. OPEN offers Register Now when the caller says the
-// attendee may register; otherwise nothing (places unknown, or no entry point).
-// Join Waitlist and Notify have no endpoints yet, so they are shown unavailable
-// with their reason: aria-disabled rather than disabled keeps them reachable by
-// keyboard and screen readers, and the shared Button's disabled: style only
-// matches the attribute, so the same classes go through aria-disabled:.
-// Someone who already holds a place, or whose details are withheld, gets none.
+// The registration area of an event, shared by the event details dialog and
+// the /events/[eventId] page, with the same states as the Event Discovery card
+// (getRegistrationState). Surfaces without an entry point (My Events) and
+// withheld details get none.
 export function RegistrationActionBar({ event, register, className }: { event: AttendeeEventView; register?: RegistrationEntry; className: string }) {
-  const helperId = useId();
-  const action = event.detailsWithheld || event.myRegistration ? null : getRegistrationAction(event);
-  if (!action) return null;
-
-  if (action.kind === "register") {
-    if (!register?.canRegister) return null;
-    return (
-      <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${className}`}>
-        <Button
-          type="button"
-          variant={action.variant}
-          aria-label={`Register now for ${event.title}`}
-          onClick={(clickEvent) => register.onRegister(clickEvent.currentTarget)}
-          className="w-full max-lg:min-h-11 sm:w-auto"
-        >
-          {action.label}
-        </Button>
-      </footer>
-    );
-  }
+  if (!register || event.detailsWithheld) return null;
+  const state = getRegistrationState(event.registrationAvailability, event.myRegistration ?? null, register.placesKnown);
+  if (!state) return null;
+  // When registration opens, from the backend's own start time; the state itself
+  // stays the backend's NOT_YET_OPEN, never a comparison with the browser clock.
+  const opensAt = state.kind === "unavailable" && event.registrationAvailability === "NOT_YET_OPEN" ? formatTimestamp(event.registrationOpenAt) : null;
 
   return (
     <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${className}`}>
-      <p id={helperId} className="text-xs text-on-surface-variant sm:order-first sm:mr-auto">
-        {action.unavailableNote}
-      </p>
-      <Button
-        type="button"
-        variant={action.variant}
-        aria-disabled="true"
-        aria-describedby={helperId}
-        className="w-full aria-disabled:pointer-events-none aria-disabled:opacity-55 max-lg:min-h-11 sm:w-auto"
-      >
-        {action.label}
-      </Button>
+      <RegistrationStateControl
+        state={state}
+        eventTitle={event.title}
+        onRegister={register.onRegister}
+        note={opensAt ? `Registration opens ${opensAt}.` : null}
+      />
       {/* TODO(SPM-163): Accept Slot and Decline for a waitlist offer go in this
           footer (tertiary Accept, secondary Decline) with the offer expiry,
           driven by myRegistration.offer. */}

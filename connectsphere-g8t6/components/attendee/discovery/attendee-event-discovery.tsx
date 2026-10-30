@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { canRegister } from "@/components/attendee/registration/registration-form";
 import { useRegistration } from "@/components/attendee/registration/use-registration";
 import { PageContent } from "@/components/layout/page-content";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
@@ -146,7 +145,7 @@ export function AttendeeEventDiscovery() {
                       event={event}
                       onViewDetails={openDetails}
                       place={registration.places?.get(event.eventId) ?? null}
-                      canRegister={canRegister(event.registrationAvailability, registration.places, event.eventId)}
+                      placesKnown={registration.places !== null}
                       onRegister={startRegistration}
                     />
                   </li>
