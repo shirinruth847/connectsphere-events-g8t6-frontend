@@ -9,9 +9,11 @@ import { calendarDate } from "@/lib/coordinator-calendar";
 import { formatTimestamp } from "@/lib/datetime";
 import {
   getEventVenueOptions,
+  listEventVenueBookings,
   suggestEventVenue,
   type EventVenueOption,
   type EventVenueOptions,
+  type VenueBookingRequestResult,
   type VenueOptionsQuery,
 } from "@/lib/api/event-venues";
 import type { EventView, VenueSuggestion } from "@/lib/api/event-workspace";
@@ -20,6 +22,9 @@ import { VenueChoiceCard } from "./venue-choice-card";
 import { VenueBadge } from "./venue-option-card";
 import { VenueDetails } from "./venue-details";
 import { eventCalendarCheck, suggestionBlocker, venueById } from "./venue-option-model";
+import { EventVenueBookings, type BookingListState } from "./event-venue-bookings";
+import { VenueBookingRequestDialog } from "./venue-booking-request-dialog";
+import { bookedVenueIds } from "./venue-booking-form-model";
 
 type ChoicesState =
   | { status: "loading" }
@@ -32,14 +37,18 @@ interface EventVenueSectionProps {
   onSuggested?: (suggestion: VenueSuggestion) => void;
   // Called when the suggestion changed elsewhere (409), to reload the event.
   onStale?: () => void;
+  // Called after venue bookings are requested (SPM-179), e.g. to refresh the event history.
+  onBookingsRequested?: (result: VenueBookingRequestResult) => void;
 }
 
 // The venue section of an event request for the assigned coordinator and the
 // supervising Lead (SPM-72/74). It opens on the organiser's ranked venue
 // choices and the coordinator's suggestion; "Find another venue" opens a popup
 // with the search, filters, comparison, availability calendar and venue list,
-// where the coordinator can suggest a different venue to the organiser.
-export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSectionProps) {
+// where the coordinator can suggest a different venue to the organiser. In
+// planning, the coordinator requests venue bookings from here (SPM-179); the
+// event's bookings are listed above the choices for the coordinator and Lead.
+export function EventVenueSection({ event, onSuggested, onStale, onBookingsRequested }: EventVenueSectionProps) {
   const [choices, setChoices] = useState<ChoicesState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [canSuggest, setCanSuggest] = useState(false);
@@ -54,6 +63,21 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
   const [saveError, setSaveError] = useState<{ message: string; stale: boolean } | null>(null);
   const pendingKey = useRef<{ venueId: number; version: number; key: string } | null>(null);
   const isCoordinator = event.viewerRelationship === "ASSIGNED_COORDINATOR";
+  const [bookings, setBookings] = useState<BookingListState>({ status: "loading" });
+  const [bookingsAttempt, setBookingsAttempt] = useState(0);
+  // Each opening of the request form gets a new key, so it starts fresh.
+  const [request, setRequest] = useState<{ open: boolean; key: number; startVenueId: number | null } | null>(null);
+  const [requested, setRequested] = useState<VenueBookingRequestResult | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    listEventVenueBookings(event.eventId)
+      .then((data) => { if (alive) setBookings({ status: "ready", data }); })
+      .catch((caught: unknown) => {
+        if (alive) setBookings({ status: "error", message: caught instanceof Error ? caught.message : "Venue bookings could not be loaded." });
+      });
+    return () => { alive = false; };
+  }, [event.eventId, event.status, event.viewerRelationship, bookingsAttempt]);
 
   useEffect(() => {
     let alive = true;
@@ -82,6 +106,27 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
   const calendar = isCoordinator ? { eventId: event.eventId, date: event.startDatetime ? calendarDate(new Date(event.startDatetime)) : calendarDate(new Date()), check, label: event.requestId } : null;
   const load = useCallback((query: VenueOptionsQuery) => getEventVenueOptions(event.eventId, query), [event.eventId]);
 
+  const bookingList = bookings.status === "ready" ? bookings.data : null;
+  const canRequest = isCoordinator && event.status === "PLANNING" && Boolean(bookingList?.canRequestVenueBookings) && choices.status === "ready";
+  const booked = bookingList ? bookedVenueIds(bookingList.bookings) : new Set<number>();
+  // The organiser's choices and any outside suggestion, for the form's venue list.
+  const requestVenues = [...allVenues, ...preferredOptions.filter((option) => !venueById(allVenues, option.venueId))];
+  const featuredVenueIds = [...new Set([...(suggestion ? [suggestion.venueId] : []), ...preferred.map((choice) => choice.venueId)])];
+  const openRequest = (startVenueId: number | null) => {
+    if (!canRequest) return;
+    setRequested(null);
+    setRequest((current) => ({ open: true, key: (current?.key ?? 0) + 1, startVenueId }));
+  };
+  const closeRequest = () => setRequest((current) => (current ? { ...current, open: false } : current));
+  const bookingsRequested = (result: VenueBookingRequestResult) => {
+    closeRequest();
+    setSearchOpen(false);
+    setRelatedId(null);
+    setRequested(result);
+    setBookingsAttempt((value) => value + 1);
+    onBookingsRequested?.(result);
+  };
+
   const badge = (venue: EventVenueOption) => {
     const rank = rankOf.get(venue.venueId);
     const suggested = venue.venueId === suggestion?.venueId;
@@ -93,7 +138,17 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
       </>
     );
   };
-  const action = (venue: EventVenueOption, place: "card" | "panel") => {
+  // "Request booking" starts the booking form with this venue (SPM-179); a venue
+  // this event already has an active booking at is not offered again (AC4).
+  const requestAction = (venue: EventVenueOption, place: "card" | "panel") => {
+    if (!canRequest || booked.has(venue.venueId)) return null;
+    return (
+      <Button type="button" variant="secondary" aria-haspopup="dialog" onClick={() => openRequest(venue.venueId)}>
+        {place === "panel" ? <Icon name="add" size={16} /> : null}Request booking
+      </Button>
+    );
+  };
+  const suggestAction = (venue: EventVenueOption, place: "card" | "panel") => {
     if (!canSuggest || venue.venueId === suggestion?.venueId) return null;
     const blocker = suggestionBlocker(venue);
     if (place === "card") {
@@ -105,6 +160,12 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
         {blocker ? <p className="text-xs text-on-surface-variant">{blocker}</p> : null}
       </div>
     );
+  };
+  const action = (venue: EventVenueOption, place: "card" | "panel") => {
+    const select = suggestAction(venue, place);
+    const book = requestAction(venue, place);
+    if (!select || !book) return select ?? book;
+    return <div className="flex flex-wrap items-start gap-2">{select}{book}</div>;
   };
 
   const confirmSuggestion = async () => {
@@ -146,7 +207,31 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
       <div aria-live="polite" role="status">
         {notice ? <AlertBanner tone="success" title="Venue suggested" live={false}>{notice}</AlertBanner> : null}
+        {requested ? (
+          <AlertBanner tone="success" title="Booking request sent" live={false}>
+            <p>{requested.message}</p>
+            <p className="mt-1">
+              Event <span className="font-mono">{requested.requestId}</span> · {requested.bookings.map((booking) => `Booking #${booking.bookingId} (${booking.venueName ?? `Venue ${booking.venueId}`})`).join(", ")}
+            </p>
+            {requested.warnings.length ? (
+              <div className="mt-2">
+                <p className="font-semibold">Venue Staff will see these warnings:</p>
+                <ul className="list-disc pl-5">
+                  {requested.warnings.flatMap((warning) => warning.messages.map((message, at) => ({ key: `${warning.index}-${at}`, message })))
+                    .map(({ key, message }) => <li key={key}>{message}</li>)}
+                </ul>
+              </div>
+            ) : null}
+          </AlertBanner>
+        ) : null}
       </div>
+      <EventVenueBookings
+        state={bookings}
+        isCoordinator={isCoordinator}
+        canRequest={canRequest}
+        onRequest={() => openRequest(null)}
+        onRetry={() => { setBookings({ status: "loading" }); setBookingsAttempt((value) => value + 1); }}
+      />
       {suggestion ? (
         <p className="flex flex-wrap items-center gap-2 rounded-control border border-[#86EFAC] bg-[#DCFCE7] px-3 py-2 text-sm text-[#166534]">
           <Icon name="venue" size={16} />
@@ -266,6 +351,22 @@ export function EventVenueSection({ event, onSuggested, onStale }: EventVenueSec
           </div>
         ) : null}
       </Dialog>
+
+      {request && bookingList && choices.status === "ready" ? (
+        <VenueBookingRequestDialog
+          key={request.key}
+          open={request.open}
+          event={event}
+          venues={requestVenues}
+          featuredVenueIds={featuredVenueIds}
+          bookings={bookingList}
+          startVenueId={request.startVenueId}
+          onClose={closeRequest}
+          onSubmitted={bookingsRequested}
+          onStale={() => { closeRequest(); onStale?.(); }}
+          onBookingsChanged={() => setBookingsAttempt((value) => value + 1)}
+        />
+      ) : null}
     </div>
   );
 }

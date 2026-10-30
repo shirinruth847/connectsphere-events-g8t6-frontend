@@ -34,6 +34,7 @@ const ACTION_LABELS: Record<string, string> = {
   SAFETY_VENUES_REJECTED: "Safety review rejected venue bookings",
   SAFETY_REVIEW_SUPERSEDED: "Safety review closed after an arrangement change",
   VENUE_SUGGESTED: "Venue suggested",
+  VENUE_BOOKINGS_REQUESTED: "Venue bookings requested",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -80,6 +81,16 @@ const historyStatus = (change: EventHistoryEntry["changes"][number], side: "befo
   organiserView ? change[side === "before" ? "beforeLabel" : "afterLabel"] ?? "Status updated" : formatValue("status", change[side]);
 
 function ChangeValue({ change, organiserView }: { change: EventHistoryEntry["changes"][number]; organiserView: boolean }) {
+  // SPM-179: the bookings a request added, one per line; there is no "before".
+  if (change.field === "venueBookings" && Array.isArray(change.after)) {
+    return (
+      <dd className="mt-1 text-on-surface">
+        <ul className="grid gap-0.5">
+          {change.after.map((booking) => <li key={String(booking)} className="[overflow-wrap:anywhere]">{String(booking)}</li>)}
+        </ul>
+      </dd>
+    );
+  }
   if (change.field === "suggestedVenue") {
     return (
       <dd className="mt-1 grid gap-0.5 text-on-surface">

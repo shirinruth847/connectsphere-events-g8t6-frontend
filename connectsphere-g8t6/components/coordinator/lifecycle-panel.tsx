@@ -20,6 +20,9 @@ interface LifecyclePanelProps {
   // The event after a successful action, or the latest version after a conflict.
   onEventChange: (event: EventView, message?: string) => void;
   onAccessChanged: () => void;
+  // Changes when arrangements change without a new event version, e.g. venue
+  // bookings requested (SPM-179 moves arrangement_version only), so readiness reloads.
+  refreshKey?: number;
 }
 
 type ReadinessState =
@@ -45,7 +48,7 @@ function FailureList({ failures }: { failures: ReadinessFailure[] }) {
 
 // SPM-173: the assigned coordinator's next lifecycle step (submit for safety
 // review, confirm, start preparation, complete) with the readiness checklist.
-export function LifecyclePanel({ event, onEventChange, onAccessChanged }: LifecyclePanelProps) {
+export function LifecyclePanel({ event, onEventChange, onAccessChanged, refreshKey = 0 }: LifecyclePanelProps) {
   // The stored status, never one inferred from a label: without it no action is offered.
   const status = event.status ?? "";
   const wantsReadiness = showsReadiness(status);
@@ -75,7 +78,7 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged }: Lifecy
     return () => {
       alive = false;
     };
-  }, [event.eventId, event.version, wantsReadiness, readinessAttempt]);
+  }, [event.eventId, event.version, wantsReadiness, readinessAttempt, refreshKey]);
 
   const reloadReadiness = useCallback(() => {
     setReadiness({ status: "loading" });
