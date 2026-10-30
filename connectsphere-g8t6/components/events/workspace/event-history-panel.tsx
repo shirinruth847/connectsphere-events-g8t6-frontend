@@ -22,6 +22,8 @@ const ACTION_LABELS: Record<string, string> = {
   EVENT_CONFIRMED: "Event confirmed",
   PREPARATION_STARTED: "Preparation started",
   EVENT_COMPLETED: "Event completed",
+  EVENT_REJECTED: "Request rejected",
+  FEASIBILITY_ACCEPTED: "Request approved for planning",
   CLARIFICATION_REQUESTED: "Clarification requested",
   CLARIFICATION_AMENDED: "Request amended during clarification",
   CLARIFICATION_COMPLETED: "Clarification marked complete",
@@ -130,6 +132,12 @@ function HistoryItem({ entry, isNew, organiserView }: { entry: EventHistoryEntry
         <p className="mt-1 text-xs text-on-surface-variant">Request status: {historyStatus(statusChange, "before", organiserView)} → {historyStatus(statusChange, "after", organiserView)}</p>
       ) : entry.action === "EVENT_SUBMITTED" ? (
         <p className="mt-1 text-xs text-on-surface-variant">Request status: Submitted</p>
+      ) : null}
+      {entry.action === "EVENT_REJECTED" && entry.summary ? (
+        <div className="mt-2 rounded-control bg-error-container p-3 text-sm text-on-error-container">
+          <p className="font-semibold">Rejection reason</p>
+          <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{entry.summary}</p>
+        </div>
       ) : null}
       {entry.changes.length ? (
         <dl className="mt-2 grid gap-2 rounded-control bg-surface-container-low p-3">

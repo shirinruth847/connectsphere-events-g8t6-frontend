@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getEventView, type EventView } from "@/lib/api/event-workspace";
 
 export type EventViewState =
   | { status: "loading" }
-  | { status: "ready"; event: EventView }
+  | { status: "ready"; event: EventView; refreshError?: string }
   // 404 outside the viewer's scope; 403 is treated the same until SPM-38 settles which one the backend returns.
   | { status: "not-found" }
   | { status: "error"; message: string };
@@ -14,19 +14,35 @@ export type EventViewState =
 export function useEventView(eventId: number) {
   const [state, setState] = useState<EventViewState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const generation = useRef(0);
+
+  useEffect(() => {
+    const refreshOnFocus = () => setAttempt(value => value + 1);
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshOnFocus(); };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
+    const requestGeneration = ++generation.current;
     getEventView(eventId)
       .then(({ event }) => {
-        if (alive) setState({ status: "ready", event });
+        if (alive && requestGeneration === generation.current) setState({ status: "ready", event });
       })
       .catch((caught: unknown) => {
-        if (!alive) return;
+        if (!alive || requestGeneration !== generation.current) return;
         if (caught instanceof ApiError && (caught.status === 404 || caught.status === 403)) {
           setState({ status: "not-found" });
         } else {
-          setState({ status: "error", message: caught instanceof Error ? caught.message : "Could not load this event." });
+          const message = caught instanceof Error ? caught.message : "Could not load this event.";
+          setState(current => current.status === "ready" && current.event.eventId === eventId
+            ? { ...current, refreshError: message }
+            : { status: "error", message });
         }
       });
     return () => {
@@ -44,7 +60,11 @@ export function useEventView(eventId: number) {
   const refresh = useCallback(() => setAttempt((value) => value + 1), []);
 
   // Use the event a save returned instead of fetching it again.
-  const replaceEvent = useCallback((event: EventView) => setState({ status: "ready", event }), []);
+  const replaceEvent = useCallback((event: EventView) => {
+    // A read started before this committed mutation must not restore old state.
+    generation.current += 1;
+    setState({ status: "ready", event });
+  }, []);
 
   return { state, reload, refresh, replaceEvent };
 }

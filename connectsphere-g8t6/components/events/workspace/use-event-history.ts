@@ -25,6 +25,17 @@ export function useEventHistory(eventId: number, refreshKey: number) {
   const [moreError, setMoreError] = useState("");
 
   useEffect(() => {
+    const refreshOnFocus = () => setAttempt(value => value + 1);
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshOnFocus(); };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     getEventHistory(eventId, { limit: PAGE_SIZE })
       .then((page) => {
