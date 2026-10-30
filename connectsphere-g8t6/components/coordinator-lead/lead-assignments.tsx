@@ -6,7 +6,7 @@ import { getCoordinatorAvailability, getLeadAssignments, getUnassignedEvents, ty
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import { PageContent } from "@/components/layout/page-content";
 import { SectionHeading } from "@/components/shared/section-heading";
-import { AlertBanner, Button, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
+import { AlertBanner, Button, buttonClasses, EmptyState, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { CoordinatorAssignmentAction } from "./coordinator-assignment-action";
 
 type SectionState<T> = { rows: T[]; loading: boolean; error: string };
@@ -14,15 +14,17 @@ type SectionState<T> = { rows: T[]; loading: boolean; error: string };
 const loadingSection = <T,>(): SectionState<T> => ({ rows: [], loading: true, error: "" });
 const failureDetail = (cause: unknown) => (cause instanceof Error && cause.message ? cause.message : "Try again in a moment.");
 
-// SPM-182: the two sections load independently, so one failing endpoint never
-// hides the other section's data (AC8). A failed load clears its rows.
+// SPM-182: supervised events, the queue and coordinator availability load
+// independently, so one failing request never hides another's data (AC8).
+// A failed load clears its rows. Availability only feeds reassignment.
 export function LeadAssignments() {
   const mounted = useRef(true);
   const supervisedRevision = useRef(0);
   const unassignedRevision = useRef(0);
+  const availabilityRevision = useRef(0);
   const [supervised, setSupervised] = useState<SectionState<LeadAssignment>>(loadingSection);
   const [unassigned, setUnassigned] = useState<SectionState<ApiEvent>>(loadingSection);
-  const [coordinators, setCoordinators] = useState<CoordinatorAvailability[]>([]);
+  const [availability, setAvailability] = useState<SectionState<CoordinatorAvailability>>(loadingSection);
   const [notice, setNotice] = useState("");
   const [conflictsOnly, setConflictsOnly] = useState(false);
 
@@ -31,13 +33,11 @@ export function LeadAssignments() {
   const fetchSupervised = useCallback(() => {
     const revision = ++supervisedRevision.current;
     const isLatest = () => mounted.current && revision === supervisedRevision.current;
-    return Promise.all([getLeadAssignments(), getCoordinatorAvailability()]).then(([result, availability]) => {
+    return getLeadAssignments().then((result) => {
       if (!isLatest()) return;
-      setCoordinators(availability.coordinators);
-      setSupervised({ rows: result.assignments, loading: false, error: "" });
+      setSupervised({ rows: Array.isArray(result.assignments) ? result.assignments : [], loading: false, error: "" });
     }, (cause: unknown) => {
       if (!isLatest()) return;
-      setCoordinators([]);
       setSupervised({ rows: [], loading: false, error: failureDetail(cause) });
     });
   }, []);
@@ -54,6 +54,18 @@ export function LeadAssignments() {
     });
   }, []);
 
+  const fetchAvailability = useCallback(() => {
+    const revision = ++availabilityRevision.current;
+    const isLatest = () => mounted.current && revision === availabilityRevision.current;
+    return getCoordinatorAvailability().then((result) => {
+      if (!isLatest()) return;
+      setAvailability({ rows: Array.isArray(result.coordinators) ? result.coordinators : [], loading: false, error: "" });
+    }, (cause: unknown) => {
+      if (!isLatest()) return;
+      setAvailability({ rows: [], loading: false, error: failureDetail(cause) });
+    });
+  }, []);
+
   const loadSupervised = async () => {
     setSupervised((current) => ({ ...current, loading: true, error: "" }));
     await fetchSupervised();
@@ -62,19 +74,25 @@ export function LeadAssignments() {
     setUnassigned((current) => ({ ...current, loading: true, error: "" }));
     await fetchUnassigned();
   };
+  const loadAvailability = async () => {
+    setAvailability((current) => ({ ...current, loading: true, error: "" }));
+    await fetchAvailability();
+  };
   const refreshAll = async () => {
-    await Promise.all([loadSupervised(), loadUnassigned()]);
+    await Promise.all([loadSupervised(), loadUnassigned(), loadAvailability()]);
   };
 
   useEffect(() => {
     mounted.current = true;
-    void Promise.all([fetchSupervised(), fetchUnassigned()]);
+    void Promise.all([fetchSupervised(), fetchUnassigned(), fetchAvailability()]);
     return () => { mounted.current = false; };
-  }, [fetchSupervised, fetchUnassigned]);
+  }, [fetchSupervised, fetchUnassigned, fetchAvailability]);
 
+  const supervisedReady = !supervised.loading && !supervised.error;
+  const canReassign = !availability.loading && !availability.error;
   const conflicts = supervised.rows.filter((event) => event.hasScheduleConflict).length;
   const visible = conflictsOnly ? supervised.rows.filter((event) => event.hasScheduleConflict) : supervised.rows;
-  const busy = supervised.loading || unassigned.loading;
+  const busy = supervised.loading || unassigned.loading || availability.loading;
   const countOf = (section: SectionState<unknown>, count: number) => (section.loading ? "…" : section.error ? "—" : String(count));
 
   return <PageContent title="Assignments" eyebrow="Event Coordinator Lead" description="See who coordinates each event you supervise and which submitted events are still waiting for a coordinator." action={<Button variant="secondary" disabled={busy} onClick={() => void refreshAll()}>Refresh assignments</Button>}>
@@ -96,7 +114,7 @@ export function LeadAssignments() {
         id="unassigned-heading"
         title={`Unassigned (${countOf(unassigned, unassigned.rows.length)})`}
         description="Submitted events waiting in the shared queue, oldest submission first."
-        action={<Link href="/events" className="inline-flex min-h-11 items-center rounded-control bg-surface-container-low px-4 py-2.5 text-sm font-semibold text-primary hover:underline">Assign in queue</Link>}
+        action={<Link href="/events" className={buttonClasses("secondary")}>Assign in queue</Link>}
       />
       {unassigned.loading ? <Skeleton className="h-24" /> : unassigned.error ? <AlertBanner tone="error" title="Unassigned events could not be loaded.">
         {unassigned.error} <Button variant="quiet" className="ml-1" onClick={() => void loadUnassigned()}>Retry</Button>
@@ -123,7 +141,10 @@ export function LeadAssignments() {
         title={`Supervised events (${countOf(supervised, supervised.rows.length)})`}
         description="Events you assigned, and events assigned before supervision was recorded. Choose an available coordinator to resolve a scheduling conflict."
       />
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={conflictsOnly} onChange={(e) => setConflictsOnly(e.target.checked)} />Show scheduling conflicts only ({conflicts})</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={conflictsOnly} disabled={!supervisedReady} onChange={(e) => setConflictsOnly(e.target.checked)} />Show scheduling conflicts only ({countOf(supervised, conflicts)})</label>
+      {supervisedReady && availability.error && <AlertBanner tone="warning" title="Coordinator availability could not be loaded.">
+        Reassignment is unavailable until you retry. {availability.error} <Button variant="quiet" className="ml-1" onClick={() => void loadAvailability()}>Retry</Button>
+      </AlertBanner>}
       {supervised.loading ? <Skeleton className="h-48" /> : supervised.error ? <AlertBanner tone="error" title="Assignments could not be loaded.">
         {supervised.error} Refresh before making another assignment. <Button variant="quiet" className="ml-1" onClick={() => void loadSupervised()}>Retry</Button>
       </AlertBanner> : visible.length === 0 ? <EmptyState title={conflictsOnly ? "No scheduling conflicts" : "No active assignments"} description="Events you assign from the queue appear here with their coordinator." /> : visible.map((event) => <article key={event.eventId} aria-label={event.title}>
@@ -133,7 +154,9 @@ export function LeadAssignments() {
           <p className="mt-2 text-sm">{formatEventWindow(event.startDatetime, event.endDatetime)}</p>
           <p className="mb-4 mt-2 text-sm">Current coordinator: <strong>{event.coordinatorName}</strong></p>
           {event.hasScheduleConflict && <div className="mb-4"><AlertBanner tone="warning">The current coordinator has an overlapping active event. The Lead must choose which assignment to change.</AlertBanner></div>}
-          <CoordinatorAssignmentAction key={`${event.eventId}-${event.coordinatorId}`} event={event} currentCoordinatorId={event.coordinatorId} coordinators={coordinators} onRefresh={refreshAll} onSaved={async (replayed) => { setNotice(replayed ? `Previous reassignment confirmed for ${event.requestId}. Current assignments refreshed.` : `Coordinator updated for ${event.requestId}.`); await refreshAll(); }} />
+          {canReassign
+            ? <CoordinatorAssignmentAction key={`${event.eventId}-${event.coordinatorId}`} event={event} currentCoordinatorId={event.coordinatorId} coordinators={availability.rows} onRefresh={refreshAll} onSaved={async (replayed) => { setNotice(replayed ? `Previous reassignment confirmed for ${event.requestId}. Current assignments refreshed.` : `Coordinator updated for ${event.requestId}.`); await refreshAll(); }} />
+            : availability.loading ? <Skeleton className="h-11" /> : null}
         </SectionCard>
       </article>)}
     </section>

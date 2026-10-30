@@ -98,10 +98,33 @@ test('[SPM-182-AC8][TC-12] a failed assignments load keeps the queue and recover
   await expect(page.getByRole('article')).toHaveCount(0);
   await expect(unassignedList(page).getByRole('listitem')).toHaveCount(2);
   await expect(summaryValue(page, 'Scheduling conflicts')).toHaveText('—');
+  const conflictFilter = page.getByLabel(/Show scheduling conflicts only/);
+  await expect(conflictFilter).toBeDisabled();
+  await expect(page.getByText('Show scheduling conflicts only (—)')).toBeVisible();
 
   state.failure = null;
   await alert.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByRole('article')).toHaveCount(3);
+  await expect(conflictFilter).toBeEnabled();
+  await expect(page.getByText('Show scheduling conflicts only (1)')).toBeVisible();
+});
+
+test('[SPM-182-AC1/AC8][TC-16] a failed availability load keeps supervised events and pauses reassignment until retry', async ({ page }) => {
+  const state = await openOverview(page, (mocks) => { mocks.failure = { path: '/api/events/coordinator-availability', status: 500, body: { error: 'Server error' } }; });
+
+  const warning = page.getByText('Coordinator availability could not be loaded.').locator('..');
+  await expect(warning).toContainText('Reassignment is unavailable until you retry.');
+  await expect(page.getByText('Assignments could not be loaded.')).toHaveCount(0);
+  await expect(page.getByRole('article')).toHaveCount(3);
+  await expect(page.getByRole('article', { name: e2.title })).toContainText('Current coordinator: Coordinator B');
+  await expect(summaryValue(page, 'Supervised')).toHaveText('3');
+  await expect(page.getByRole('combobox')).toHaveCount(0);
+  await expect(page.getByText(/No alternative coordinator is currently available/)).toHaveCount(0);
+
+  state.failure = null;
+  await warning.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.getByText('Coordinator availability could not be loaded.')).toHaveCount(0);
+  await expect(page.getByRole('combobox')).toHaveCount(3);
 });
 
 test('[SPM-182-AC5][TC-07] an event assigned from the queue moves into the supervised section', async ({ page }) => {

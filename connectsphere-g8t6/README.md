@@ -184,7 +184,9 @@ shared queue (`GET /api/events/unassigned`, oldest submission first), and
 "Assign in queue" opens `/events` to assign. **Supervised events**
 (`GET /api/events/assignments`) shows each event's current coordinator and
 the reassignment action. If one request fails, only that section shows an
-error with Retry. No backend change was needed.
+error with Retry. Coordinator availability loads on its own too: if it
+fails, supervised events stay listed and only reassignment pauses until
+Retry. No backend change was needed.
 
 `npm run test:e2e -- --grep SPM-182` covers the journeys with mocked APIs.
 The backend's `tests/database/spm182LeadAssignmentOverview.test.cjs` covers
