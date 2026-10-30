@@ -510,3 +510,57 @@ test("[SPM-179] the request form works at phone width", async ({ page }, testInf
   expect(width).toBeLessThanOrEqual(390);
   await attachScreenshot(testInfo, page, "request-form-mobile");
 });
+
+
+test("[SPM-179] requirement selectors stay locked while a booking request is pending", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeBookingSection(page);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let submitted;
+  await page.route("**/api/events/42/venue-bookings", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    submitted = route.request().postDataJSON();
+    await gate;
+    await route.fulfill({ status: 201, json: saved(submitted.bookings) });
+  });
+  await page.goto("/events/42");
+  await openForm(page);
+  const first = section(page, 1);
+  await first.getByRole("button", { name: "Required facilities", exact: true }).click();
+  const facility = first.getByRole("checkbox").first();
+  await facility.check();
+  const send = form(page).getByRole("button", { name: "Send booking request", exact: true });
+  await send.focus();
+  await send.press("Enter");
+  try {
+    await expect(form(page).getByRole("button", { name: "Sending…" })).toBeDisabled();
+    await expect(first.getByRole("button", { name: /^Required facilities:/ })).toBeDisabled();
+    await expect(first.getByRole("button", { name: /^Accessibility needs:/ })).toBeDisabled();
+    await expect(facility).toBeDisabled();
+    await expect(facility).toBeChecked();
+    expect(submitted.bookings[0].requiredFacilities).toHaveLength(1);
+  } finally {
+    release();
+  }
+  await expect(form(page)).toBeHidden();
+});
+
+test("[SPM-179 AC1] booking controls disappear when the event leaves planning", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeBookingSection(page);
+  await page.route("**/api/events/42/readiness", (route) => route.fulfill({ json: {
+    ready: true, failures: [], status: "PLANNING", version: 3, arrangementVersion: 3,
+  } }));
+  await page.route("**/api/events/42/submit-for-safety-review", (route) => route.fulfill({ json: {
+    message: "Submitted for safety review.",
+    event: eventView({ status: "SAFETY_REVIEW", version: 4, statusLabel: "Safety Review" }),
+  } }));
+  await page.goto("/events/42");
+  await expect(bookingsRegion(page).getByRole("button", { name: "Request venue bookings" })).toBeVisible();
+  await page.getByRole("button", { name: "Submit for safety review", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Confirm event", exact: true })).toBeVisible();
+  // Even a stale permission response must not override the current event state.
+  await expect(page.getByRole("button", { name: "Request venue bookings", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Request booking", exact: true })).toHaveCount(0);
+});

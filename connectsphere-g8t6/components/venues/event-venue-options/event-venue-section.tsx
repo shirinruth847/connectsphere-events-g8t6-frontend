@@ -77,7 +77,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
         if (alive) setBookings({ status: "error", message: caught instanceof Error ? caught.message : "Venue bookings could not be loaded." });
       });
     return () => { alive = false; };
-  }, [event.eventId, bookingsAttempt]);
+  }, [event.eventId, event.status, event.viewerRelationship, bookingsAttempt]);
 
   useEffect(() => {
     let alive = true;
@@ -107,12 +107,13 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   const load = useCallback((query: VenueOptionsQuery) => getEventVenueOptions(event.eventId, query), [event.eventId]);
 
   const bookingList = bookings.status === "ready" ? bookings.data : null;
-  const canRequest = Boolean(bookingList?.canRequestVenueBookings) && choices.status === "ready";
+  const canRequest = isCoordinator && event.status === "PLANNING" && Boolean(bookingList?.canRequestVenueBookings) && choices.status === "ready";
   const booked = bookingList ? bookedVenueIds(bookingList.bookings) : new Set<number>();
   // The organiser's choices and any outside suggestion, for the form's venue list.
   const requestVenues = [...allVenues, ...preferredOptions.filter((option) => !venueById(allVenues, option.venueId))];
   const featuredVenueIds = [...new Set([...(suggestion ? [suggestion.venueId] : []), ...preferred.map((choice) => choice.venueId)])];
   const openRequest = (startVenueId: number | null) => {
+    if (!canRequest) return;
     setRequested(null);
     setRequest((current) => ({ open: true, key: (current?.key ?? 0) + 1, startVenueId }));
   };

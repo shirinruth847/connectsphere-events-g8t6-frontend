@@ -113,6 +113,7 @@ export function VenueBookingRequestDialog({
   const primaryVenue = activeBookings(bookings.bookings).find((booking) => booking.isPrimary) ?? null;
 
   const update = (index: number, patch: Partial<BookingDraft>) => {
+    if (saving) return;
     setDrafts((current) => current.map((draft, at) => {
       if (patch.isPrimary) return at === index ? { ...draft, ...patch } : { ...draft, isPrimary: false };
       return at === index ? { ...draft, ...patch } : draft;
@@ -148,6 +149,7 @@ export function VenueBookingRequestDialog({
   };
 
   const submit = async () => {
+    if (saving) return;
     const found = validateDrafts(drafts, { event: context, venues, bookedVenueIds: booked, eventHasPrimary });
     if (Object.keys(found).length) {
       setErrors(found);

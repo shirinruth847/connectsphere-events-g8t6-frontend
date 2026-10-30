@@ -154,6 +154,7 @@ export function VenueBookingSection({
     <fieldset
       aria-labelledby={`${id}-title`}
       data-booking-section={index}
+      disabled={disabled}
       className="grid min-w-0 gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
