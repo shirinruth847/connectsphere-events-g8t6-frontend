@@ -204,9 +204,9 @@ export function BookingIncidentCard({ incident, audience, onRestored, onRefused 
           <ul className="grid gap-1.5">
             {incident.actions.map((action) => (
               <li key={action.action} className="flex items-start gap-1.5 text-sm text-on-surface">
-                <Icon name={action.available ? "arrow-forward" : "lock"} size={16} />
+                <Icon name={action.available && action.action !== "CANCEL" ? "arrow-forward" : "lock"} size={16} />
                 <span>
-                  <span className="font-semibold">{ACTION_NAMES[action.action] ?? action.action}:</span> {action.label}
+                  <span className="font-semibold">{ACTION_NAMES[action.action] ?? action.action}:</span> {action.action === "CANCEL" ? "Not available yet: the event cancellation workflow is not integrated." : action.label}
                 </span>
               </li>
             ))}

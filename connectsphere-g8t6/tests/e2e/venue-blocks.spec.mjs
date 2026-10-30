@@ -286,3 +286,66 @@ test("[SPM-195] a rejected booking shows its incident as closed, not as availabl
   await expect(card.getByText("Venue available again")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Restore booking" })).toHaveCount(0);
 });
+
+async function openFilledBlock(page) {
+  await page.getByRole('button', { name: 'Record a block', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: `Block ${VENUE.name}` });
+  await dialog.getByLabel('Reason').selectOption('MAINTENANCE');
+  await dialog.getByLabel('Start (SGT)').fill('2030-03-10T13:00');
+  await dialog.getByLabel('End (SGT)').fill('2030-03-10T15:00');
+  await dialog.getByLabel('Note').fill('Air conditioning repair');
+  return dialog;
+}
+
+test('[SPM-195] pending block cannot be dismissed or submitted twice', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'VENUE_STAFF' });
+  await routeVenuePage(page, { requests: [], blocks: [] });
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let count = 0;
+  await page.route('**/api/venues/7/blocks', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    count++;
+    await gate;
+    await json(route, { message: 'Block recorded.', block: block(), incidents: [], affectedEvents: [] }, 201);
+  });
+  await page.goto('/venues/7');
+  const dialog = await openFilledBlock(page);
+  await dialog.getByRole('button', { name: 'Record block', exact: true }).click();
+  try {
+    await expect(dialog.getByRole('button', { name: 'Recording…' })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Close dialog' }).click();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+    expect(count).toBe(1);
+  } finally { release(); }
+  await expect(dialog).toHaveCount(0);
+});
+
+test('[SPM-195] uncertain block survives closing and reload with identical body and key', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'VENUE_STAFF' });
+  await routeVenuePage(page, { requests: [], blocks: [] });
+  const commands = [];
+  await page.route('**/api/venues/7/blocks', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    commands.push({ body: route.request().postDataJSON(), key: route.request().headers()['idempotency-key'] });
+    if (commands.length === 1) return json(route, { error: 'Response uncertain.' }, 503);
+    return json(route, { message: 'Block recorded.', block: block(), incidents: [], affectedEvents: [], replayed: true });
+  });
+  await page.goto('/venues/7');
+  let dialog = await openFilledBlock(page);
+  await dialog.getByRole('button', { name: 'Record block', exact: true }).click();
+  await expect(dialog.getByText('Response uncertain.', { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel('Note')).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Record a block', exact: true }).click();
+  dialog = page.getByRole('dialog', { name: `Block ${VENUE.name}` });
+  await expect(dialog.getByLabel('Note')).toHaveValue('Air conditioning repair');
+  await dialog.getByRole('button', { name: 'Record block', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(commands).toHaveLength(2);
+  expect(commands[1]).toEqual(commands[0]);
+  expect(await page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('connectsphere:recovery:spm195:block:')))).toEqual([]);
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSessionUser } from "@/components/auth/auth-gate";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, EmptyState, SectionCard, Skeleton, fieldClasses } from "@/components/shared/primitives";
@@ -18,6 +19,7 @@ import {
   listVenueBlocks,
   shortenVenueBlock,
   type BlockReason,
+  type VenueBlockInput,
   type VenueBlockList,
   type VenueBlockWithIncidents,
 } from "@/lib/api/venue-blocks";
@@ -97,50 +99,80 @@ function BlockTimeFields({ idPrefix, values, errors, disabled, endHint, onChange
   );
 }
 
+type PendingBlock = { key: string; input: VenueBlockInput };
+function readPendingBlock(slot: string): PendingBlock | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(slot) || "null");
+    const input = value?.input;
+    return typeof value?.key === "string" && /^[0-9a-f-]{36}$/.test(value.key)
+      && input && BLOCK_REASON_OPTIONS.some(option => option.value === input.reason)
+      && typeof input.start === "string" && Number.isFinite(Date.parse(input.start))
+      && typeof input.end === "string" && Date.parse(input.end) > Date.parse(input.start)
+      && typeof input.note === "string" && input.note.trim().length > 0 && input.note.length <= NOTE_LIMIT
+      ? value : null;
+  } catch { return null; }
+}
+
 function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
   venueId: number;
   venueName: string;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
-  const [values, setValues] = useState<BlockFormValues>(EMPTY_BLOCK_FORM);
+  const user = useSessionUser();
+  const slot = `connectsphere:recovery:spm195:block:${user?.user_id}:${venueId}`;
+  const [command, setCommand] = useState<PendingBlock | null>(() => readPendingBlock(slot));
+  const [values, setValues] = useState<BlockFormValues>(() => command ? {
+    reason: command.input.reason, start: toSgtInput(command.input.start), end: toSgtInput(command.input.end), note: command.input.note,
+  } : EMPTY_BLOCK_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   // The same request keeps its key, so a retry cannot record a second block (AC13).
-  const pending = useRef<{ key: string; body: string } | null>(null);
+  const pending = useRef<PendingBlock | null>(command);
+  const sending = useRef(false);
+  const remember = (value: PendingBlock | null) => {
+    pending.current = value;
+    setCommand(value);
+    try { if (value) sessionStorage.setItem(slot, JSON.stringify(value)); else sessionStorage.removeItem(slot); } catch { /* In-memory retry remains available. */ }
+  };
+  const close = () => { if (!sending.current) onClose(); };
+  const locked = saving || command !== null;
 
   const change = (key: keyof BlockFormValues, value: string) => {
+    if (locked) return;
     setValues((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const start = sgtInputToIso(values.start);
-    const end = sgtInputToIso(values.end);
-    const found = validateBlockForm({ ...values, start, end });
-    setErrors(found);
-    setFormError("");
-    if (Object.keys(found).length) return;
-    const input = {
-      reason: values.reason as BlockReason,
-      start: start as string,
-      end: end as string,
-      note: values.note.trim(),
-    };
-    const body = JSON.stringify(input);
-    if (pending.current?.body !== body) pending.current = { key: crypto.randomUUID(), body };
+    if (sending.current) return;
+    let current = pending.current;
+    if (!current) {
+      const start = sgtInputToIso(values.start);
+      const end = sgtInputToIso(values.end);
+      const found = validateBlockForm({ ...values, start, end });
+      setErrors(found);
+      setFormError("");
+      if (Object.keys(found).length) return;
+      current = { key: crypto.randomUUID(), input: {
+        reason: values.reason as BlockReason, start: start as string, end: end as string, note: values.note.trim(),
+      } };
+      remember(current);
+    }
+    sending.current = true;
     setSaving(true);
     try {
-      const result = await createVenueBlock(venueId, input, pending.current.key);
-      pending.current = null;
+      const result = await createVenueBlock(venueId, current.input, current.key);
+      remember(null);
       onSaved(result.message);
     } catch (caught) {
-      if (!keepsIdempotencyKey(caught instanceof ApiError ? caught : null)) pending.current = null;
+      if (!keepsIdempotencyKey(caught instanceof ApiError ? caught : null) && !(caught instanceof ApiError && caught.status === 401)) remember(null);
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
       setFormError(errorText(caught, "The block could not be recorded."));
     } finally {
+      sending.current = false;
       setSaving(false);
     }
   };
@@ -149,17 +181,18 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       title={`Block ${venueName}`}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="quiet" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="quiet" disabled={saving} onClick={close}>Cancel</Button>
           <Button type="submit" form={`${id}-form`} disabled={saving}>{saving ? "Recording…" : "Record block"}</Button>
         </div>
       }
     >
       <form id={`${id}-form`} noValidate onSubmit={submit} className="grid gap-4">
         {formError ? <AlertBanner tone="error">{formError}</AlertBanner> : null}
+        {command ? <p className="text-sm">This request needs confirmation. Retry the same request to avoid recording a duplicate block.</p> : null}
         <AlertBanner tone="info" live={false}>
           A block is never refused because of bookings. Bookings and holds whose time, including setup and turnaround, overlaps it are kept and marked affected; their coordinators are told.
         </AlertBanner>
@@ -168,7 +201,7 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
             id={`${id}-reason`}
             className={fieldClasses}
             value={values.reason}
-            disabled={saving}
+            disabled={locked}
             aria-invalid={Boolean(errors.reason)}
             aria-describedby={describedBy(`${id}-reason`, errors.reason)}
             onChange={(event) => change("reason", event.target.value)}
@@ -181,7 +214,7 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
           idPrefix={id}
           values={values}
           errors={errors}
-          disabled={saving}
+          disabled={locked}
           endHint="After the start and in the future. A block has no setup or turnaround time."
           onChange={change}
         />
@@ -192,7 +225,7 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
             maxLength={NOTE_LIMIT}
             className={fieldClasses}
             value={values.note}
-            disabled={saving}
+            disabled={locked}
             aria-invalid={Boolean(errors.note)}
             aria-describedby={describedBy(`${id}-note`, errors.note, "hint")}
             onChange={(event) => change("note", event.target.value)}

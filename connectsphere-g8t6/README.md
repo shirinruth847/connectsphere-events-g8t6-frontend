@@ -342,7 +342,8 @@ Venue Staff only. No new route: the screens extend existing pages.
 - **Coordinator venue section:** an affected booking shows its incident card
   (reason, period, note, whether the venue is free again) and the backend's
   options: restore (waiting for Venue Staff), replace (not available yet,
-  SPM-172) and cancel (the event's existing cancel action). The supervising
+  SPM-172) and cancel (shown unavailable until the event cancellation workflow
+  is integrated). The supervising
   Lead sees the card read-only, without the options. The organiser view is
   SPM-199's and is unchanged.
 
@@ -355,3 +356,12 @@ Venue Staff only. No new route: the screens extend existing pages.
 Every change is shown after the backend commits it, then the list reloads. The
 backend needs migrations `20261029130000`, `20261029140000`, `20261029150000`
 and `20261029160000`.
+
+
+SPM-195 block creation cannot be dismissed while sending. An uncertain command
+retains its exact input and idempotency key in per-user, per-venue sessionStorage;
+reopening after a reload or automatic session expiry retries that command with
+its original key. Its inputs stay locked until a definitive result is received.
+Success clears recovery, and explicit logout uses the existing recovery cleanup.
+Cancellation remains an integration dependency; this frontend does not add a
+cancellation API or claim that cancellation is currently available.

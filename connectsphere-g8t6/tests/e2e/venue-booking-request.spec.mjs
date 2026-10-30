@@ -564,3 +564,14 @@ test("[SPM-179 AC1] booking controls disappear when the event leaves planning", 
   await expect(page.getByRole("button", { name: "Request venue bookings", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Request booking", exact: true })).toHaveCount(0);
 });
+
+test('[SPM-195] coordinator sees cancellation integration as unavailable', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  await routeBookingSection(page, { bookingList: list({ bookings: [booking({ incident: {
+    incidentId: 5, eventId: 42, status: 'OPEN', statusLabel: 'Open', block: null,
+    actions: [{ action: 'CANCEL', available: true, label: 'Cancel the event.' }],
+  } })] }) });
+  await page.goto('/events/42');
+  const card = page.getByRole('group', { name: 'Venue unavailable' });
+  await expect(card).toContainText('Cancel event: Not available yet: the event cancellation workflow is not integrated.');
+});
