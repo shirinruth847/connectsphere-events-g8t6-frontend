@@ -30,6 +30,10 @@ export interface VenueConflict {
   occupiedEnd: string;
   holdExpiresAt: string | null;
   reasonLabel: string | null;
+  // SPM-185 AC2: which part of the entry the event's occupied time hits, e.g.
+  // "Venue's turnaround period (12:00pm–12:45pm) overlaps with your requested
+  // booking, …". Null when the backend does not explain the conflict.
+  message?: string | null;
 }
 
 export interface VenueOptionAvailability {
