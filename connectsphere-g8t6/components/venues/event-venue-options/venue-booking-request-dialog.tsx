@@ -6,6 +6,7 @@ import { AlertBanner, Button, ReferenceIdTag } from "@/components/shared/primiti
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { ApiError } from "@/lib/api";
+import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
 import { formatEventWindow } from "@/lib/datetime";
 import {
   requestEventVenueBookings,
@@ -96,7 +97,7 @@ export function VenueBookingRequestDialog({
   const [checking, setChecking] = useState(false);
   const [conflicts, setConflicts] = useState<BookingConflict[] | null>(null);
   // One key per request body: a retry of the same body cannot book twice (AC13).
-  const attempt = useRef<{ body: string; key: string } | null>(null);
+  const attempt = useRef<{ body: string; key: string; uncertain: boolean } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const venueById = useMemo(() => new Map(venues.map((venue) => [venue.venueId, venue])), [venues]);
@@ -153,7 +154,10 @@ export function VenueBookingRequestDialog({
 
   const submit = async () => {
     if (saving) return;
-    const found = validateDrafts(drafts, { event: context, venues, bookedVenueIds: booked, eventHasPrimary });
+    const items = toRequestItems(drafts, eventHasPrimary);
+    const body = JSON.stringify(items);
+    const recovering = attempt.current?.body === body && attempt.current.uncertain;
+    const found = recovering ? {} : validateDrafts(drafts, { event: context, venues, bookedVenueIds: booked, eventHasPrimary });
     if (Object.keys(found).length) {
       setErrors(found);
       setBanner({ message: "Nothing was sent. Correct the highlighted fields.", stale: false });
@@ -161,20 +165,21 @@ export function VenueBookingRequestDialog({
       showSection(first !== undefined ? Number(first) : null);
       return;
     }
-    const items = toRequestItems(drafts, eventHasPrimary);
-    const body = JSON.stringify(items);
     const key = attempt.current?.body === body ? attempt.current.key : crypto.randomUUID();
-    attempt.current = { body, key };
+    attempt.current = { body, key, uncertain: Boolean(recovering) };
     setSaving(true);
     setBanner(null);
-    // SPM-185: a setup/turnaround clash found now stops the request before it is sent.
-    setChecking(true);
-    const clashes = await findBookingConflicts(event.eventId, drafts, (venueId) => venueById.get(venueId)?.name ?? "This venue");
-    setChecking(false);
-    if (clashes.length) {
-      setSaving(false);
-      setConflicts(clashes);
-      return;
+    // Recovery must reach the server even if availability changed after commit.
+    // New commands still receive the advisory check before submission.
+    if (!recovering) {
+      setChecking(true);
+      const clashes = await findBookingConflicts(event.eventId, drafts, (venueId) => venueById.get(venueId)?.name ?? "This venue");
+      setChecking(false);
+      if (clashes.length) {
+        setSaving(false);
+        setConflicts(clashes);
+        return;
+      }
     }
     try {
       const result = await requestEventVenueBookings(event.eventId, items, key);
@@ -182,6 +187,7 @@ export function VenueBookingRequestDialog({
       onSubmitted(result);
     } catch (caught) {
       const error = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : "The booking request could not be sent.", 0);
+      if (attempt.current) attempt.current.uncertain = keepsIdempotencyKey(error) || error.status === 401;
       const failure = bookingRequestFailure(error);
       setErrors(failure.fields);
       setBanner({ message: failure.banner, stale: failure.stale });

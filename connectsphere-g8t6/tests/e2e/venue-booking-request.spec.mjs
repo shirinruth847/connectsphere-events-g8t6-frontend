@@ -586,3 +586,47 @@ test("[SPM-179 AC1] booking controls disappear when the event leaves planning", 
   await expect(page.getByRole("button", { name: "Request venue bookings", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Request booking", exact: true })).toHaveCount(0);
 });
+
+test('[SPM-185] uncertain booking replays with its original key despite a new availability conflict', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  const sent = await routeBookingSection(page, {
+    respond: (body, attempt) => attempt === 1
+      ? { status: 503, json: { error: 'Commit outcome uncertain.' } }
+      : { status: 200, json: { ...saved(body.bookings), replayed: true } },
+  });
+  await page.goto('/events/42');
+  await openForm(page);
+  await form(page).getByRole('button', { name: 'Send booking request', exact: true }).click();
+  await expect(form(page).getByText('Commit outcome uncertain.', { exact: true })).toBeVisible();
+  const checks = [];
+  await page.route('**/api/events/42/venue-availability?*', route => {
+    checks.push(route.request().url());
+    return route.fulfill({ json: { venues: [{ venueId: 45, check: periodCheck(45, {
+      canRequest: false, message: 'A new operational block now affects this booking.',
+    }) }] } });
+  });
+  await form(page).getByRole('button', { name: 'Send booking request', exact: true }).click();
+  await expect(form(page)).toBeHidden();
+  expect(sent.requests).toHaveLength(2);
+  expect(sent.requests[1]).toEqual(sent.requests[0]);
+  expect(checks).toHaveLength(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Booking request sent' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: /not available at th/ })).toHaveCount(0);
+});
+
+test('[SPM-185] a definitive refusal still checks availability before retrying', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  const sent = await routeBookingSection(page, { respond: () => ({
+    status: 409, json: { error: 'The venue is no longer selectable.', code: 'VENUE_NOT_BOOKABLE' },
+  }) });
+  await page.goto('/events/42');
+  await openForm(page);
+  await form(page).getByRole('button', { name: 'Send booking request', exact: true }).click();
+  await expect(form(page).getByText('The venue is no longer selectable.', { exact: true })).toBeVisible();
+  await page.route('**/api/events/42/venue-availability?*', route => route.fulfill({ json: {
+    venues: [{ venueId: 45, check: periodCheck(45, { canRequest: false }) }],
+  } }));
+  await form(page).getByRole('button', { name: 'Send booking request', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'This venue is not available at that time' })).toBeVisible();
+  expect(sent.requests).toHaveLength(1);
+});
