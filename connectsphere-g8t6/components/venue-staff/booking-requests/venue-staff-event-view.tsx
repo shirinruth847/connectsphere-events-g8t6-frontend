@@ -347,8 +347,8 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const searchParams = useSearchParams();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // One page notice for decisions (SPM-186, SPM-189) and restorations (SPM-195).
   const [notice, setNotice] = useState<DecisionNotice | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const rawBooking = searchParams.get("booking");
   const selectedId = rawBooking && /^[1-9]\d{0,9}$/.test(rawBooking) ? Number(rawBooking) : null;
   const { markOpened } = useOpenedBookings();
@@ -421,7 +421,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const bookingMissing = selectedId !== null && !state.data.bookings.some((booking) => booking.bookingId === selectedId);
   // The page reloads the bookings once the backend has committed the restore.
   const restored = (message: string) => {
-    setNotice(message);
+    setNotice({ tone: "success", text: message });
     setAttempt((value) => value + 1);
   };
   return (
@@ -429,9 +429,6 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
       {bookingMissing ? (
         <div className="mb-4"><AlertBanner tone="warning">That booking is not part of this event. Showing every booking under the event instead.</AlertBanner></div>
       ) : null}
-      <div aria-live="polite">
-        {notice ? <div className="mb-4"><AlertBanner tone="success" live={false}>{notice}</AlertBanner></div> : null}
-      </div>
       <LoadedView data={state.data} selectedId={selectedId} onSelect={select} onRestored={restored} onRefused={() => setAttempt((value) => value + 1)} notice={notice} onDecided={decided} refreshKey={attempt} />
     </>
   );

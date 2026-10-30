@@ -35,15 +35,11 @@ const ACTION_LABELS: Record<string, string> = {
   SAFETY_REVIEW_SUPERSEDED: "Safety review closed after an arrangement change",
   VENUE_SUGGESTED: "Venue suggested",
   VENUE_BOOKINGS_REQUESTED: "Venue bookings requested",
-  // SPM-186/189 booking decisions and venue records.
+  // SPM-186/189 booking decisions and venue records. Block, restore and
+  // incident entries keep their own summaries (SPM-195 AC14).
   VENUE_BOOKING_APPROVED: "Venue booking approved",
   VENUE_BOOKING_REJECTED: "Venue booking rejected",
-  VENUE_BOOKING_RESTORED: "Venue booking restored",
   VENUE_UNAVAILABLE: "Venue taken out of service",
-  VENUE_BLOCK_AFFECTED_EVENT: "Venue blocked during a booking",
-  VENUE_BLOCK_CREATED: "Venue blocked",
-  VENUE_BLOCK_LIFTED: "Venue block lifted",
-  VENUE_BLOCK_SHORTENED: "Venue block shortened",
   VENUE_CREATED: "Venue created",
   VENUE_UPDATED: "Venue details updated",
   VENUE_DETAILS_UPDATED: "Venue facilities or times updated",
@@ -54,7 +50,8 @@ const ACTION_LABELS: Record<string, string> = {
   VENUE_PHOTO_DELETED: "Photo deleted",
 };
 
-// Fields only venue entries carry; event fields use fieldLabel.
+// Fields only venue records carry; event fields, including SPM-195's block
+// and incident fields, use fieldLabel.
 const VENUE_FIELD_LABELS: Record<string, string> = {
   name: "Name",
   address: "Location",
@@ -72,10 +69,8 @@ const VENUE_FIELD_LABELS: Record<string, string> = {
   venueBooking: "Venue booking",
   venueId: "Venue",
   venueStatus: "Venue status",
-  venueAvailability: "Venue availability",
-  venueBlock: "Venue block",
+  // A venue's own block entries (SPM-195 venue history).
   block: "Block",
-  incident: "Incident",
 };
 
 const historyFieldLabel = (field: string) => VENUE_FIELD_LABELS[field] ?? fieldLabel(field);
