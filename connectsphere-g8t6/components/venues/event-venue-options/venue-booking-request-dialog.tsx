@@ -1,0 +1,295 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { Dialog } from "@/components/shared/dialog";
+import { AlertBanner, Button, ReferenceIdTag } from "@/components/shared/primitives";
+import { Icon } from "@/components/shared/icon";
+import { KeyValuePanel } from "@/components/shared/key-value-panel";
+import { ApiError } from "@/lib/api";
+import { formatEventWindow } from "@/lib/datetime";
+import {
+  requestEventVenueBookings,
+  type EventVenueBookingList,
+  type EventVenueOption,
+  type VenueBookingRequestResult,
+} from "@/lib/api/event-venues";
+import type { EventView } from "@/lib/api/event-workspace";
+import { venueFilterChoices } from "./venue-option-model";
+import {
+  MAX_BOOKING_SECTIONS,
+  activeBookings,
+  bookedVenueIds as bookedIds,
+  bookingRequestFailure,
+  draftsChanged,
+  firstVenueId,
+  hasPrimaryVenue,
+  needsPrimaryChoice,
+  newDraft,
+  sectionErrors,
+  shiftErrorsAfterRemoval,
+  toRequestItems,
+  validateDrafts,
+  type BookingDraft,
+} from "./venue-booking-form-model";
+import { VenueBookingSection, type VenueChoiceGroups } from "./venue-booking-section";
+
+interface VenueBookingRequestDialogProps {
+  // Kept mounted while closing, so focus returns to the button that opened it;
+  // the parent gives each opening a new key for a fresh form.
+  open: boolean;
+  event: EventView;
+  // Every venue the coordinator can choose (active and in service, AC9).
+  venues: EventVenueOption[];
+  // The organiser's ranked choices and the coordinator's suggestion, in order.
+  featuredVenueIds: number[];
+  bookings: EventVenueBookingList;
+  // A venue card's "Request booking" starts the form with that venue.
+  startVenueId: number | null;
+  onClose: () => void;
+  onSubmitted: (result: VenueBookingRequestResult) => void;
+  // The event left planning or the coordinator changed: reload the event.
+  onStale: () => void;
+  // The event's bookings changed elsewhere: reload them, keeping the form.
+  onBookingsChanged: () => void;
+}
+
+let sectionCounter = 0;
+const nextKey = () => `section-${++sectionCounter}`;
+
+// The booking request form (SPM-179), in a wide popup over the event's venue
+// section. Event details are shown read-only (AC2); each venue has its own
+// section (AC3, AC4); nothing is saved unless every section passes, and every
+// value is kept after a refusal (AC11, AC16). Closing a changed form asks first.
+export function VenueBookingRequestDialog({
+  open,
+  event,
+  venues,
+  featuredVenueIds,
+  bookings,
+  startVenueId,
+  onClose,
+  onSubmitted,
+  onStale,
+  onBookingsChanged,
+}: VenueBookingRequestDialogProps) {
+  const booked = useMemo(() => bookedIds(bookings.bookings), [bookings.bookings]);
+  const eventHasPrimary = hasPrimaryVenue(bookings.bookings);
+  const context = useMemo(() => ({
+    startDatetime: event.startDatetime,
+    endDatetime: event.endDatetime,
+    expectedAttendance: event.expectedAttendance,
+    preferredLayoutType: event.preferredLayoutType,
+    accessibilityNeeds: event.accessibilityNeeds ?? [],
+  }), [event]);
+
+  const [initial] = useState<BookingDraft[]>(() => {
+    const venueId = firstVenueId([startVenueId, ...featuredVenueIds], venues, booked);
+    const venue = venues.find((option) => option.venueId === venueId) ?? null;
+    return [newDraft(nextKey(), context, venue)];
+  });
+  const [drafts, setDrafts] = useState<BookingDraft[]>(initial);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [banner, setBanner] = useState<{ message: string; stale: boolean } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // One key per request body: a retry of the same body cannot book twice (AC13).
+  const attempt = useRef<{ body: string; key: string } | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  const venueById = useMemo(() => new Map(venues.map((venue) => [venue.venueId, venue])), [venues]);
+  const groups: VenueChoiceGroups = useMemo(() => {
+    const featured = featuredVenueIds.flatMap((venueId) => venueById.get(venueId) ?? []);
+    const featuredIds = new Set(featured.map((venue) => venue.venueId));
+    const others = venues.filter((venue) => !featuredIds.has(venue.venueId)).sort((a, b) => a.name.localeCompare(b.name));
+    return { featured, others };
+  }, [featuredVenueIds, venueById, venues]);
+  const choices = useMemo(() => {
+    const found = venueFilterChoices(venues);
+    return { ...found, accessibility: [...new Set([...found.accessibility, ...(event.accessibilityNeeds ?? [])])] };
+  }, [venues, event.accessibilityNeeds]);
+
+  const askPrimary = needsPrimaryChoice(drafts.length, eventHasPrimary);
+  const primaryGroup = `primary-${event.eventId}`;
+  const primaryVenue = activeBookings(bookings.bookings).find((booking) => booking.isPrimary) ?? null;
+
+  const update = (index: number, patch: Partial<BookingDraft>) => {
+    if (saving) return;
+    setDrafts((current) => current.map((draft, at) => {
+      if (patch.isPrimary) return at === index ? { ...draft, ...patch } : { ...draft, isPrimary: false };
+      return at === index ? { ...draft, ...patch } : draft;
+    }));
+    // A corrected field drops its error; the rest stay until the next send.
+    setErrors((current) => {
+      const next = { ...current };
+      for (const name of Object.keys(patch)) delete next[`bookings.${index}.${name === "labelEdited" ? "label" : name}`];
+      if ("isPrimary" in patch) delete next["bookings.primary"];
+      return next;
+    });
+  };
+  const addSection = () => setDrafts((current) => [...current, newDraft(nextKey(), context)]);
+  const removeSection = (index: number) => {
+    setDrafts((current) => current.filter((_, at) => at !== index));
+    setErrors((current) => shiftErrorsAfterRemoval(current, index));
+  };
+
+  const close = () => {
+    if (saving) return;
+    if (draftsChanged(drafts, initial)) setConfirmDiscard(true);
+    else onClose();
+  };
+
+  const showSection = (index: number | null) => {
+    if (index == null) return;
+    // After React paints the errors, bring the section and its first invalid field into view.
+    window.setTimeout(() => {
+      const section = bodyRef.current?.querySelector<HTMLElement>(`[data-booking-section="${index}"]`);
+      section?.scrollIntoView({ block: "start", behavior: "smooth" });
+      section?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus({ preventScroll: true });
+    }, 0);
+  };
+
+  const submit = async () => {
+    if (saving) return;
+    const found = validateDrafts(drafts, { event: context, venues, bookedVenueIds: booked, eventHasPrimary });
+    if (Object.keys(found).length) {
+      setErrors(found);
+      setBanner({ message: "Nothing was sent. Correct the highlighted fields.", stale: false });
+      const first = Object.keys(found).map((key) => /^bookings\.(\d+)\./.exec(key)?.[1]).find((value) => value !== undefined);
+      showSection(first !== undefined ? Number(first) : null);
+      return;
+    }
+    const items = toRequestItems(drafts, eventHasPrimary);
+    const body = JSON.stringify(items);
+    const key = attempt.current?.body === body ? attempt.current.key : crypto.randomUUID();
+    attempt.current = { body, key };
+    setSaving(true);
+    setBanner(null);
+    try {
+      const result = await requestEventVenueBookings(event.eventId, items, key);
+      attempt.current = null;
+      onSubmitted(result);
+    } catch (caught) {
+      const error = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : "The booking request could not be sent.", 0);
+      const failure = bookingRequestFailure(error);
+      setErrors(failure.fields);
+      setBanner({ message: failure.banner, stale: failure.stale });
+      if (failure.refreshBookings) onBookingsChanged();
+      showSection(failure.sectionIndex);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unavailableFor = (index: number) =>
+    new Set([...booked, ...drafts.flatMap((draft, at) => (at !== index && draft.venueId != null ? [draft.venueId] : []))]);
+
+  const eventRows = [
+    { icon: "document" as const, label: "Reference", value: <ReferenceIdTag value={bookings.requestId || event.requestId} /> },
+    { icon: "registration" as const, label: "Title", value: event.title },
+    { icon: "layout" as const, label: "Type", value: bookings.eventTypeLabel ?? "Not provided" },
+    { icon: "calendar" as const, label: "Date & time", value: formatEventWindow(event.startDatetime, event.endDatetime) },
+    {
+      icon: "attendees" as const,
+      label: "Expected attendance",
+      value: event.expectedAttendance ? `${event.expectedAttendance.toLocaleString()} people` : "Not provided",
+    },
+  ];
+
+  return (
+    <>
+      <Dialog
+        open={open}
+        onClose={close}
+        title="Request venue bookings"
+        size="wide"
+        footer={(
+          <>
+            <Button type="button" variant="quiet" disabled={saving} onClick={close}>Cancel</Button>
+            <Button type="button" disabled={saving || Boolean(banner?.stale)} onClick={() => void submit()}>
+              {saving ? "Sending…" : "Send booking request"}
+            </Button>
+          </>
+        )}
+      >
+        <div ref={bodyRef} className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:items-start">
+          <aside aria-label="Event details" className="grid min-w-0 gap-3 lg:sticky lg:top-0">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+              <Icon name="lock" size={16} />Event details (read-only)
+            </h3>
+            <KeyValuePanel rows={eventRows} />
+            <p className="text-xs leading-relaxed text-on-surface-variant">
+              {primaryVenue
+                ? `${primaryVenue.venueName ?? "A venue"} is this event's primary venue. New venues are added as additional venues.`
+                : "One venue becomes the primary venue. With several venues, mark one as primary."}
+            </p>
+            <p className="text-xs leading-relaxed text-on-surface-variant">
+              Times are in Singapore time (SGT). Each booking must fall within the event&apos;s dates and times. Venue Staff review every venue separately.
+            </p>
+          </aside>
+
+          <div className="grid min-w-0 gap-4">
+            {banner ? (
+              <AlertBanner tone="error" title={banner.stale ? "This event has changed" : "The request was not sent"}>
+                <p>{banner.message}</p>
+                {banner.stale ? (
+                  <div className="mt-3">
+                    <Button type="button" variant="secondary" onClick={onStale}><Icon name="refresh" size={16} />Reload event</Button>
+                  </div>
+                ) : null}
+              </AlertBanner>
+            ) : null}
+            {errors["bookings.primary"] ? (
+              <p id={`${primaryGroup}-error`} role="alert" className="flex items-start gap-1.5 rounded-control bg-error-container px-3 py-2 text-sm font-semibold text-on-error-container">
+                <Icon name="warning" size={16} className="mt-0.5 shrink-0" />{errors["bookings.primary"]}
+              </p>
+            ) : null}
+
+            {drafts.map((draft, index) => (
+              <VenueBookingSection
+                key={draft.key}
+                index={index}
+                eventId={event.eventId}
+                draft={draft}
+                venue={draft.venueId == null ? null : venueById.get(draft.venueId) ?? null}
+                venueGroups={groups}
+                unavailableVenueIds={unavailableFor(index)}
+                bookedVenueIds={booked}
+                choices={choices}
+                errors={sectionErrors(errors, index)}
+                primaryGroup={askPrimary ? primaryGroup : null}
+                primaryErrorId={errors["bookings.primary"] ? `${primaryGroup}-error` : undefined}
+                canRemove={drafts.length > 1}
+                disabled={saving}
+                onChange={(patch) => update(index, patch)}
+                onRemove={() => removeSection(index)}
+              />
+            ))}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="secondary" disabled={saving || drafts.length >= MAX_BOOKING_SECTIONS} onClick={addSection}>
+                <Icon name="add" size={16} />Add another venue
+              </Button>
+              <span className="text-xs text-on-surface-variant">{drafts.length} of {MAX_BOOKING_SECTIONS} venues</span>
+            </div>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={confirmDiscard}
+        onClose={() => setConfirmDiscard(false)}
+        title="Discard this booking request?"
+        footer={(
+          <>
+            <Button type="button" variant="secondary" onClick={() => setConfirmDiscard(false)}>Keep editing</Button>
+            {/* The prompt closes first, so the form's own close then returns
+                focus to the button that opened the form. */}
+            <Button type="button" variant="danger" onClick={() => { setConfirmDiscard(false); window.setTimeout(onClose, 0); }}>Discard</Button>
+          </>
+        )}
+      >
+        <p className="text-sm text-on-surface">The venue sections you filled in will be lost. Nothing has been sent to Venue Staff.</p>
+      </Dialog>
+    </>
+  );
+}

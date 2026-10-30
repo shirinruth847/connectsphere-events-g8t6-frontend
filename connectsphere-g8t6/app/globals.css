@@ -1,60 +1,38 @@
 @import "tailwindcss";
 
 :root {
-  /* New SPM-180 tokens */
-  --primary: #3525cd;
-  --primary-container: #4f46e5;
-  --primary-fixed: #e2dfff;
-  --surface: #f8f9ff;
-  --surface-container: #ffffff;
-  --surface-inset: #eff4ff;
-  --on-surface: #1b1b21;
-  --on-surface-variant: #464555;
-  --outline: #c7c4d8;
-  --success: #146c2e;
-  --success-container: #c5f2c7;
-  --error: #ba1a1a;
-  --error-container: #ffdad6;
-  --scrim: rgba(25, 27, 45, 0.38);
-  --shadow-soft: 0 2px 10px rgba(32, 35, 75, 0.06);
-  --shadow-modal: 0 18px 50px rgba(20, 20, 50, 0.22);
-
-  /* Legacy tokens (dashboard/login/primitives) */
   --background: #f8f9ff;
   --foreground: #0d1c2e;
+  --primary: #3525cd;
+  --primary-container: #4f46e5;
   --primary-dim: #c3c0ff;
+  --primary-fixed: #e2dfff;
   --tertiary: #712ae2;
   --tertiary-container: #8a4cfc;
   --tertiary-fixed: #eaddff;
-  --success-legacy: #005338;
-  --success-container-legacy: #85f8c4;
+  --success: #005338;
+  --success-container: #85f8c4;
   --on-success-container: #002114;
-  --error-legacy: #ba1a1a;
-  --error-container-legacy: #ffdad6;
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
   --on-error-container: #93000a;
-  --error-on-surface: #7d1010;
+  --warning: #f2b705;
+  --surface: #f8f9ff;
   --surface-container-lowest: #ffffff;
   --surface-container-low: #eff4ff;
-  --surface-container-legacy: #e6eeff;
+  --surface-container: #e6eeff;
   --surface-container-high: #dce9ff;
   --surface-container-highest: #d5e3fc;
-  --on-surface-legacy: #0d1c2e;
-  --on-surface-variant-legacy: #464555;
-  --outline-legacy: #777587;
+  --on-surface: #0d1c2e;
+  --on-surface-variant: #464555;
+  --outline: #777587;
   --outline-variant: #c7c4d8;
 }
 
 @theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
   --color-primary: var(--primary);
-  --color-background: var(--surface);
-  --color-foreground: var(--on-surface);
-  --font-sans: var(--font-hanken-grotesk);
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
-  /* Legacy theme (dashboard/login/primitives) */
-  --color-background-legacy: var(--background);
-  --color-foreground-legacy: var(--foreground);
-  --color-primary-legacy: var(--primary);
   --color-primary-container: var(--primary-container);
   --color-primary-dim: var(--primary-dim);
   --color-primary-fixed: var(--primary-fixed);
@@ -63,78 +41,44 @@
   --color-tertiary-container: var(--tertiary-container);
   --color-tertiary-fixed: var(--tertiary-fixed);
   --color-on-tertiary-fixed: #251047;
-  --color-success: var(--success-legacy);
-  --color-success-container: var(--success-container-legacy);
+  --color-success: var(--success);
+  --color-success-container: var(--success-container);
   --color-on-success-container: var(--on-success-container);
-  --color-error: var(--error-legacy);
-  --color-error-container: var(--error-container-legacy);
+  --color-error: var(--error);
+  --color-error-container: var(--error-container);
   --color-on-error-container: var(--on-error-container);
-  --color-error-on-surface: var(--error-on-surface);
+  --color-error-on-surface: #7d1010;
+  --color-warning: var(--warning);
   --color-surface: var(--surface);
   --color-surface-container-lowest: var(--surface-container-lowest);
   --color-surface-container-low: var(--surface-container-low);
-  --color-surface-container: var(--surface-container-legacy);
+  --color-surface-container: var(--surface-container);
   --color-surface-container-high: var(--surface-container-high);
   --color-surface-container-highest: var(--surface-container-highest);
-  --color-on-surface: var(--on-surface-legacy);
-  --color-on-surface-variant: var(--on-surface-variant-legacy);
-  --color-outline: var(--outline-legacy);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
   --color-outline-variant: var(--outline-variant);
-  --font-sans-legacy: "Hanken Grotesk", Arial, sans-serif;
-  --font-mono-legacy: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--font-hanken-grotesk), Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius-panel: 1rem;
   --radius-control: 0.625rem;
   --radius-chip: 0.5rem;
   --radius-pill: 9999px;
   --radius-tag: 0.375rem;
-  --shadow-elevation-1:
-    0 1px 3px rgb(13 28 46 / 8%), 0 1px 2px rgb(13 28 46 / 4%);
+  --shadow-elevation-1: 0 1px 3px rgb(13 28 46 / 8%), 0 1px 2px rgb(13 28 46 / 4%);
+  /* Raised surfaces used by the SPM-33 event workspace: panels and dialogs. */
+  --shadow-elevation-2: 0 1px 8px rgb(0 0 0 / 4%), 0 2px 4px rgb(0 0 0 / 6%);
+  --shadow-elevation-4: 0 20px 25px rgb(0 0 0 / 10%);
   --tracking-label: 0.08em;
 }
 
-
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  background: var(--surface);
-  color: var(--on-surface);
-  font-family: var(--font-hanken-grotesk), sans-serif;
-}
-button,
-select {
-  font: inherit;
-}
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 3px solid var(--primary-fixed);
-  outline-offset: 2px;
-}
-
-/* Legacy utility classes (dashboard/login/primitives) */
-.max-w-readable {
-  max-width: 68ch;
-}
-.skeleton {
-  background: linear-gradient(90deg, #eff4ff 25%, #dce9ff 50%, #eff4ff 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-@keyframes shimmer {
-  to {
-    background-position: -200% 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+* { box-sizing: border-box; }
+html { min-height: 100%; background: var(--background); }
+body { min-height: 100vh; background: var(--background); color: var(--foreground); }
+button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+.max-w-readable { max-width: 68ch; }
+.skeleton { background: linear-gradient(90deg, #eff4ff 25%, #dce9ff 50%, #eff4ff 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }

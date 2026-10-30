@@ -1,6 +1,13 @@
+.scope {
+  --surface-container: var(--surface-container-lowest);
+  --surface-inset: var(--surface-container-low);
+  --outline: var(--outline-variant);
+  --shadow-soft: var(--shadow-elevation-1);
+  --shadow-modal: var(--shadow-elevation-4);
+}
 
-
-.scope :global(.calendar-view) {
+/* Keep shared-shell and venue-specific calendar refinements authoritative. */
+:where(.scope) :global(.calendar-view) {
   display: flex;
   flex-direction: column;
   min-height: 500px;
@@ -10,7 +17,7 @@
   overflow: hidden;
 }
 
-.scope :global(.calendar-toolbar) {
+:where(.scope) :global(.calendar-toolbar) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -20,13 +27,13 @@
   border-bottom: 1px solid var(--outline);
 }
 
-.scope :global(.calendar-nav) {
+:where(.scope) :global(.calendar-nav) {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.scope :global(.cal-btn) {
+:where(.scope) :global(.cal-btn) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -41,30 +48,30 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-btn:hover) {
+:where(.scope) :global(.cal-btn:hover) {
   background: var(--surface-inset);
   color: var(--on-surface);
 }
 
-.scope :global(.cal-btn--today) {
+:where(.scope) :global(.cal-btn--today) {
   font-size: 12px;
   font-weight: 600;
   padding: 0 10px;
   width: auto;
 }
 
-.scope :global(.calendar-title) {
+:where(.scope) :global(.calendar-title) {
   font-size: 18px;
   font-weight: 600;
   color: var(--on-surface);
 }
 
-.scope :global(.calendar-views) {
+:where(.scope) :global(.calendar-views) {
   display: flex;
   gap: 4px;
 }
 
-.scope :global(.cal-view-btn) {
+:where(.scope) :global(.cal-view-btn) {
   padding: 6px 14px;
   border: 0;
   border-radius: 6px;
@@ -76,17 +83,17 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-view-btn:hover) {
+:where(.scope) :global(.cal-view-btn:hover) {
   color: var(--on-surface);
   background: var(--surface-inset);
 }
 
-.scope :global(.cal-view-btn.active) {
+:where(.scope) :global(.cal-view-btn.active) {
   background: var(--primary);
   color: #ffffff;
 }
 
-.scope :global(.calendar-grid-wrapper) {
+:where(.scope) :global(.calendar-grid-wrapper) {
   flex: 1;
   overflow: auto;
   position: relative;
@@ -94,7 +101,7 @@
 
 /* ---------- Coordinator Legend ---------- */
 
-.scope :global(.cal-legend) {
+:where(.scope) :global(.cal-legend) {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
@@ -103,7 +110,7 @@
   margin-left: 10px;
 }
 
-.scope :global(.cal-legend-toggle) {
+:where(.scope) :global(.cal-legend-toggle) {
   min-height: 28px;
   padding: 0 8px;
   border: 1px solid var(--outline);
@@ -116,17 +123,17 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-legend-toggle:hover) {
+:where(.scope) :global(.cal-legend-toggle:hover) {
   background: var(--surface-container-high);
   border-color: var(--primary);
 }
 
-.scope :global(.cal-legend-toggle:disabled) {
+:where(.scope) :global(.cal-legend-toggle:disabled) {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.scope :global(.cal-legend-item) {
+:where(.scope) :global(.cal-legend-item) {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -141,11 +148,11 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-legend-item:hover) {
+:where(.scope) :global(.cal-legend-item:hover) {
   background: var(--surface-inset);
 }
 
-.scope :global(.cal-legend-item .cal-legend-checkbox) {
+:where(.scope) :global(.cal-legend-item .cal-legend-checkbox) {
   width: 14px;
   height: 14px;
   accent-color: var(--primary);
@@ -153,18 +160,18 @@
   flex-shrink: 0;
 }
 
-.scope :global(.cal-legend-swatch) {
+:where(.scope) :global(.cal-legend-swatch) {
   width: 9px;
   height: 9px;
   border-radius: 3px;
   flex-shrink: 0;
 }
 
-.scope :global(.cal-legend-item .cal-legend-swatch) {
+:where(.scope) :global(.cal-legend-item .cal-legend-swatch) {
   opacity: 1;
 }
 
-.scope :global(.cal-legend-name) {
+:where(.scope) :global(.cal-legend-name) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -172,7 +179,7 @@
   min-width: 0;
 }
 
-.scope :global(.cal-legend-count) {
+:where(.scope) :global(.cal-legend-count) {
   margin-left: auto;
   padding: 1px 5px;
   background: var(--surface-container-high);
@@ -183,7 +190,7 @@
 
 /* ---------- Event blocks (Google Calendar-style) ---------- */
 
-.scope :global(.cal-event-block) {
+:where(.scope) :global(.cal-event-block) {
   position: absolute;
   padding: 4px 6px 4px 9px;
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -201,13 +208,13 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.scope :global(.cal-event-block:hover) {
+:where(.scope) :global(.cal-event-block:hover) {
   opacity: 0.92;
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
-.scope :global(.cal-event-color-strip) {
+:where(.scope) :global(.cal-event-color-strip) {
   position: absolute;
   left: -1px;
   top: 0;
@@ -215,7 +222,7 @@
   width: 3px;
 }
 
-.scope :global(.cal-event-title) {
+:where(.scope) :global(.cal-event-title) {
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -223,7 +230,7 @@
   text-overflow: ellipsis;
 }
 
-.scope :global(.cal-tag) {
+:where(.scope) :global(.cal-tag) {
   align-self: flex-start;
   padding: 4px 8px;
   margin-bottom: 10px;
@@ -239,13 +246,13 @@
   color: #111;
 }
 
-.scope :global(.cal-tag--small) {
+:where(.scope) :global(.cal-tag--small) {
   font-size: 10px;
   padding: 4px 8px;
   opacity: 0.98;
 }
 
-.scope :global(.cal-event-time) {
+:where(.scope) :global(.cal-event-time) {
   opacity: 0.98;
   font-size: 10px;
   white-space: nowrap;
@@ -253,7 +260,7 @@
   text-overflow: ellipsis;
 }
 
-.scope :global(.cal-event-mini) {
+:where(.scope) :global(.cal-event-mini) {
   font-size: 10px;
   white-space: nowrap;
   overflow: hidden;
@@ -261,7 +268,7 @@
   opacity: 0.98;
 }
 
-.scope :global(.cal-event-tiny) {
+:where(.scope) :global(.cal-event-tiny) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -270,7 +277,7 @@
   align-self: flex-start;
 }
 
-.scope :global(.cal-event-phantom) {
+:where(.scope) :global(.cal-event-phantom) {
   position: absolute;
   border: 1px dashed #DC2626;
   border-radius: 4px;
@@ -281,12 +288,12 @@
 
 /* ---------- Time Grid (shared for week/day) ---------- */
 
-.scope :global(.cal-time-grid) {
+:where(.scope) :global(.cal-time-grid) {
   display: flex;
   position: relative;
 }
 
-.scope :global(.cal-time-gutter) {
+:where(.scope) :global(.cal-time-gutter) {
   width: 60px;
   flex-shrink: 0;
   background: var(--surface-container);
@@ -296,7 +303,7 @@
   z-index: 3;
 }
 
-.scope :global(.cal-time-row) {
+:where(.scope) :global(.cal-time-row) {
   height: 26px;
   border-bottom: 1px solid var(--outline);
   display: flex;
@@ -305,16 +312,16 @@
   padding-right: 8px;
 }
 
-.scope :global(.cal-time-row:last-child) {
+:where(.scope) :global(.cal-time-row:last-child) {
   border-bottom: none;
 }
 
-.scope :global(.cal-time-label) {
+:where(.scope) :global(.cal-time-label) {
   font-size: 10px;
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-time-gutter-spacer) {
+:where(.scope) :global(.cal-time-gutter-spacer) {
   width: 60px;
   height: 34px;
   flex-shrink: 0;
@@ -322,13 +329,13 @@
   background: var(--surface-container);
 }
 
-.scope :global(.cal-day-columns) {
+:where(.scope) :global(.cal-day-columns) {
   flex: 1;
   display: flex;
   position: relative;
 }
 
-.scope :global(.cal-day-column) {
+:where(.scope) :global(.cal-day-column) {
   flex: 1;
   position: relative;
   height: 100%;
@@ -336,13 +343,13 @@
   min-height: 0;
 }
 
-.scope :global(.cal-day-column:last-child) {
+:where(.scope) :global(.cal-day-column:last-child) {
   border-right: none;
 }
 
 /* ---------- Current time line ---------- */
 
-.scope :global(.cal-now-line) {
+:where(.scope) :global(.cal-now-line) {
   position: absolute;
   left: 0;
   right: 0;
@@ -351,7 +358,7 @@
   pointer-events: none;
 }
 
-.scope :global(.cal-now-label) {
+:where(.scope) :global(.cal-now-label) {
   position: absolute;
   left: 4px;
   top: -8px;
@@ -365,20 +372,20 @@
 
 /* ---------- Week View ---------- */
 
-.scope :global(.cal-week-time-grid-wrap) {
+:where(.scope) :global(.cal-week-time-grid-wrap) {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   max-height: calc(100vh - 200px);
 }
 
-.scope :global(.cal-week-view) {
+:where(.scope) :global(.cal-week-view) {
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-.scope :global(.cal-week-header-row) {
+:where(.scope) :global(.cal-week-header-row) {
   display: flex;
   border-bottom: 1px solid var(--outline);
   position: sticky;
@@ -387,7 +394,7 @@
   background: var(--surface-container);
 }
 
-.scope :global(.cal-week-day-header) {
+:where(.scope) :global(.cal-week-day-header) {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -399,29 +406,29 @@
   transition: background-color 0.15s ease;
 }
 
-.scope :global(.cal-week-day-header:hover) {
+:where(.scope) :global(.cal-week-day-header:hover) {
   background: var(--surface-container-high);
 }
 
-.scope :global(.cal-week-day-header.today) {
+:where(.scope) :global(.cal-week-day-header.today) {
   color: var(--primary);
 }
 
-.scope :global(.cal-week-day-name) {
+:where(.scope) :global(.cal-week-day-name) {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-week-day-num) {
+:where(.scope) :global(.cal-week-day-num) {
   font-size: 16px;
   font-weight: 500;
   margin-top: 2px;
   color: var(--on-surface);
 }
 
-.scope :global(.cal-week-day-num--today) {
+:where(.scope) :global(.cal-week-day-num--today) {
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -436,20 +443,20 @@
 
 /* ---------- Day View ---------- */
 
-.scope :global(.cal-day-time-grid-wrap) {
+:where(.scope) :global(.cal-day-time-grid-wrap) {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   max-height: calc(100vh - 200px);
 }
 
-.scope :global(.cal-day-view) {
+:where(.scope) :global(.cal-day-view) {
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-.scope :global(.cal-day-header-row) {
+:where(.scope) :global(.cal-day-header-row) {
   display: flex;
   border-bottom: 1px solid var(--outline);
   position: sticky;
@@ -458,7 +465,7 @@
   background: var(--surface-container);
 }
 
-.scope :global(.cal-day-title) {
+:where(.scope) :global(.cal-day-title) {
   flex: 1;
   display: flex;
   align-items: center;
@@ -466,20 +473,20 @@
   padding: 12px 16px 8px;
 }
 
-.scope :global(.cal-day-name) {
+:where(.scope) :global(.cal-day-name) {
   font-size: 16px;
   font-weight: 600;
   text-transform: uppercase;
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-day-num) {
+:where(.scope) :global(.cal-day-num) {
   font-size: 32px;
   font-weight: 700;
   color: var(--on-surface);
 }
 
-.scope :global(.cal-day-num.today) {
+:where(.scope) :global(.cal-day-num.today) {
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -492,7 +499,7 @@
   font-weight: 700;
 }
 
-.scope :global(.cal-day-month) {
+:where(.scope) :global(.cal-day-month) {
   font-size: 14px;
   color: var(--on-surface-variant);
   margin-left: auto;
@@ -500,11 +507,11 @@
 
 /* ---------- Month View ---------- */
 
-.scope :global(.cal-month-view) {
+:where(.scope) :global(.cal-month-view) {
   height: 100%;
 }
 
-.scope :global(.cal-month-header) {
+:where(.scope) :global(.cal-month-header) {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   background: var(--surface-container);
@@ -515,12 +522,12 @@
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-month-dow) {
+:where(.scope) :global(.cal-month-dow) {
   padding: 8px 4px;
   text-align: center;
 }
 
-.scope :global(.cal-month-grid) {
+:where(.scope) :global(.cal-month-grid) {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-auto-rows: minmax(80px, 1fr);
@@ -528,11 +535,11 @@
   background: var(--outline);
 }
 
-.scope :global(.cal-month-week) {
+:where(.scope) :global(.cal-month-week) {
   display: contents;
 }
 
-.scope :global(.cal-month-day) {
+:where(.scope) :global(.cal-month-day) {
   position: relative;
   padding: 4px 6px;
   background: var(--surface);
@@ -544,29 +551,29 @@
   align-items: flex-start;
 }
 
-.scope :global(.cal-month-day:hover) {
+:where(.scope) :global(.cal-month-day:hover) {
   background: var(--surface-container-high);
 }
 
-.scope :global(.cal-month-day.other-month) {
+:where(.scope) :global(.cal-month-day.other-month) {
   background: var(--surface-container-lowest);
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-month-day.other-month:hover) {
+:where(.scope) :global(.cal-month-day.other-month:hover) {
   background: var(--surface-container-low);
 }
 
-.scope :global(.cal-month-day.today) {
+:where(.scope) :global(.cal-month-day.today) {
   background: var(--primary-fixed);
 }
 
-.scope :global(.cal-month-day-number) {
+:where(.scope) :global(.cal-month-day-number) {
   font-size: 13px;
   font-weight: 500;
 }
 
-.scope :global(.cal-month-dots) {
+:where(.scope) :global(.cal-month-dots) {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
@@ -574,38 +581,38 @@
   align-items: center;
 }
 
-.scope :global(.cal-month-dot) {
+:where(.scope) :global(.cal-month-dot) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.scope :global(.cal-month-dot-more) {
+:where(.scope) :global(.cal-month-dot-more) {
   font-size: 10px;
   color: var(--on-surface-variant);
 }
 
 /* ---------- Year View ---------- */
 
-.scope :global(.cal-year-view) {
+:where(.scope) :global(.cal-year-view) {
   padding: 16px;
 }
 
-.scope :global(.cal-year-grid) {
+:where(.scope) :global(.cal-year-grid) {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 
-.scope :global(.cal-year-month) {
+:where(.scope) :global(.cal-year-month) {
   background: var(--surface-container);
   border: 1px solid var(--outline);
   border-radius: 8px;
   overflow: hidden;
 }
 
-.scope :global(.cal-year-month-header) {
+:where(.scope) :global(.cal-year-month-header) {
   padding: 10px 12px;
   background: var(--surface-inset);
   font-weight: 600;
@@ -618,11 +625,11 @@
   transition: background-color 0.15s ease;
 }
 
-.scope :global(.cal-year-month-header:hover) {
+:where(.scope) :global(.cal-year-month-header:hover) {
   background: var(--surface-container-high);
 }
 
-.scope :global(.cal-year-month-days) {
+:where(.scope) :global(.cal-year-month-days) {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 1px;
@@ -630,7 +637,7 @@
   font-size: 9px;
 }
 
-.scope :global(.cal-year-day) {
+:where(.scope) :global(.cal-year-day) {
   aspect-ratio: 1;
   display: flex;
   flex-direction: column;
@@ -641,23 +648,23 @@
   padding-top: 2px;
 }
 
-.scope :global(.cal-year-day.empty) {
+:where(.scope) :global(.cal-year-day.empty) {
   background: var(--surface-container);
   color: transparent;
 }
 
-.scope :global(.cal-year-day.has-events) {
+:where(.scope) :global(.cal-year-day.has-events) {
   font-weight: 600;
   color: var(--primary);
 }
 
-.scope :global(.cal-year-day-number) {
+:where(.scope) :global(.cal-year-day-number) {
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
 }
 
-.scope :global(.cal-year-dots) {
+:where(.scope) :global(.cal-year-dots) {
   display: flex;
   flex-wrap: wrap;
   gap: 1px;
@@ -665,7 +672,7 @@
   justify-content: center;
 }
 
-.scope :global(.cal-year-dot) {
+:where(.scope) :global(.cal-year-dot) {
   width: 4px;
   height: 4px;
   border-radius: 50%;
@@ -674,7 +681,7 @@
 
 /* ---------- Tooltip ---------- */
 
-.scope :global(.cal-tooltip) {
+:where(.scope) :global(.cal-tooltip) {
   position: fixed;
   z-index: 2000;
   background: var(--surface-container-highest);
@@ -687,32 +694,32 @@
   min-width: 180px;
 }
 
-.scope :global(.cal-tooltip-title) {
+:where(.scope) :global(.cal-tooltip-title) {
   font-weight: 600;
   margin-bottom: 4px;
   color: var(--on-surface);
 }
 
-.scope :global(.cal-tooltip-row) {
+:where(.scope) :global(.cal-tooltip-row) {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 2px;
 }
 
-.scope :global(.cal-tooltip-dot) {
+:where(.scope) :global(.cal-tooltip-dot) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.scope :global(.cal-tooltip-time) {
+:where(.scope) :global(.cal-tooltip-time) {
   color: var(--on-surface-variant);
   font-size: 11px;
 }
 
-.scope :global(.cal-tooltip-purpose) {
+:where(.scope) :global(.cal-tooltip-purpose) {
   color: var(--on-surface);
   font-size: 11px;
   margin-bottom: 4px;
@@ -721,7 +728,7 @@
 
 /* ---------- Event Popover ---------- */
 
-.scope :global(.cal-popover-backdrop) {
+:where(.scope) :global(.cal-popover-backdrop) {
   position: fixed;
   top: 0;
   left: 0;
@@ -736,7 +743,7 @@
   padding: 16px;
 }
 
-.scope :global(.cal-popover) {
+:where(.scope) :global(.cal-popover) {
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
@@ -750,21 +757,21 @@
   flex-direction: column;
 }
 
-.scope :global(.cal-popover-header) {
+:where(.scope) :global(.cal-popover-header) {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 16px 20px 12px;
 }
 
-.scope :global(.cal-popover-swatch) {
+:where(.scope) :global(.cal-popover-swatch) {
   width: 16px;
   height: 16px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.scope :global(.cal-popover-title) {
+:where(.scope) :global(.cal-popover-title) {
   font-size: 22px;
   font-weight: 700;
   color: #111;
@@ -772,7 +779,7 @@
   flex: 1;
 }
 
-.scope :global(.cal-popover-close) {
+:where(.scope) :global(.cal-popover-close) {
   width: 32px;
   height: 32px;
   border: 0;
@@ -784,64 +791,64 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-popover-close:hover) {
+:where(.scope) :global(.cal-popover-close:hover) {
   background: rgba(0, 0, 0, 0.08);
   color: #111;
 }
 
-.scope :global(.cal-popover-body) {
+:where(.scope) :global(.cal-popover-body) {
   padding: 16px 24px 24px;
 }
 
-.scope :global(.cal-popover-summary) {
+:where(.scope) :global(.cal-popover-summary) {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.scope :global(.cal-popover-time) {
+:where(.scope) :global(.cal-popover-time) {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.scope :global(.cal-popover-time-date) {
+:where(.scope) :global(.cal-popover-time-date) {
   font-size: 15px;
   font-weight: 700;
   color: #111;
 }
 
-.scope :global(.cal-popover-time-range) {
+:where(.scope) :global(.cal-popover-time-range) {
   font-size: 14px;
   color: #444;
 }
 
-.scope :global(.cal-popover-coordinator) {
+:where(.scope) :global(.cal-popover-coordinator) {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.scope :global(.cal-popover-coord-dot) {
+:where(.scope) :global(.cal-popover-coord-dot) {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.scope :global(.cal-popover-coord-name) {
+:where(.scope) :global(.cal-popover-coord-name) {
   font-size: 14px;
   color: #111;
 }
 
-.scope :global(.cal-popover-divider) {
+:where(.scope) :global(.cal-popover-divider) {
   height: 1px;
   background: var(--outline);
   width: 100%;
   margin: 4px 0;
 }
 
-.scope :global(.cal-popover-details-toggle) {
+:where(.scope) :global(.cal-popover-details-toggle) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -856,28 +863,28 @@
   transition: color 0.15s ease;
 }
 
-.scope :global(.cal-popover-details-toggle:hover) {
+:where(.scope) :global(.cal-popover-details-toggle:hover) {
   color: var(--on-surface);
 }
 
-.scope :global(.cal-popover-chevron) {
+:where(.scope) :global(.cal-popover-chevron) {
   font-size: 10px;
   color: var(--on-surface-variant);
   transition: transform 0.15s ease;
 }
 
-.scope :global(.cal-popover-chevron.open) {
+:where(.scope) :global(.cal-popover-chevron.open) {
   transform: rotate(180deg);
 }
 
-.scope :global(.cal-popover-details-grid) {
+:where(.scope) :global(.cal-popover-details-grid) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 4px;
 }
 
-.scope :global(.cal-popover-meta-label) {
+:where(.scope) :global(.cal-popover-meta-label) {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -885,20 +892,20 @@
   letter-spacing: 0.05em;
 }
 
-.scope :global(.cal-popover-meta-value) {
+:where(.scope) :global(.cal-popover-meta-value) {
   font-size: 14px;
   color: #111;
   margin-top: 2px;
   word-break: break-word;
 }
 
-.scope :global(.cal-popover-actions) {
+:where(.scope) :global(.cal-popover-actions) {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--outline);
 }
 
-.scope :global(.cal-popover-label) {
+:where(.scope) :global(.cal-popover-label) {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -909,7 +916,7 @@
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-popover-select) {
+:where(.scope) :global(.cal-popover-select) {
   padding: 8px 10px;
   border: 1px solid var(--outline);
   border-radius: 10px;
@@ -920,18 +927,18 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-popover-select:hover) {
+:where(.scope) :global(.cal-popover-select:hover) {
   border-color: var(--primary);
 }
 
-.scope :global(.cal-popover-select:focus) {
+:where(.scope) :global(.cal-popover-select:focus) {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
 /* ---------- Empty state ---------- */
 
-.scope :global(.calendar-empty) {
+:where(.scope) :global(.calendar-empty) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -943,26 +950,26 @@
 
 /* ---------- Calendar Page ---------- */
 
-.scope :global(.calendar-page) {
+:where(.scope) :global(.calendar-page) {
   width: 100%;
   max-width: 100%;
 }
 
-.scope :global(.calendar-route-page) {
+:where(.scope) :global(.calendar-route-page) {
   display: flex;
   flex-direction: column;
   gap: 20px;
   width: 100%;
 }
 
-.scope :global(.calendar-route-header) {
+:where(.scope) :global(.calendar-route-header) {
   padding: 22px 24px;
   border: 1px solid var(--outline-variant);
   border-radius: 12px;
   background: var(--surface-container-lowest);
 }
 
-.scope :global(.calendar-route-header .eyebrow) {
+:where(.scope) :global(.calendar-route-header .eyebrow) {
   display: inline-block;
   color: var(--primary);
   font-size: 11px;
@@ -970,24 +977,24 @@
   letter-spacing: 0.08em;
 }
 
-.scope :global(.calendar-route-header h1) {
+:where(.scope) :global(.calendar-route-header h1) {
   margin: 8px 0 4px;
   color: var(--on-surface);
   font-size: clamp(24px, 2.5vw, 32px);
   letter-spacing: -0.03em;
 }
 
-.scope :global(.calendar-route-header p) {
+:where(.scope) :global(.calendar-route-header p) {
   margin: 0;
   color: var(--on-surface-variant);
 }
 
-.scope :global(.calendar-view) {
+:where(.scope) :global(.calendar-view) {
   width: 100%;
   min-height: 0;
 }
 
-.scope :global(.calendar-toolbar) {
+:where(.scope) :global(.calendar-toolbar) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1000,13 +1007,13 @@
   margin-bottom: 16px;
 }
 
-.scope :global(.calendar-nav) {
+:where(.scope) :global(.calendar-nav) {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.scope :global(.cal-btn) {
+:where(.scope) :global(.cal-btn) {
   min-height: 36px;
   padding: 0 12px;
   border: 1px solid var(--outline);
@@ -1018,39 +1025,39 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-btn:hover) {
+:where(.scope) :global(.cal-btn:hover) {
   background: var(--surface-container-high);
   border-color: var(--primary);
 }
 
-.scope :global(.cal-btn--today) {
+:where(.scope) :global(.cal-btn--today) {
   background: var(--primary);
   color: white;
   border-color: var(--primary);
 }
 
-.scope :global(.cal-btn--today:hover) {
+:where(.scope) :global(.cal-btn--today:hover) {
   background: var(--primary-container);
 }
 
-.scope :global(.calendar-toolbar .cal-btn:not(.cal-btn--today)) {
+:where(.scope) :global(.calendar-toolbar .cal-btn:not(.cal-btn--today)) {
   font-size: 18px;
 }
 
-.scope :global(.calendar-toolbar .cal-btn--today) {
+:where(.scope) :global(.calendar-toolbar .cal-btn--today) {
   font-size: 12px;
   font-weight: 600;
   padding: 0 10px;
 }
 
-.scope :global(.calendar-title) {
+:where(.scope) :global(.calendar-title) {
   font-size: 18px;
   font-weight: 600;
   color: var(--on-surface);
   margin: 0;
 }
 
-.scope :global(.calendar-views) {
+:where(.scope) :global(.calendar-views) {
   display: flex;
   gap: 4px;
   padding: 3px;
@@ -1058,7 +1065,7 @@
   border-radius: 8px;
 }
 
-.scope :global(.cal-view-btn) {
+:where(.scope) :global(.cal-view-btn) {
   padding: 6px 12px;
   border: 0;
   border-radius: 6px;
@@ -1069,17 +1076,17 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-view-btn:hover) {
+:where(.scope) :global(.cal-view-btn:hover) {
   color: var(--on-surface);
   background: var(--surface);
 }
 
-.scope :global(.cal-view-btn.active) {
+:where(.scope) :global(.cal-view-btn.active) {
   color: #ffffff;
   background: var(--primary);
 }
 
-.scope :global(.calendar-panel) {
+:where(.scope) :global(.calendar-panel) {
   padding: 20px;
   border: 1px solid var(--outline-variant);
   border-radius: 12px;
@@ -1087,7 +1094,7 @@
   box-shadow: var(--shadow-soft);
 }
 
-.scope :global(.calendar-panel-header) {
+:where(.scope) :global(.calendar-panel-header) {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -1096,12 +1103,12 @@
   font-size: 13px;
 }
 
-.scope :global(.calendar-panel-header span) {
+:where(.scope) :global(.calendar-panel-header span) {
   color: var(--on-surface-variant);
   font-size: 11px;
 }
 
-.scope :global(.cal-legend) {
+:where(.scope) :global(.cal-legend) {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1109,7 +1116,7 @@
   position: relative;
 }
 
-.scope :global(.cal-legend-trigger) {
+:where(.scope) :global(.cal-legend-trigger) {
   min-height: 30px;
   padding: 6px 10px;
   border: 1px solid var(--outline);
@@ -1126,12 +1133,12 @@
   white-space: nowrap;
 }
 
-.scope :global(.cal-legend-trigger:hover) {
+:where(.scope) :global(.cal-legend-trigger:hover) {
   background: var(--surface-container-low);
   border-color: var(--primary);
 }
 
-.scope :global(.cal-legend-trigger-label) {
+:where(.scope) :global(.cal-legend-trigger-label) {
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -1139,13 +1146,13 @@
   max-width: 140px;
 }
 
-.scope :global(.cal-legend-trigger-arrow) {
+:where(.scope) :global(.cal-legend-trigger-arrow) {
   font-size: 9px;
   flex-shrink: 0;
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-legend-panel) {
+:where(.scope) :global(.cal-legend-panel) {
   position: absolute;
   top: 100%;
   left: 0;
@@ -1162,7 +1169,7 @@
   gap: 6px;
 }
 
-.scope :global(.cal-legend-panel-header) {
+:where(.scope) :global(.cal-legend-panel-header) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1171,13 +1178,13 @@
   border-bottom: 1px solid var(--outline-variant);
 }
 
-.scope :global(.cal-legend-panel-title) {
+:where(.scope) :global(.cal-legend-panel-title) {
   color: var(--on-surface);
   font-size: 12px;
   font-weight: 700;
 }
 
-.scope :global(.cal-legend-close) {
+:where(.scope) :global(.cal-legend-close) {
   display: grid;
   width: 28px;
   height: 28px;
@@ -1190,12 +1197,12 @@
   line-height: 1;
 }
 
-.scope :global(.cal-legend-close:hover) {
+:where(.scope) :global(.cal-legend-close:hover) {
   background: var(--surface-container-low);
   color: var(--on-surface);
 }
 
-.scope :global(.cal-legend-search) {
+:where(.scope) :global(.cal-legend-search) {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--outline);
@@ -1206,17 +1213,17 @@
   box-sizing: border-box;
 }
 
-.scope :global(.cal-legend-search::placeholder) {
+:where(.scope) :global(.cal-legend-search::placeholder) {
   color: var(--on-surface-variant);
   opacity: 0.6;
 }
 
-.scope :global(.cal-legend-actions) {
+:where(.scope) :global(.cal-legend-actions) {
   display: flex;
   gap: 6px;
 }
 
-.scope :global(.cal-legend-toggle) {
+:where(.scope) :global(.cal-legend-toggle) {
   min-height: 28px;
   padding: 0 8px;
   border: 1px solid var(--outline);
@@ -1229,17 +1236,17 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-legend-toggle:hover) {
+:where(.scope) :global(.cal-legend-toggle:hover) {
   background: var(--surface-container-high);
   border-color: var(--primary);
 }
 
-.scope :global(.cal-legend-toggle:disabled) {
+:where(.scope) :global(.cal-legend-toggle:disabled) {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.scope :global(.cal-legend-list) {
+:where(.scope) :global(.cal-legend-list) {
   flex: 1;
   min-height: 0;
   max-height: 200px;
@@ -1253,7 +1260,7 @@
   background: var(--surface-container-lowest);
 }
 
-.scope :global(.cal-legend-item) {
+:where(.scope) :global(.cal-legend-item) {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1268,11 +1275,11 @@
   transition: all 0.15s ease;
 }
 
-.scope :global(.cal-legend-item:hover) {
+:where(.scope) :global(.cal-legend-item:hover) {
   background: var(--surface-inset);
 }
 
-.scope :global(.cal-legend-item .cal-legend-checkbox) {
+:where(.scope) :global(.cal-legend-item .cal-legend-checkbox) {
   width: 14px;
   height: 14px;
   accent-color: var(--primary);
@@ -1280,18 +1287,18 @@
   flex-shrink: 0;
 }
 
-.scope :global(.cal-legend-swatch) {
+:where(.scope) :global(.cal-legend-swatch) {
   width: 9px;
   height: 9px;
   border-radius: 3px;
   flex-shrink: 0;
 }
 
-.scope :global(.cal-legend-item .cal-legend-swatch) {
+:where(.scope) :global(.cal-legend-item .cal-legend-swatch) {
   opacity: 1;
 }
 
-.scope :global(.cal-legend-name) {
+:where(.scope) :global(.cal-legend-name) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1299,7 +1306,7 @@
   min-width: 0;
 }
 
-.scope :global(.cal-legend-count) {
+:where(.scope) :global(.cal-legend-count) {
   margin-left: auto;
   padding: 1px 5px;
   background: var(--surface-container-high);
@@ -1308,7 +1315,7 @@
   color: var(--on-surface-variant);
 }
 
-.scope :global(.cal-legend-empty) {
+:where(.scope) :global(.cal-legend-empty) {
   margin: 0;
   padding: 8px;
   font-size: 11px;
@@ -1316,12 +1323,12 @@
   text-align: center;
 }
 
-.scope :global(.calendar-grid-wrapper) {
+:where(.scope) :global(.calendar-grid-wrapper) {
   width: 100%;
   min-height: 0;
 }
 
-.scope :global(.calendar-empty) {
+:where(.scope) :global(.calendar-empty) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1334,58 +1341,58 @@
 /* ---------- Responsive ---------- */
 
 @media (max-width: 760px) {
-  .scope :global(.cal-year-grid) {
+  :where(.scope) :global(.cal-year-grid) {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .scope :global(.cal-legend) {
+  :where(.scope) :global(.cal-legend) {
     flex-wrap: wrap;
     gap: 6px;
   }
 
-  .scope :global(.cal-legend-list) {
+  :where(.scope) :global(.cal-legend-list) {
     flex-wrap: wrap;
     gap: 4px;
   }
 
-  .scope :global(.cal-popover-details-grid) {
+  :where(.scope) :global(.cal-popover-details-grid) {
     grid-template-columns: 1fr;
   }
 
-  .scope :global(.cal-day-title) {
+  :where(.scope) :global(.cal-day-title) {
     padding: 12px 10px 8px;
   }
 
-  .scope :global(.cal-day-num) {
+  :where(.scope) :global(.cal-day-num) {
     font-size: 24px;
   }
 
-  .scope :global(.cal-day-num.today) {
+  :where(.scope) :global(.cal-day-num.today) {
     width: 36px;
     height: 36px;
     font-size: 18px;
   }
 
-  .scope :global(.cal-event-block) {
+  :where(.scope) :global(.cal-event-block) {
     font-size: 9px;
   }
 
-  .scope :global(.cal-event-title) {
+  :where(.scope) :global(.cal-event-title) {
     font-size: 8px;
   }
 
-  .scope :global(.cal-popover) {
+  :where(.scope) :global(.cal-popover) {
     max-width: 90vw;
   }
 }
 
 @media (min-width: 761px) and (max-width: 1024px) {
-  .scope :global(.cal-view-btn) {
+  :where(.scope) :global(.cal-view-btn) {
     font-size: 11px;
     padding: 4px 10px;
   }
 
-  .scope :global(.cal-week-day-header) {
+  :where(.scope) :global(.cal-week-day-header) {
     font-size: 11px;
   }
 }

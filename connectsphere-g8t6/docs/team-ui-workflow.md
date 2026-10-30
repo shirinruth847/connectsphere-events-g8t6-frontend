@@ -50,8 +50,8 @@ components over adding all ticket logic to the role's dashboard file.
 
 `components/auth/role-dashboard.tsx` dispatches the trusted profile to a role's
 dashboard; feature logic belongs in that role's folder. Most roles keep the
-`/dashboard` URL while rendering different components. Attendees retain
-`/my-registrations`. New feature URLs belong under `app/`, with their view
+`/dashboard` URL while rendering different components. Attendees land on Event
+Discovery at `/events` (SPM-44); My Events remains at `/my-registrations`. New feature URLs belong under `app/`, with their view
 components in the role folder. Do not create another sidebar for a role.
 Staff/lead landing files are extension points for their tickets, not a claim
 that pending venue, technical or assignment workflows are implemented.
@@ -74,12 +74,12 @@ are available to other members; attaching the prompt alone does not add them.
 
 | Role value | Display label | Home | Current main navigation |
 | --- | --- | --- | --- |
-| `ORGANISER` | Event Organiser | `/dashboard` | Dashboard, My Requests, My Drafts |
+| `ORGANISER` | Event Organiser | `/dashboard` | Dashboard, My Requests |
 | `COORDINATOR` | Event Coordinator | `/dashboard` | Assigned Events |
 | `COORDINATOR_LEAD` | Event Coordinator Lead | `/dashboard` | Dashboard |
 | `VENUE_STAFF` | Venue Staff | `/dashboard` | Dashboard |
 | `TECH_SUPPORT` | Technical Support | `/dashboard` | Dashboard |
-| `ATTENDEE` | Attendee | `/my-registrations` | My Registrations |
+| `ATTENDEE` | Attendee | `/events` | Event Discovery, My Events, Notifications |
 
 Unavailable items have no `href` and appear disabled. Add links only when
 their page and access rules are implemented. Pending assignment/calendar
@@ -115,9 +115,23 @@ export default function FeaturePage() {
 Omit `role` only for a page intentionally shared by all signed-in roles.
 Use existing shared primitives and tokens such as `bg-primary`,
 `text-on-surface`, `rounded-panel` and `shadow-elevation-1`. Use a feature's
-`*.module.css` for custom styling. Do not add global `nav`, `label`, `button`,
+`*.module.css` for custom styling. `--warning` (`#f2b705`, `bg-warning`) marks
+unseen event-history entries; it has low contrast on white, so always pair it
+with a text label. Do not add global `nav`, `label`, `button`,
 `h1` or `.page-header` rules: they can override other members' layouts.
 Avoid another `main` element inside the shell's existing `main` element.
+
+The organiser Dashboard at `/dashboard` shows events submitted by anyone in
+their verified organisations, across all statuses, plus the organiser's own
+private drafts. The existing `/api/events/mine` endpoint provides this scope;
+the backend excludes other organisations and colleagues' drafts. Colleagues'
+events open read-only. Cards show the organisation and ownership. My Requests
+uses `/dashboard?scope=MINE` for personally created events and drafts. There is
+no separate My Drafts navigation tab; the draft status filter and existing
+`/dashboard?status=DRAFT#my-drafts` URL remain available under My Requests.
+Search also matches organisation names. Changes to these destinations touch
+`lib/auth.ts`, `lib/navigation.ts`
+and the active-tab call in `dashboard-shell.tsx`, requiring shared UI review.
 
 ## Adding a tab or route
 
@@ -127,7 +141,7 @@ Avoid another `main` element inside the shell's existing `main` element.
    for valid login return paths. Keep `/events/create` as the existing alias.
 3. Add the item only to appropriate roles in `lib/navigation.ts`. Give it a
    stable ID, label and icon. Update `activeNavigationId` so exactly one tab
-   is current, including query-driven tabs such as My Drafts.
+   is current, including query-driven views such as My Requests.
 4. Implement the guarded page with `DashboardWorkspace` and its API with
    backend role/resource checks. Reuse the existing login and API client.
 5. Extend the journey test for its destination, denied roles, direct URL,

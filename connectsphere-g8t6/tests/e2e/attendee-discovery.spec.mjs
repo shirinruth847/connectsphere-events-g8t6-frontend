@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installConnectSphereMocks } from './support.mjs';
+import { installConnectSphereMocks, installLoginMock } from './support.mjs';
 
 const makeEvent = (overrides = {}) => ({
   eventId: 101,
@@ -18,8 +18,9 @@ const makeEvent = (overrides = {}) => ({
 // Attendee session from the shared mocks, plus the two discovery endpoints.
 // `pages` maps a cursor ('' for the first page) to { events, nextCursor };
 // `details` maps an event ID to its detail body, or to a status number.
-async function installDiscoveryMocks(page, { pages = { '': { events: [], nextCursor: null } }, details = {}, role = 'ATTENDEE' } = {}) {
-  const state = await installConnectSphereMocks(page, { role });
+// `signedOut` starts without a session, using the shared login mock.
+async function installDiscoveryMocks(page, { pages = { '': { events: [], nextCursor: null } }, details = {}, role = 'ATTENDEE', signedOut = false } = {}) {
+  const state = signedOut ? await installLoginMock(page, { role }) : await installConnectSphereMocks(page, { role });
   const requests = { list: [], detail: [] };
   await page.route('**/api/events/discovery**', async (route) => {
     const request = route.request();
@@ -80,7 +81,7 @@ test('[SPM-34 AC1/AC2] attendee sees published events in the shared workspace', 
 test('[SPM-34 AC5] empty list shows the empty state', async ({ page }) => {
   await installDiscoveryMocks(page);
   await page.goto('/events');
-  await expect(page.getByRole('heading', { name: 'No events to discover right now', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No events are available at the moment.', exact: true })).toBeVisible();
   await expect(page.getByRole('article')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Load more events', exact: true })).toHaveCount(0);
 });
@@ -149,7 +150,7 @@ test('[SPM-34 AC1/AC6] pagination and retry survive every loaded event becoming 
     await expect(dialog).toBeHidden();
   }
   await expect(page.getByRole('article')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'No events to discover right now', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'No events are available at the moment.', exact: true })).toHaveCount(0);
   await page.route('**/api/events/discovery?*', (route) => route.fulfill({
     status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporarily unavailable' }),
   }), { times: 1 });
@@ -215,3 +216,294 @@ for (const role of ['ORGANISER']) {
     expect(requests.list).toEqual([]);
   });
 }
+
+// Records any attendee call to the staff workspace endpoint GET /api/events/:id.
+async function trackWorkspaceRequests(page) {
+  const workspace = [];
+  await page.route(/\/api\/events\/\d+(\?.*)?$/, (route) => {
+    workspace.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'Forbidden' }) });
+  });
+  return workspace;
+}
+
+test('[SPM-44 TC-EVENT-003] every returned event renders as its own card, whatever its registration availability', async ({ page }) => {
+  const events = [
+    makeEvent({ eventId: 401, title: 'Open Event', registrationAvailability: 'OPEN' }),
+    makeEvent({ eventId: 402, title: 'Closed Event', registrationAvailability: 'CLOSED' }),
+    makeEvent({ eventId: 403, title: 'No Registration Event', registrationAvailability: 'NOT_ENABLED' }),
+    makeEvent({ eventId: 404, title: 'Waitlist Event', registrationAvailability: 'FULL_WAITLIST' }),
+  ];
+  const { requests } = await installDiscoveryMocks(page, { pages: { '': { events, nextCursor: null } } });
+  await page.goto('/events');
+  await expect(page.getByRole('article')).toHaveCount(4);
+  await expect(card(page, 'Open Event')).toContainText('Registration Open');
+  await expect(card(page, 'Closed Event')).toContainText('Registration Closed');
+  await expect(card(page, 'No Registration Event')).toBeVisible();
+  await expect(card(page, 'Waitlist Event')).toContainText('Full - Waitlist');
+  await expect(page.getByText('Showing 4 events', { exact: true })).toBeVisible();
+  expect(requests.list).toEqual(['']);
+});
+
+test('[SPM-44] a failed discovery request shows an error with retry, not the empty state', async ({ page }) => {
+  await installDiscoveryMocks(page, { pages: { '': { events: [makeEvent()], nextCursor: null } } });
+  await page.route('**/api/events/discovery?*', (route) => route.fulfill({
+    status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Something went wrong.' }),
+  }), { times: 1 });
+  await page.goto('/events');
+  await expect(page.getByText('Could not load events', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No events are available at the moment.', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('article')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(card(page, 'SMU Tech Summit')).toBeVisible();
+});
+
+test('[SPM-44] a hidden event is not rebuilt from list data in the details dialog', async ({ page }) => {
+  await installDiscoveryMocks(page, { pages: { '': { events: [makeEvent({ eventId: 105, title: 'Now Hidden Talk' })], nextCursor: null } }, details: { 105: 404 } });
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'View event details for Now Hidden Talk', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Event unavailable', exact: true });
+  await expect(dialog.getByText('This event is no longer available', { exact: true })).toBeVisible();
+  await expect(dialog).not.toContainText('Now Hidden Talk');
+  await expect(dialog).not.toContainText('Registration Open');
+});
+
+test('[SPM-44] an attendee opening /events/:id reads only the discovery details endpoint', async ({ page }) => {
+  const { requests } = await installDiscoveryMocks(page, { details: { 101: makeEvent() } });
+  const workspace = await trackWorkspaceRequests(page);
+  await page.goto('/events/101');
+  await expect(page.getByRole('heading', { level: 1, name: 'SMU Tech Summit', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Event information', exact: true })).toBeVisible();
+  await expect(page.getByText('Registration Open', { exact: true })).toBeVisible();
+  await expect(page.getByText('SMU Hall A', { exact: true })).toBeVisible();
+  await expect(page.getByText('SMU Computing Club', { exact: true })).toBeVisible();
+  await expectUnavailableAction(page.locator('main'), 'Register Now');
+  const nav = page.getByRole('navigation', { name: 'Main Navigation', exact: true });
+  await expect(nav.getByRole('link', { name: 'Event Discovery', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Back to Event Discovery', exact: true })).toHaveAttribute('href', '/events');
+  expect(requests.detail).toEqual([101]);
+  expect(workspace).toEqual([]);
+});
+
+for (const [label, rawId, detail] of [['a hidden (non-CONFIRMED) event', '105', 404], ['a malformed ID', 'abc', undefined]]) {
+  test(`[SPM-44] an attendee opening ${label} directly sees the not-available state`, async ({ page }) => {
+    const { requests } = await installDiscoveryMocks(page, { details: detail ? { [rawId]: detail } : {} });
+    const workspace = await trackWorkspaceRequests(page);
+    await page.goto(`/events/${rawId}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Event details', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'This event is not available', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+    expect(workspace).toEqual([]);
+    expect(requests.detail).toEqual(detail ? [Number(rawId)] : []);
+  });
+}
+
+test('[SPM-44] a details failure on /events/:id offers retry', async ({ page }) => {
+  await installDiscoveryMocks(page, { details: { 101: 503 } });
+  await page.goto('/events/101');
+  await expect(page.getByText('Could not load the event details', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'This event is not available', exact: true })).toHaveCount(0);
+});
+
+test('[SPM-44] a 400 from discovery shows safe wording with retry, not the backend message', async ({ page }) => {
+  await installDiscoveryMocks(page, { pages: { '': { events: [makeEvent()], nextCursor: null } } });
+  await page.route('**/api/events/discovery?*', (route) => route.fulfill({
+    status: 400, contentType: 'application/json',
+    body: JSON.stringify({ error: 'Please correct the highlighted fields.', code: 'VALIDATION_FAILED', fields: { cursor: 'Invalid page cursor.' } }),
+  }), { times: 1 });
+  await page.goto('/events');
+  const alert = page.getByRole('alert').filter({ hasText: 'Could not load events' });
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText('The events could not be loaded right now. Please try again.');
+  await expect(alert).not.toContainText(/highlighted|cursor/i);
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(card(page, 'SMU Tech Summit')).toBeVisible();
+});
+
+test('[SPM-44] a failed Load more keeps the loaded cards and recovers on retry', async ({ page }) => {
+  const { requests } = await installDiscoveryMocks(page, {
+    pages: {
+      '': { events: [makeEvent(), makeEvent({ eventId: 102, title: 'Career Fair' })], nextCursor: 'page-2' },
+      'page-2': { events: [makeEvent({ eventId: 103, title: 'Hackathon' })], nextCursor: null },
+    },
+  });
+  await page.goto('/events');
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await page.route('**/api/events/discovery?*cursor=*', (route) => route.fulfill({
+    status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Internal Server Error' }),
+  }), { times: 1 });
+  await page.getByRole('button', { name: 'Load more events', exact: true }).click();
+  await expect(page.getByText('Could not load more events', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load more events' })).toContainText('The next events could not be loaded right now. Please try again.');
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.getByRole('article')).toHaveCount(3);
+  await expect(card(page, 'Hackathon')).toBeVisible();
+  // The retry reuses the backend's cursor unchanged.
+  expect(requests.list).toEqual(['', 'page-2']);
+});
+
+test('[SPM-44] a 403 in the details dialog explains access without a retry', async ({ page }) => {
+  await installDiscoveryMocks(page, { pages: { '': { events: [makeEvent()], nextCursor: null } }, details: { 101: 403 } });
+  await page.goto('/events');
+  await page.getByRole('button', { name: 'View event details for SMU Tech Summit', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Attendee access required', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
+});
+
+test('[SPM-44] a details failure on /events/:id recovers on retry', async ({ page }) => {
+  await installDiscoveryMocks(page, { details: { 101: makeEvent() } });
+  await page.route('**/api/events/discovery/101', (route) => route.fulfill({
+    status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Service unavailable from upstream proxy' }),
+  }), { times: 1 });
+  await page.goto('/events/101');
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not load the event details' })).toContainText('The event details could not be loaded right now. Please try again.');
+  await expect(page.getByText(/upstream proxy/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'SMU Tech Summit', exact: true })).toBeVisible();
+});
+
+test('[SPM-44] a signed-out attendee returns to /events/:id after login', async ({ page }) => {
+  const { requests } = await installDiscoveryMocks(page, { signedOut: true, details: { 101: makeEvent() } });
+  await page.goto('/events/101');
+  await expect(page).toHaveURL(/\/login\?next=%2Fevents%2F101/);
+  await page.locator('#email').fill('user@example.com');
+  await page.locator('#password').fill('Valid-password9');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/events\/101$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'SMU Tech Summit', exact: true })).toBeVisible();
+  expect(requests.detail).toEqual([101]);
+});
+
+// Wrong-role journeys (SPM-44, Master 4.2: attendees get the published view;
+// other roles do not use the attendee discovery surface). /events is the Lead's
+// own queue, so the Lead is checked for "no attendee surface" instead of the
+// access-denied banner.
+for (const [role, eventsSurface] of [
+  ['COORDINATOR', 'denied'],
+  ['COORDINATOR_LEAD', 'Unassigned requests'],
+  ['VENUE_STAFF', 'denied'],
+  ['TECH_SUPPORT', 'denied'],
+]) {
+  test(`[SPM-44 AC1] should_not_show_attendee_event_discovery_when_role_is_${role}`, async ({ page }) => {
+    const { requests } = await installDiscoveryMocks(page, { role, pages: { '': { events: [makeEvent()], nextCursor: null } }, details: { 101: makeEvent() } });
+    await page.goto('/events');
+    if (eventsSurface === 'denied') {
+      await expect(page.getByText('This page is not available for your role.', { exact: false })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Go to your dashboard', exact: true })).toHaveAttribute('href', '/dashboard');
+    } else {
+      await expect(page.getByRole('heading', { level: 1, name: eventsSurface, exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole('heading', { name: 'Event Discovery', exact: true })).toHaveCount(0);
+    await expect(card(page, 'SMU Tech Summit')).toHaveCount(0);
+    const nav = page.getByRole('navigation', { name: 'Main Navigation', exact: true });
+    await expect(nav.getByRole('link', { name: 'Event Discovery', exact: true })).toHaveCount(0);
+    expect(requests.list).toEqual([]);
+    expect(requests.detail).toEqual([]);
+  });
+
+  test(`[SPM-44] should_use_the_staff_workspace_not_attendee_details_when_${role}_opens_an_event_url`, async ({ page }) => {
+    const { state, requests } = await installDiscoveryMocks(page, { role, details: { 101: makeEvent() } });
+    const staffEndpoint = role === 'VENUE_STAFF' ? '/api/venues/bookings/events/101' : '/api/events/101';
+    if (role === 'VENUE_STAFF') {
+      await page.route('**/api/venues/bookings/events/101', (route) => {
+        state.requestLog.push({ pathname: staffEndpoint, method: route.request().method() });
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'Not found.' }) });
+      });
+    }
+    await page.goto('/events/101');
+    // An unrelated staff event is answered as not found (SPM-33); nothing from the
+    // attendee view is requested or shown.
+    await expect(page.getByRole('heading', { name: 'Event not available', exact: true })).toBeVisible();
+    await expect(page.getByText('SMU Tech Summit', { exact: false })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Event information', exact: true })).toHaveCount(0);
+    expect(requests.detail).toEqual([]);
+    expect(requests.list).toEqual([]);
+    expect(state.requestLog.some((entry) => entry.pathname === staffEndpoint && entry.method === 'GET')).toBe(true);
+  });
+}
+
+// 390px geometry (Master 3.4 practical mobile layouts; design system: 44px
+// touch targets and no horizontal page scroll).
+const MOBILE = { width: 390, height: 844 };
+
+async function expectNoHorizontalOverflow(page) {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBe(0);
+}
+
+// Every visible link and button inside main is at least 44px in both directions.
+async function expectTouchTargets(page) {
+  const small = await page.locator('main').locator('a[href], button').evaluateAll((elements) => elements
+    .filter((element) => element.getClientRects().length > 0)
+    .map((element) => ({ name: element.getAttribute('aria-label') || element.textContent.trim(), box: element.getBoundingClientRect() }))
+    .filter(({ box }) => box.height < 44 || box.width < 44)
+    .map(({ name, box }) => `${name} ${Math.round(box.width)}x${Math.round(box.height)}`));
+  expect(small).toEqual([]);
+}
+
+const LONG_TITLE = 'Annual Interfaculty Sustainability and Innovation Symposium with an Exceptionally Long Name';
+
+test('[SPM-44] should_fit_390px_with_readable_cards_and_44px_actions_when_viewing_event_discovery', async ({ page }) => {
+  await page.setViewportSize(MOBILE);
+  const events = [
+    makeEvent({ eventId: 501, title: LONG_TITLE, registrationAvailability: 'OPEN', location: 'Lee Kong Chian School of Business Auditorium, Level 2' }),
+    makeEvent({ eventId: 502, title: 'Closed Event', registrationAvailability: 'CLOSED' }),
+    makeEvent({ eventId: 503, title: 'No Registration Event', registrationAvailability: 'NOT_ENABLED', organisationName: null }),
+    makeEvent({ eventId: 504, title: 'Waitlist Event', registrationAvailability: 'FULL_WAITLIST', location: null }),
+  ];
+  await installDiscoveryMocks(page, { pages: { '': { events, nextCursor: 'page-2' }, 'page-2': { events: [], nextCursor: null } } });
+  await page.goto('/events');
+  await expect(page.getByRole('article')).toHaveCount(4);
+  await expectNoHorizontalOverflow(page);
+
+  for (const article of await page.getByRole('article').all()) {
+    const box = await article.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(MOBILE.width);
+    // Card text wraps inside the card rather than overflowing it.
+    expect(await article.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+    const titleSize = await article.getByRole('heading', { level: 3 }).evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+    expect(titleSize).toBeGreaterThanOrEqual(16);
+    const action = article.getByRole('button', { name: /^View event details for / });
+    await expect(action).toBeVisible();
+    // Full-width CTA under 768px.
+    expect((await action.boundingBox()).width).toBeGreaterThan(box.width * 0.8);
+  }
+  // Status stays in text at this width.
+  await expect(card(page, 'Closed Event')).toContainText('Registration Closed');
+  await expect(card(page, 'Waitlist Event')).toContainText('Full - Waitlist');
+  await expect(page.getByRole('button', { name: 'Load more events', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open menu', exact: true })).toBeVisible();
+  await expectTouchTargets(page);
+});
+
+test('[SPM-44] should_fit_390px_with_44px_actions_when_viewing_attendee_event_details_page', async ({ page }) => {
+  await page.setViewportSize(MOBILE);
+  await installDiscoveryMocks(page, {
+    details: { 101: makeEvent({ title: LONG_TITLE, description: 'Unbroken words such as Supercalifragilisticexpialidociousnessandmorecharacters still wrap.' }) },
+  });
+  await page.goto('/events/101');
+  await expect(page.getByRole('heading', { level: 2, name: 'Event information', exact: true })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  const main = page.locator('main');
+  expect(await main.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+  for (const label of ['Date', 'Time', 'Location', 'Organised by', 'Registration opens', 'Registration closes']) {
+    await expect(main.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(main.getByText('Registration Open', { exact: true })).toBeVisible();
+  await expect(main.getByRole('link', { name: 'Back to Event Discovery', exact: true })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Register Now', exact: true })).toBeVisible();
+  await expectTouchTargets(page);
+});
+
+test('[SPM-44] should_fit_390px_when_showing_the_event_not_available_state', async ({ page }) => {
+  await page.setViewportSize(MOBILE);
+  await installDiscoveryMocks(page, { details: { 105: 404 } });
+  await page.goto('/events/105');
+  await expect(page.getByRole('heading', { name: 'This event is not available', exact: true })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectTouchTargets(page);
+});

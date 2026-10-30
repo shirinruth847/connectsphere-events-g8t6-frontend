@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getCoordinatorAvailability, getLeadAssignments, type CoordinatorAvailability, type LeadAssignment } from "@/lib/api/events";
 import { formatEventWindow } from "@/lib/datetime";
@@ -47,11 +48,11 @@ export function LeadAssignments() {
     {loading ? <Skeleton className="h-48" /> : error ? null : visible.length === 0 ? <EmptyState title={conflictsOnly ? "No scheduling conflicts" : "No active assignments"} description="Submitted unassigned requests remain in the Unassigned Queue." /> : visible.map((event) => <article key={event.eventId} aria-label={event.title}>
       <SectionCard>
         <div className="mb-4 flex flex-wrap items-center gap-3"><ReferenceIdTag value={event.requestId} /><StatusChip status={event.status} />{event.supervisingLeadId === null && <span className="text-sm text-on-surface-variant">Unsupervised</span>}</div>
-        <h2 className="text-lg font-semibold">{event.title}</h2>
+        <h2 className="text-lg font-semibold"><Link href={`/events/${event.eventId}`} className="text-primary hover:underline">{event.title}</Link></h2>
         <p className="mt-2 text-sm">{formatEventWindow(event.startDatetime, event.endDatetime)}</p>
         <p className="mb-4 mt-2 text-sm">Current coordinator: <strong>{event.coordinatorName}</strong></p>
         {event.hasScheduleConflict && <div className="mb-4"><AlertBanner tone="warning">The current coordinator has an overlapping active event. The Lead must choose which assignment to change.</AlertBanner></div>}
-        <CoordinatorAssignmentAction key={`${event.eventId}-${event.coordinatorId}`} event={event} currentCoordinatorId={event.coordinatorId} coordinators={coordinators} onRefresh={refresh} onSaved={async () => { setNotice(`Coordinator updated for ${event.requestId}.`); await refresh(); }} />
+        <CoordinatorAssignmentAction key={`${event.eventId}-${event.coordinatorId}`} event={event} currentCoordinatorId={event.coordinatorId} coordinators={coordinators} onRefresh={refresh} onSaved={async (replayed) => { setNotice(replayed ? `Previous reassignment confirmed for ${event.requestId}. Current assignments refreshed.` : `Coordinator updated for ${event.requestId}.`); await refresh(); }} />
       </SectionCard>
     </article>)}
   </PageContent>;

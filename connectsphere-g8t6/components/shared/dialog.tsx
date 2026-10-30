@@ -9,13 +9,17 @@ interface DialogProps {
   title: string;
   // Shown beside the title, e.g. a status chip.
   badge?: ReactNode;
+  // Header buttons placed before the close button, e.g. a primary action on the item shown.
+  actions?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  // "wide" fits a whole workspace, e.g. the venue search.
+  size?: "default" | "wide";
 }
 
 // Modal built on the native <dialog>: showModal() traps focus, Escape closes it,
 // and focus returns to whatever opened it.
-export function Dialog({ open, onClose, title, badge, children, footer }: DialogProps) {
+export function Dialog({ open, onClose, title, badge, actions, children, footer, size = "default" }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const titleId = useId();
@@ -42,22 +46,27 @@ export function Dialog({ open, onClose, title, badge, children, footer }: Dialog
         event.preventDefault();
         onClose();
       }}
-      className="m-auto w-[min(640px,calc(100vw-32px))] max-h-[calc(100vh-48px)] rounded-panel bg-surface-container-lowest p-0 text-on-surface shadow-elevation-4 backdrop:bg-on-surface/40 backdrop:backdrop-blur-sm open:flex open:flex-col"
+      className={`m-auto ${size === "wide" ? "w-[min(1280px,calc(100vw-32px))] max-h-[calc(100dvh-32px)]" : "w-[min(640px,calc(100vw-32px))] max-h-[calc(100vh-48px)]"} rounded-panel bg-surface-container-lowest p-0 text-on-surface shadow-elevation-4 backdrop:bg-on-surface/40 backdrop:backdrop-blur-sm open:flex open:flex-col`}
     >
       <header className="flex items-start justify-between gap-4 border-b border-outline-variant/60 px-5 py-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h2 id={titleId} className="text-lg font-bold leading-tight text-on-surface">{title}</h2>
           {badge}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-control text-on-surface-variant transition-colors duration-150 hover:bg-surface-container-low focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          <Icon name="close" size={20} label="Close dialog" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {actions}
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-control text-on-surface-variant transition-colors duration-150 hover:bg-surface-container-low focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <Icon name="close" size={20} label="Close dialog" />
+          </button>
+        </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+      {/* relative: absolutely placed content (e.g. sr-only text) scrolls and clips
+          with the body instead of stretching the dialog. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
       {footer ? <footer className="flex flex-wrap justify-end gap-2 border-t border-outline-variant/60 px-5 py-4">{footer}</footer> : null}
     </dialog>
   );

@@ -37,6 +37,7 @@ async function cleanupLifecycle() {
  }
 }
 async function cleanup() {
+ await cleanupEquipment();
  if(ids.size){
   const data=check(await supabase.from('event').select('event_id,title,organiser_id').in('event_id',[...ids]));
   assert(data.length===ids.size&&data.every(row=>row.title.startsWith(runId)&&users.some(user=>user.user_id===row.organiser_id)), 'Refusing to clean non-fixture events');
@@ -52,8 +53,92 @@ async function cleanup() {
 }
 async function login(page,user) {
  await page.goto(base+'/login');await page.locator('#email').fill(user.email);await page.locator('#password').fill(process.env.SEED_ACCOUNT_PASSWORD);await page.getByRole('button',{name:'Sign in',exact:true}).click();
- await page.waitForURL(url=>['/dashboard','/my-registrations'].includes(url.pathname));
+ await page.waitForURL(url=>['/dashboard','/events'].includes(url.pathname));
  await page.getByRole('button',{name:'Logout',exact:true}).waitFor();
+}
+// SPM-44 attendee discovery. Read-only: no event data is created. The backend
+// decides visibility, so the cards are compared with its responses, not with a
+// lifecycle rule repeated here.
+const SAFE_DISCOVERY_FIELDS='description,endDatetime,eventId,location,organisationName,registrationAvailability,startDatetime,title';
+let visibleDiscoveryEventId=null;
+const workspaceReads=(requests)=>requests.filter(url=>/^\/api\/events\/\d+(\/|$)/.test(url));
+async function verifyAttendeeDiscovery(page,requests) {
+ // Attendees already land here after login, and that page's own discovery
+ // request may still be answering. Leave it first, so the response awaited below
+ // is the reload's and not one whose body the reload throws away.
+ await page.goto('about:blank');
+ const firstResponse=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/api/events/discovery'&&!u.searchParams.has('cursor');});
+ await page.goto(base+'/events');
+ const first=await firstResponse;assert(first.status()===200,'Discovery list returned '+first.status());
+ const page1=await first.json();
+ await page.getByRole('heading',{name:'Event Discovery',exact:true,level:1}).waitFor();
+ if(page1.events.length===0) {
+  await page.getByRole('heading',{name:'No events are available at the moment.',exact:true}).waitFor();
+  record('SPM-44 live discovery empty state',{events:0});return;
+ }
+ for(const event of page1.events) assert(Object.keys(event).sort().join(',')===SAFE_DISCOVERY_FIELDS,'Discovery returned non attendee-safe fields: '+Object.keys(event).join(','));
+ const cards=page.getByRole('article');await cards.first().waitFor();
+ assert(await cards.count()===page1.events.length,'Card count does not match the discovery response');
+ const titles=await page.locator('article h3').allInnerTexts();
+ assert(JSON.stringify(titles)===JSON.stringify(page1.events.map(e=>e.title)),'Cards are not the backend events in backend order');
+ let loaded=[...page1.events];
+ if(page1.nextCursor) {
+  const moreResponse=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/api/events/discovery'&&u.searchParams.get('cursor')===page1.nextCursor;});
+  await page.getByRole('button',{name:'Load more events',exact:true}).click();
+  const more=await moreResponse;assert(more.status()===200,'Load more returned '+more.status());
+  const page2=await more.json();loaded=loaded.concat(page2.events.filter(e=>!loaded.some(x=>x.eventId===e.eventId)));
+  await page.waitForFunction(count=>document.querySelectorAll('main article').length===count,loaded.length);
+  const ids=await page.locator('article h3').evaluateAll(els=>els.map(e=>e.id));
+  assert(new Set(ids).size===ids.length,'Duplicate cards after Load more');
+  record('SPM-44 live load more uses nextCursor',{firstPage:page1.events.length,total:loaded.length});
+ }
+ record('SPM-44 live discovery cards match backend',{cards:loaded.length,availability:[...new Set(loaded.map(e=>e.registrationAvailability))].sort()});
+ const target=loaded[0];visibleDiscoveryEventId=target.eventId;
+ const detailResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/events/discovery/'+target.eventId);
+ await page.getByRole('button',{name:'View event details for '+target.title,exact:true}).click();
+ assert((await detailResponse).status()===200,'Discovery detail failed');
+ await page.getByRole('dialog',{name:target.title,exact:true}).getByText('Date',{exact:true}).waitFor();
+ await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+ await page.goto(base+'/events/'+target.eventId);
+ await page.getByRole('heading',{name:target.title,exact:true,level:1}).waitFor();
+ record('SPM-44 live details via discovery/:id',{eventId:target.eventId});
+ // Hidden events: one unpublished and one published in an ineligible state.
+ // PREPARATION remains attendee-visible alongside CONFIRMED (Master 5.3).
+ const hidden=[
+  check(await supabase.from('event').select('event_id').eq('is_published',false).neq('status','DRAFT').limit(1)),
+  check(await supabase.from('event').select('event_id').eq('is_published',true).not('status','in','(CONFIRMED,PREPARATION)').limit(1)),
+ ].flat().map(row=>row.event_id);
+ for(const id of hidden) {
+  const res=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/events/discovery/'+id);
+  await page.goto(base+'/events/'+id);assert((await res).status()===404,'Hidden event '+id+' was not 404');
+  await page.getByRole('heading',{name:'This event is not available',exact:true}).waitFor();
+ }
+ record('SPM-44 live hidden events show not available',{checked:hidden.length});
+ assert(workspaceReads(requests).length===0,'Attendee UI called GET /api/events/:id: '+workspaceReads(requests).join(', '));
+ record('SPM-44 live attendee never reads the staff event endpoint',{discoveryRequests:requests.filter(u=>u.startsWith('/api/events/discovery')).length});
+}
+async function verifyDiscoveryDenied(page,role,requests,token) {
+ const res=await fetch(api+'/api/events/discovery',{headers:{Authorization:'Bearer '+token}});
+ assert(res.status===403,role+' discovery API returned '+res.status);
+ if(role!=='COORDINATOR_LEAD') {
+  await page.goto(base+'/events');
+  await page.getByText('This page is not available for your role.',{exact:false}).waitFor();
+ }
+ assert(!requests.some(u=>u.startsWith('/api/events/discovery')),role+' UI called attendee discovery');
+ record('SPM-44 live wrong role denied discovery',{role,api:res.status});
+}
+async function verifySignedOutRedirectBack(user) {
+ if(!visibleDiscoveryEventId)return;
+ const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();
+ try {
+  const target='/events/'+visibleDiscoveryEventId;
+  await page.goto(base+target);await page.waitForURL(url=>url.pathname==='/login');
+  assert(new URL(page.url()).searchParams.get('next')===target,'Login lost the event return path');
+  await page.locator('#email').fill(user.email);await page.locator('#password').fill(process.env.SEED_ACCOUNT_PASSWORD);await page.getByRole('button',{name:'Sign in',exact:true}).click();
+  await page.waitForURL(url=>url.pathname===target);
+  await page.getByRole('heading',{name:'Event information',exact:true}).waitFor();
+  record('SPM-44 live signed-out event URL returns after login',{path:target});
+ } finally {await context.close();}
 }
 async function next(page){await page.getByRole('button',{name:'Next',exact:true}).click();}
 async function complete(page,title) {
@@ -209,16 +294,351 @@ async function coordinatorLifecycle(page,coordinator) {
  assert(await state()==='PREPARATION','Start preparation did not enter PREPARATION');
  record('SPM-173 start preparation',{eventId:event.event_id});
 }
+// SPM-52 equipment catalogue against the real backend, Supabase and Atlas.
+// Items are named with the run ID and removed by cleanupEquipment: the MongoDB
+// document first (Master 10.4), then unavailable stock, outbox entries and the
+// item through the privileged test connection. Activity entries stay, as the
+// audit log is append-only.
+const equipmentIds = new Set();
+const until = async (probe, message, timeout = 15000) => {
+ const end = Date.now() + timeout;
+ for (;;) {
+  if (await probe()) return;
+  if (Date.now() > end) throw new Error(message);
+  await new Promise((resolve) => setTimeout(resolve, 250));
+ }
+};
+const bearerToken = (page) => page.evaluate(() => { const key = Object.keys(localStorage).find((name) => /^sb-.*-auth-token$/.test(name)); return key ? JSON.parse(localStorage.getItem(key)).access_token : null; });
+const equipmentApi = async (token, pathname) => { const res = await fetch(api + '/api/equipment' + pathname, { headers: { Authorization: 'Bearer ' + token } }); return { status: res.status, body: await res.json().catch(() => ({})) }; };
+// The period wording the backend uses, in Singapore time.
+const sgDate = new Intl.DateTimeFormat('en-SG', { timeZone: 'Asia/Singapore', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const sgDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Singapore' });
+const equipmentActions = async (equipmentId) => check(await supabase.from('activity_log').select('action').eq('entity_name', 'equipment').eq('entity_id', equipmentId).order('log_id')).map((row) => row.action);
+
+async function verifyEquipmentCatalogue(page, context, user) {
+ const token = await bearerToken(page);
+ const rows = page.getByRole('list', { name: 'Equipment' }).getByRole('listitem');
+ const name = runId + ' Laser Projector';
+ const category = runId + ' Visual';
+
+ // Open Equipment from the tab: the list comes from the real API.
+ const listed = page.waitForResponse((r) => r.url().startsWith(api + '/api/equipment?') || r.url() === api + '/api/equipment');
+ await page.getByRole('link', { name: 'Equipment', exact: true }).first().click();
+ await page.waitForURL((url) => url.pathname === '/equipment');
+ assert((await listed).status() === 200, 'Equipment list did not load');
+ await page.getByRole('heading', { level: 1, name: 'Equipment' }).waitFor();
+ record('SPM-52 live Equipment tab opens the catalogue', { role: user.role });
+
+ // TC-01: create; Details pending turns Active once the detail document is applied.
+ await page.getByRole('button', { name: 'Add equipment' }).first().click();
+ await page.locator('#create-equipment-name').fill(name);
+ await page.locator('#create-equipment-category').fill(category);
+ await page.locator('#create-equipment-storageLocation').fill('Store Room B');
+ await page.locator('#create-equipment-totalQuantity').fill('5');
+ await page.locator('#create-equipment-specifications').fill('Live check: 4K, 5000 lm');
+ const createResponse = page.waitForResponse((r) => r.url() === api + '/api/equipment' && r.request().method() === 'POST');
+ await page.getByRole('button', { name: 'Save equipment' }).click();
+ const created = await createResponse;
+ const createdBody = await created.json();
+ assert(created.status() === 201 && createdBody.equipment?.name === name, 'Create returned ' + created.status());
+ const equipmentId = createdBody.equipment.equipmentId;
+ equipmentIds.add(equipmentId);
+ fs.writeFileSync(output, JSON.stringify({ runId, createdEventIds: [...ids], createdEquipmentIds: [...equipmentIds], checks }, null, 2));
+ await page.getByText('“' + name + '” was created', { exact: false }).waitFor();
+ let detailStatus = null;
+ await until(async () => { const { body } = await equipmentApi(token, '/' + equipmentId); detailStatus = body.equipment?.detailStatus; return body.equipment?.status === 'ACTIVE' && detailStatus === 'CURRENT'; }, 'Item stayed Details pending (detail never applied to MongoDB)', 45000);
+ const stored = check(await supabase.from('equipment').select('created_by,version,details_pending,is_active').eq('equipment_id', equipmentId).single());
+ assert(stored.created_by === user.user_id && stored.version === 1 && !stored.details_pending && stored.is_active, 'Created row is not as expected');
+ const entries = check(await supabase.from('outbox_entries').select('state,pg_version').eq('target_collection', 'equipment_details').eq('document_id', String(equipmentId)));
+ assert(entries.length === 1 && entries[0].state === 'APPLIED', 'Outbox entry was not applied');
+ const { getMongoDb } = require(path.join(backendRoot, 'config/mongodb'));
+ const document = await (await getMongoDb()).collection('equipment_details').findOne({ _id: String(equipmentId) });
+ assert(document && document.pg_version === 1 && document.specifications === 'Live check: 4K, 5000 lm' && document.name === name, 'MongoDB document missing or wrong');
+ assert(JSON.stringify(await equipmentActions(equipmentId)) === JSON.stringify(['EQUIPMENT_CREATED']), 'Create activity entry missing');
+ record('SPM-52 live TC-01 create applies the detail and turns Active', { equipmentId, outbox: 'APPLIED', mongoPgVersion: document.pg_version });
+
+ // TC-16: search, category and status filters, then clear.
+ await page.locator('#equipment-search').fill(runId);
+ await until(async () => (await rows.count()) === 1 && (await rows.first().innerText()).includes(name), 'Search did not narrow to the new item');
+ await page.locator('#equipment-category').selectOption(category);
+ await until(async () => (await rows.count()) === 1, 'Category filter did not keep the new item');
+ await page.getByRole('button', { name: 'Inactive', exact: true }).click();
+ await page.getByText('No equipment matches these filters', { exact: true }).waitFor();
+ await page.getByRole('button', { name: 'Active', exact: true }).click();
+ await until(async () => (await rows.count()) === 1, 'Active filter did not show the new item');
+ await page.getByRole('button', { name: 'Clear filters' }).first().click();
+ await until(async () => (await page.locator('#equipment-search').inputValue()) === '' && (await rows.count()) > 1, 'Clearing the filters did not restore the full list');
+ record('SPM-52 live TC-16 search, filters and clear');
+
+ // TC-06: edit, refresh, version 2 with before and after values.
+ await page.locator('#equipment-search').fill(runId);
+ await until(async () => (await rows.count()) === 1, 'Search did not find the item again');
+ await page.getByRole('link', { name: 'Manage ' + name }).click();
+ await page.getByRole('heading', { level: 1, name }).waitFor();
+ const itemUrl = page.url();
+ await page.locator('#edit-equipment-storageLocation').fill('Store Room C');
+ await page.locator('#edit-equipment-totalQuantity').fill('6');
+ await page.getByRole('button', { name: 'Save record' }).click();
+ await page.getByText('Equipment updated.', { exact: true }).waitFor();
+ await page.reload();
+ await page.getByRole('heading', { level: 1, name }).waitFor();
+ assert(await page.locator('#edit-equipment-storageLocation').inputValue() === 'Store Room C' && await page.locator('#edit-equipment-totalQuantity').inputValue() === '6', 'Edit did not survive a refresh');
+ const edited = check(await supabase.from('equipment').select('version,storage_location,total_quantity').eq('equipment_id', equipmentId).single());
+ assert(edited.version === 2 && edited.storage_location === 'Store Room C' && edited.total_quantity === 6, 'Edit not stored as version 2');
+ const updateLog = check(await supabase.from('activity_log').select('changes').eq('entity_name', 'equipment').eq('entity_id', equipmentId).eq('action', 'EQUIPMENT_UPDATED').single());
+ assert(updateLog.changes?.storageLocation?.before === 'Store Room B' && updateLog.changes?.storageLocation?.after === 'Store Room C', 'Update activity lacks before and after values');
+ record('SPM-52 live TC-06 edit kept after refresh as version 2', { equipmentId });
+
+ // TC-07: two tabs; the second save gets 409 with the current values.
+ const tabB = await context.newPage();
+ try {
+  await tabB.goto(itemUrl);
+  await tabB.getByRole('heading', { level: 1, name }).waitFor();
+  await page.locator('#edit-equipment-storageLocation').fill('Store Room D');
+  await page.getByRole('button', { name: 'Save record' }).click();
+  await page.getByText('Equipment updated.', { exact: true }).waitFor();
+  await tabB.locator('#edit-equipment-storageLocation').fill('Store Room E');
+  const stale = tabB.waitForResponse((r) => r.url() === api + '/api/equipment/' + equipmentId && r.request().method() === 'PUT');
+  await tabB.getByRole('button', { name: 'Save record' }).click();
+  assert((await stale).status() === 409, 'Second tab was not refused');
+  await tabB.getByText('This equipment was changed after you loaded it', { exact: true }).waitFor();
+  await tabB.getByText('Store Room D', { exact: false }).first().waitFor();
+ } finally { await tabB.close(); }
+ const kept = check(await supabase.from('equipment').select('storage_location,version').eq('equipment_id', equipmentId).single());
+ assert(kept.storage_location === 'Store Room D' && kept.version === 3, 'First tab change was not kept');
+ record('SPM-52 live TC-07 two-tab conflict keeps the first save', { equipmentId });
+
+ // AC7, AC8, TC-08, TC-10: unavailable stock, refusals named in Singapore time.
+ await page.reload();
+ await page.getByRole('heading', { level: 1, name }).waitFor();
+ const day = sgDay.format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+ const period = sgDate.format(new Date(day + 'T17:00:00+08:00')) + ' · 17:00–18:00 SGT';
+ const fillPeriod = async (quantity) => {
+  await page.locator('#record-unavailable-quantity').fill(String(quantity));
+  await page.locator('#record-unavailable-startsAt').fill(day + 'T17:00');
+  await page.locator('#record-unavailable-endsAt').fill(day + 'T18:00');
+  await page.locator('#record-unavailable-reason').selectOption('DAMAGED');
+  await page.locator('#record-unavailable-note').fill('Live check record');
+ };
+ await page.getByRole('button', { name: 'Record unavailable stock' }).click();
+ await fillPeriod(3);
+ await page.getByRole('button', { name: 'Save', exact: true }).click();
+ await page.getByText('Unavailable stock recorded.', { exact: true }).waitFor();
+ const recordRow = check(await supabase.from('equipment_unavailability').select('unavailability_id,quantity,starts_at,ends_at,status').eq('equipment_id', equipmentId).single());
+ assert(recordRow.quantity === 3 && Date.parse(recordRow.starts_at) === Date.parse(day + 'T17:00:00+08:00') && Date.parse(recordRow.ends_at) === Date.parse(day + 'T18:00:00+08:00'), 'Unavailable stock not stored in Singapore time');
+
+ await page.locator('#edit-equipment-totalQuantity').fill('2');
+ await page.getByRole('button', { name: 'Save record' }).click();
+ const committed = page.locator('#edit-equipment-totalQuantity-error');
+ await committed.waitFor();
+ const committedText = await committed.innerText();
+ assert(committedText === '3 units are unavailable during ' + period + ', so the total cannot be lower than 3.', 'Unexpected committed message: ' + committedText);
+ await page.getByRole('button', { name: 'Reset' }).first().click();
+
+ await page.getByRole('button', { name: 'Record unavailable stock' }).click();
+ await fillPeriod(6);
+ await page.getByRole('button', { name: 'Save', exact: true }).click();
+ const exceeded = page.locator('#record-unavailable-quantity-error');
+ await exceeded.waitFor();
+ const exceededText = await exceeded.innerText();
+ assert(exceededText === 'Only 3 units are left to mark unavailable during ' + period + '. Unavailable stock cannot exceed the total.', 'Unexpected stock message: ' + exceededText);
+ await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+ const stillOne = check(await supabase.from('equipment_unavailability').select('unavailability_id').eq('equipment_id', equipmentId));
+ const totalNow = check(await supabase.from('equipment').select('total_quantity').eq('equipment_id', equipmentId).single());
+ assert(stillOne.length === 1 && totalNow.total_quantity === 6, 'A refused change was stored');
+
+ await page.getByRole('button', { name: /^Cancel unavailable stock from/ }).click();
+ await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+ await page.getByText('Unavailable stock cancelled.', { exact: true }).waitFor();
+ const ended = check(await supabase.from('equipment_unavailability').select('status').eq('unavailability_id', recordRow.unavailability_id).single());
+ assert(ended.status === 'CANCELLED', 'Record was not cancelled');
+ record('SPM-52 live TC-08 TC-10 unavailable stock and Singapore-time refusals', { equipmentId, period });
+
+ // AC9: deactivate and reactivate.
+ await page.getByRole('button', { name: 'Deactivate equipment' }).click();
+ await page.getByRole('button', { name: 'Deactivate', exact: true }).click();
+ await page.getByText('Equipment deactivated.', { exact: false }).waitFor();
+ await page.getByRole('button', { name: 'Reactivate equipment' }).click();
+ await page.getByText('Equipment reactivated.', { exact: false }).waitFor();
+ const { body: finalItem } = await equipmentApi(token, '/' + equipmentId);
+ assert(finalItem.equipment?.status === 'ACTIVE' && finalItem.equipment?.isActive === true, 'Item not active after reactivation');
+ const actions = await equipmentActions(equipmentId);
+ for (const action of ['EQUIPMENT_UNAVAILABILITY_RECORDED', 'EQUIPMENT_UNAVAILABILITY_ENDED', 'EQUIPMENT_DEACTIVATED', 'EQUIPMENT_REACTIVATED']) assert(actions.includes(action), 'Missing activity ' + action);
+ record('SPM-52 live AC9 deactivate and reactivate with one activity entry each', { equipmentId, activityEntries: actions.length });
+}
+
+// SPM-52 AC1 and TC-05 for a role other than Technical Support.
+async function verifyEquipmentDenied(page, role, equipmentCalls, token) {
+ const res = await fetch(api + '/api/equipment', { headers: { Authorization: 'Bearer ' + token } });
+ assert(res.status === 403, role + ' equipment API returned ' + res.status);
+ await page.goto(base + '/dashboard');
+ await page.getByRole('button', { name: 'Logout', exact: true }).waitFor();
+ assert(await page.getByRole('link', { name: 'Equipment', exact: true }).count() === 0, role + ' sees an Equipment tab');
+ for (const pathname of ['/equipment', '/equipment/1']) {
+  await page.goto(base + pathname);
+  await page.getByText('Access denied', { exact: true }).waitFor();
+  assert(await page.locator('#equipment-search').count() === 0, role + ' sees the equipment catalogue at ' + pathname);
+ }
+ assert(equipmentCalls.length === 0, role + ' UI called the equipment API');
+ await page.goto(base + '/dashboard');
+ await page.getByRole('button', { name: 'Logout', exact: true }).waitFor();
+ record('SPM-52 live TC-05 wrong role denied equipment', { role, api: res.status });
+}
+
+async function cleanupEquipment() {
+ if (!equipmentIds.size) return;
+ const idList = [...equipmentIds];
+ const techSupportIds = users.filter((user) => user.role === 'TECH_SUPPORT').map((user) => user.user_id);
+ const rows = check(await supabase.from('equipment').select('equipment_id,name,created_by').in('equipment_id', idList));
+ assert(rows.every((row) => row.name.startsWith(runId) && techSupportIds.includes(row.created_by)), 'Refusing to clean non-fixture equipment');
+ const { getMongoDb } = require(path.join(backendRoot, 'config/mongodb'));
+ const details = (await getMongoDb()).collection('equipment_details');
+ await details.deleteMany({ _id: { $in: idList.map(String) } });
+ const { Client } = require(path.join(backendRoot, 'node_modules/pg'));
+ const client = new Client({ connectionString: process.env.TEST_DATABASE_URL }); await client.connect();
+ try {
+  await client.query('BEGIN');
+  await client.query('DELETE FROM public.equipment_unavailability WHERE equipment_id = ANY($1::integer[])', [idList]);
+  await client.query("DELETE FROM public.outbox_entries WHERE target_collection = 'equipment_details' AND document_id = ANY($1::text[])", [idList.map(String)]);
+  await client.query('DELETE FROM public.equipment WHERE equipment_id = ANY($1::integer[]) AND name LIKE $2', [idList, runId + ' %']);
+  await client.query('COMMIT');
+ } catch (error) { await client.query('ROLLBACK'); throw error; } finally { await client.end(); }
+ const left = check(await supabase.from('equipment').select('equipment_id').in('equipment_id', idList));
+ const leftDocuments = await details.countDocuments({ _id: { $in: idList.map(String) } });
+ await require(path.join(backendRoot, 'config/mongodb')).closeMongoDb();
+ assert(left.length === 0 && leftDocuments === 0, 'Live equipment cleanup incomplete');
+ record('live equipment cleanup', { removedEquipment: idList.length });
+}
+
+// SPM-270 Attendee Profile. Uses a run-owned attendee and organiser from the
+// backend's Auth fixtures (Auth Admin accounts, trusted profile rows, a manifest
+// and verified cleanup), so no seed user's profile is changed. Passwords stay in
+// memory. The profile goes with its owner (ON DELETE CASCADE).
+async function attendeeProfileLive() {
+ const {newRunId,createAuthFixtures,cleanupAuthFixtures}=require(path.join(backendRoot,'tests/fixtures/authFixtures'));
+ const profileRun=newRunId();let fixtures;
+ const profileUrl=base+'/attendee-profile';
+ const signInAs=async(page,account,pathname)=>{await page.locator('#email').fill(account.email);await page.locator('#password').fill(account.password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL(url=>url.pathname===pathname);};
+ const accessToken=(page)=>page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>/^sb-.*-auth-token$/.test(key));return key?JSON.parse(localStorage.getItem(key)).access_token:null;});
+ // Reads through the backend model Event Registration also uses (AC10).
+ const {findAttendeeProfile}=require(path.join(backendRoot,'model/attendeeProfileModel'));
+ const stored=(userId)=>findAttendeeProfile(userId);
+ const putResponse=(page)=>page.waitForResponse(r=>r.url()===api+'/api/attendee-profile/mine'&&r.request().method()==='PUT');
+ const field=(page,label)=>page.getByLabel(label,{exact:true});
+ const save=async(page)=>{const response=putResponse(page);await page.getByRole('button',{name:'Save preferences',exact:true}).click();return response;};
+ try {
+  fixtures=await createAuthFixtures(profileRun);
+  const attendee={...fixtures.accounts.attendee};const organiser=fixtures.accounts.organiserA;
+  const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  try {
+   // TC-PROFILE-002: signed out, then back to the profile after login.
+   await page.goto(profileUrl);await page.waitForURL(url=>url.pathname==='/login');
+   assert(new URL(page.url()).searchParams.get('next')==='/attendee-profile','Login lost the profile return path');
+   await signInAs(page,attendee,'/attendee-profile');
+   await page.getByRole('heading',{name:'Attendee Profile',exact:true,level:1}).waitFor();
+   record('SPM-270 TC-PROFILE-002 signed-out profile URL returns after login');
+   // TC-PROFILE-001 / AC2: user details and blank first-time fields.
+   await field(page,'Dietary restrictions').waitFor();
+   const main=page.locator('main');
+   assert((await main.innerText()).includes(attendee.email),'Profile does not show the account email');
+   assert(await field(page,'Dietary restrictions').inputValue()===''&&await field(page,'Accessibility requirements').inputValue()==='','First-time profile is not blank');
+   await page.getByText(/^Not saved yet/).waitFor();
+   assert((await stored(attendee.userId)).attendeeId===null,'Fixture attendee already had a profile');
+   record('SPM-270 TC-PROFILE-001 first-time profile shows account details and blank fields');
+   // TC-PROFILE-004 / TC-PROFILE-008: first save sends version null, gets 201; blank field stored as null.
+   const unicode='Gluten-free 🌾, 素食, café';
+   await field(page,'Dietary restrictions').fill(unicode);
+   const created=await save(page);
+   assert(created.status()===201,'First save returned '+created.status());
+   assert(created.request().postDataJSON().version===null,'First save did not send version null');
+   await page.getByText('Profile saved',{exact:true}).waitFor();
+   let row=await stored(attendee.userId);
+   assert(row.attendeeId&&row.version===1&&row.dietaryRestrictions===unicode&&row.accessibilityRequirements===null,'First save not persisted as sent');
+   record('SPM-270 TC-PROFILE-004/008 first save creates the profile with version null',{version:row.version});
+   // TC-PROFILE-006/007: update one field and clear the other; the loaded version is sent.
+   await field(page,'Dietary restrictions').fill('');await field(page,'Accessibility requirements').fill('Step-free access');
+   const updated=await save(page);
+   assert(updated.status()===200&&updated.request().postDataJSON().version===1,'Update did not send the loaded version');
+   await page.getByText('Profile saved',{exact:true}).waitFor();
+   row=await stored(attendee.userId);
+   assert(row.version===2&&row.dietaryRestrictions===null&&row.accessibilityRequirements==='Step-free access','Update or clear not persisted');
+   // TC-PROFILE-011: shown again on the next visit.
+   await page.reload();await field(page,'Accessibility requirements').waitFor();
+   assert(await field(page,'Accessibility requirements').inputValue()==='Step-free access'&&await field(page,'Dietary restrictions').inputValue()==='','Saved values not shown after reload');
+   record('SPM-270 TC-PROFILE-006/007/011 update, clear and revisit',{version:row.version});
+   // 409 STALE_PROFILE: another session saves first; the edit is kept and nothing is overwritten.
+   const token=await accessToken(page);
+   const other=await fetch(api+'/api/attendee-profile/mine',{method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({dietaryRestrictions:'Saved in another tab',accessibilityRequirements:'Step-free access',version:2})});
+   assert(other.status===200,'Second-session save returned '+other.status);
+   await field(page,'Dietary restrictions').fill('Edit from the older page');
+   const stale=await save(page);
+   assert(stale.status()===409,'Stale save returned '+stale.status());
+   await page.getByText('Your profile changed since you opened it',{exact:true}).waitFor();
+   assert(await field(page,'Dietary restrictions').inputValue()==='Edit from the older page','Stale save discarded the typed value');
+   row=await stored(attendee.userId);
+   assert(row.version===3&&row.dietaryRestrictions==='Saved in another tab','Stale save changed the stored profile');
+   await page.getByRole('button',{name:'Load latest profile',exact:true}).click();
+   await page.getByText('Latest profile loaded',{exact:true}).waitFor();
+   assert(await field(page,'Dietary restrictions').inputValue()==='Saved in another tab','Latest profile not loaded');
+   record('SPM-270 STALE_PROFILE keeps the edit, changes nothing and reloads on request');
+   // TC-PROFILE-010: a failed save shows an error and keeps the typed text (network failure on the PUT).
+   await page.route('**/api/attendee-profile/mine',route=>route.request().method()==='PUT'?route.abort():route.fallback(),{times:1});
+   await field(page,'Dietary restrictions').fill('Kept after failure');
+   await page.getByRole('button',{name:'Save preferences',exact:true}).click();
+   await page.getByText('Your preferences were not saved',{exact:true}).waitFor();
+   assert(await field(page,'Dietary restrictions').inputValue()==='Kept after failure','Failed save discarded the typed value');
+   assert(await page.getByText('Profile saved',{exact:true}).count()===0,'Success shown for a failed save');
+   const retried=await save(page);assert(retried.status()===200&&retried.request().postDataJSON().version===3,'Retry did not send the current version');
+   await page.getByText('Profile saved',{exact:true}).waitFor();
+   record('SPM-270 TC-PROFILE-010 failed save keeps input and retry saves');
+   // Sidebar identity block by keyboard.
+   await page.goto(base+'/my-registrations');await page.getByRole('button',{name:'Logout',exact:true}).focus();await page.keyboard.press('Tab');
+   const identity=page.getByRole('link',{name:/^Attendee Profile for /});
+   assert(await identity.evaluate(element=>element===document.activeElement),'Identity block not reached by Tab');
+   await page.keyboard.press('Enter');await page.waitForURL(url=>url.pathname==='/attendee-profile');
+   // Mobile drawer at 390px.
+   await page.setViewportSize({width:390,height:844});await page.goto(base+'/my-registrations');
+   await page.getByRole('button',{name:'Open menu',exact:true}).click();await identity.click();await page.waitForURL(url=>url.pathname==='/attendee-profile');
+   await field(page,'Dietary restrictions').waitFor();
+   assert(await page.getByRole('button',{name:'Open menu',exact:true}).getAttribute('aria-expanded')==='false','Drawer stayed open');
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)===0,'Profile overflows at 390px');
+   assert(errors.length===0,'Browser runtime error: '+errors.join('; '));
+   record('SPM-270 sidebar identity block by keyboard and mobile drawer');
+  } finally {await context.close();}
+  // TC-PROFILE-003: another role keeps a static identity block and is denied.
+  const staffContext=await browser.newContext({timezoneId:'Asia/Singapore'});const staff=await staffContext.newPage();
+  try {
+   await staff.goto(base+'/login');await signInAs(staff,organiser,'/dashboard');
+   assert(await staff.locator('#dashboard-sidebar a[href="/attendee-profile"]').count()===0,'Organiser sidebar links to the Attendee Profile');
+   await staff.goto(profileUrl);await staff.getByText('This page is not available for your role.',{exact:false}).waitFor();
+   const res=await fetch(api+'/api/attendee-profile/mine',{headers:{Authorization:'Bearer '+await accessToken(staff)}});
+   assert(res.status===403,'Organiser profile API returned '+res.status);
+   record('SPM-270 TC-PROFILE-003 organiser denied in UI and API',{api:res.status});
+  } finally {await staffContext.close();}
+ } finally {
+  if(fixtures) {
+   await cleanupAuthFixtures(profileRun);
+   const left=await supabase.from('user').select('user_id',{count:'exact',head:true}).like('email',`spm32-${profileRun}-%`);if(left.error)throw left.error;
+   assert(left.count===0,'SPM-270 fixture users left behind');
+   assert(check(await supabase.rpc('get_attendee_profile',{p_user_id:fixtures.accounts.attendee.userId}))===null,'SPM-270 fixture profile left behind');
+   record('SPM-270 fixture cleanup',{runId:profileRun,usersLeft:left.count});
+  }
+ }
+}
 async function main() {
  users=check(await supabase.from('user').select('user_id,name,role,email,auth_user_id,is_active').like('email','dev-%@connectsphere.test')).filter(user=>user.name.startsWith('Seed ')&&user.is_active&&user.auth_user_id);
  assert(process.env.SEED_ACCOUNT_PASSWORD,'SEED_ACCOUNT_PASSWORD is missing');
  browser=await chromium.launch({channel:'chrome',headless:true});
- for(const [role,heading] of [['ORGANISER','My Requests'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['SAFETY_OFFICER','Safety Officer dashboard'],['ATTENDEE','My Registrations']]) {
+ for(const [role,heading] of [['ORGANISER','Organisation Events'],['COORDINATOR','Event Coordinator dashboard'],['VENUE_STAFF','My Requests'],['TECH_SUPPORT','Technical Support dashboard'],['SAFETY_OFFICER','Safety Officer dashboard'],['ATTENDEE','Event Discovery']]) {
   if(process.env.LIVE_ROLES&&!process.env.LIVE_ROLES.split(',').includes(role))continue;
   const user=users.find(user=>user.role===role);assert(user,'Missing synthetic seed for '+role);
   const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   const tracked=[];
+  const apiReads=[];
+  const equipmentCalls=[];
+  page.on('request',request=>{if(request.url().startsWith(api+'/api/equipment'))equipmentCalls.push(request.url());});
+  page.on('request',request=>{if(request.url().startsWith(api+'/api/events')&&request.method()==='GET'){const u=new URL(request.url());apiReads.push(u.pathname+u.search);}});
   page.on('response',response=>{
    if(response.url().startsWith(api+'/api/events')&&['POST','PUT'].includes(response.request().method())) {
     tracked.push((async()=>{const body=await response.json().catch(()=>({}));if(body.event?.eventId && body.event.title?.startsWith(runId)){ids.add(body.event.eventId);fs.writeFileSync(output,JSON.stringify({runId,createdEventIds:[...ids],checks},null,2));}})());
@@ -264,12 +684,19 @@ async function main() {
     record('SPM-37 real autosave POST then PUT without audit noise',{eventId:autoId});
 
    }
+   if(role==='TECH_SUPPORT')await verifyEquipmentCatalogue(page,context,user);
+   if(role==='ATTENDEE')await verifyAttendeeDiscovery(page,apiReads);
    // A revoked access token must also be rejected by the server.
    const token=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>/^sb-.*-auth-token$/.test(key));return key?JSON.parse(localStorage.getItem(key)).access_token:null;});
+   if(role!=='ATTENDEE')await verifyDiscoveryDenied(page,role,apiReads,token);
+   if(role!=='TECH_SUPPORT')await verifyEquipmentDenied(page,role,equipmentCalls,token);
    await page.getByRole('button',{name:'Logout',exact:true}).click();await page.waitForURL(url=>url.pathname==='/login');
    const revoked=await fetch(api+'/api/auth/me',{headers:{Authorization:'Bearer '+token}});assert(revoked.status===401,'Logout did not revoke token');
    assert(errors.length===0,'Browser runtime error: '+errors.join('; '));record('real logout and token revocation',{role});
   } finally {await Promise.allSettled(tracked);await context.close();}
  }
+ if(!process.env.LIVE_ROLES||process.env.LIVE_ROLES.split(',').includes('ATTENDEE'))await attendeeProfileLive();
+ const attendee=users.find(user=>user.role==='ATTENDEE');
+ if(attendee)await verifySignedOutRedirectBack(attendee);
 }
 (async()=>{try{await main();}catch(e){record('failure',{message:e.message});process.exitCode=1;}finally{try{await cleanup();}catch(e){record('cleanup failure',{message:e.message});process.exitCode=1;}if(browser)await browser.close();fs.writeFileSync(output,JSON.stringify({runId,createdEventIds:[...ids],checks},null,2));}})();

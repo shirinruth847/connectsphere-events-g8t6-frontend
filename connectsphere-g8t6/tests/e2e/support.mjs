@@ -2,6 +2,12 @@ import { expect } from "@playwright/test";
 
 const FIXED_SAVED_AT = "2026-10-13T12:00:00.000Z";
 
+export const emptyOrganiserArrangements = () => ({
+  venues: { status: "READY", holdsStatus: "READY", availabilityStatus: "READY", primaryVenueStatus: "NOT_DESIGNATED", bookings: [], holds: [] },
+  technical: { status: "READY", supportStatus: "READY", requirements: [], requests: [] },
+  safety: { status: "READY", reviews: [] },
+});
+
 export const makeDraft = (overrides = {}) => ({
   eventId: 43,
   requestId: "REQ-000043",
@@ -52,6 +58,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     failure: null,
     delay: 0,
     requestLog: [],
+    arrangements: emptyOrganiserArrangements(),
     assignments: [],
     queueEvents: null,
     coordinatorChanges: [],
@@ -109,6 +116,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
       const id = Number(coordinatorChange[1]);
       const reassign = payload.expectedCoordinatorId !== undefined;
+      if (reassign && !request.headers()['idempotency-key']) return json({ error: "Send a command key.", code: "VALIDATION_FAILED" }, 400);
       const event = (reassign ? state.assignments : state.queueEvents || []).find(event => event.eventId === id);
       if (!event) return json({ error: "Event not found.", code: "EVENT_NOT_FOUND" }, 404);
       if (reassign && event.coordinatorId !== payload.expectedCoordinatorId) return json({ error: "Assignment changed. Refresh and try again.", code: "ASSIGNMENT_CHANGED" }, 409);
@@ -119,13 +127,15 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
       state.assignments = [...state.assignments.filter(other => other.eventId !== id), assigned];
       state.queueEvents = (state.queueEvents || []).filter(other => other.eventId !== id);
       target.events.push(assigned);
-      return json({ event: assigned, coordinator: { coordinatorId: target.coordinatorId, name: target.name } });
+      return json({ event: assigned, coordinator: { coordinatorId: target.coordinatorId, name: target.name }, ...(reassign ? { replayed: false } : {}) });
     }
     if (pathname === "/api/events/coordinator-availability") return json({ coordinators: state.coordinators });
+    // Attendees land on Event Discovery; specs needing events route it themselves.
+    if (pathname === "/api/events/discovery") return json({ events: [], nextCursor: null });
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     // The Updates button on attendee pages (SPM-155); its spec mocks the inbox itself.
     if (pathname === "/api/notifications/unread-count") return json({ unreadCount: 0 });
-    if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"] });
+    if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"], equipment: [{ equipmentId: 1, name: "Projector" }, { equipmentId: 2, name: "Microphone" }] });
 
     if (pathname === "/api/events/mine" && method === "GET") {
       return json({ events: state.events.map(organiserView), nextCursor: null });
@@ -141,6 +151,9 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     }
 
     if (/^\/api\/events\/\d+\/history$/.test(pathname) && method === "GET") return json({ history: [], nextCursor: null });
+    if (/^\/api\/events\/\d+\/history\/viewed$/.test(pathname) && method === "POST") return json({ lastViewedAt: FIXED_SAVED_AT });
+    if (/^\/api\/events\/\d+\/arrangements$/.test(pathname) && method === "GET") return json({ arrangements: state.arrangements });
+    if (/^\/api\/events\/\d+\/clarifications$/.test(pathname) && method === "GET") return json({ clarifications: [] });
     const eventMatch = pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventMatch && method === "GET") {
       const event = state.events.find(event => event.eventId === Number(eventMatch[1]));
@@ -240,3 +253,48 @@ export async function installLoginMock(page, { role = "ORGANISER", invalid = fal
   return state;
 }
 export { expect };
+
+// SPM-72/74: one venue option as the venue-options routes return it.
+export const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005050201a5d9ad9c0000000049454e44ae426082", "hex");
+
+export const requirement = (key, label, status, detail) => ({ key, label, status, detail });
+export const venueOption = (overrides = {}) => ({
+  venueId: 45,
+  name: "Synthetic Grand Hall",
+  address: "1 Harbourfront Walk",
+  maxCapacity: 300,
+  operatingHours: "08:00-22:00",
+  accessibilityFeatures: ["Wheelchair accessible entrance"],
+  setupMinutes: 30,
+  turnaroundMinutes: 45,
+  rooms: [{ roomId: 1, layoutType: "THEATRE", capacity: 300 }],
+  detailStatus: "CURRENT",
+  description: "Main hall with a stage.",
+  facilities: ["Projector", "Stage"],
+  supportedLayouts: ["THEATRE"],
+  emergencyAccess: "Two exits on the north side",
+  knownRestrictions: ["No open flames"],
+  relatedVenues: [],
+  coverPhotoId: "6716f0c2a1b2c3d4e5f60718",
+  availability: { status: "AVAILABLE", label: "Available", occupiedStart: "2026-11-20T01:30:00.000Z", occupiedEnd: "2026-11-20T04:45:00.000Z", conflicts: [], operatingHoursWarning: null },
+  requirements: [
+    requirement("capacity", "Capacity", "MET", "Holds 300; 150 expected"),
+    requirement("availability", "Availability", "MET", "Available"),
+    requirement("layout", "Layout", "MET", "THEATRE layout"),
+    requirement("accessibility-0", "Accessibility", "MET", "Wheelchair access"),
+  ],
+  unmetCount: 0,
+  allRequirementsMet: true,
+  ...overrides,
+});
+
+// Read-only photos for everyone choosing a venue (GET /api/venues/options/:id/photos).
+export async function routeVenuePhotos(page) {
+  await page.route(/\/api\/venues\/options\/\d+\/photos(\/\w+)?$/, (route) => {
+    if (route.request().method() === "OPTIONS") return route.fallback();
+    if (/\/photos$/.test(new URL(route.request().url()).pathname)) {
+      return route.fulfill({ json: { photos: [{ photoId: "6716f0c2a1b2c3d4e5f60718", position: 0, caption: "Front entrance", contentType: "image/png", size: PNG.length, uploadedAt: "2026-10-20T00:00:00.000Z", updatedAt: null, version: 1 }] } });
+    }
+    return route.fulfill({ status: 200, contentType: "image/png", body: PNG });
+  });
+}

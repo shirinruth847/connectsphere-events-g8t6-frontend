@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { availabilityQuery, catalogueQuery, managedVenueQuery } from '../components/venues/venue-queries.ts';
+import { availabilityQuery, catalogueQuery, managedVenueQuery, venueOptionsQuery } from '../components/venues/venue-queries.ts';
+import { DEFAULT_VENUE_PAGE_SIZE, eventCalendarCheck, parsePageSize, showMoreCount, suggestionBlocker, venueFilterChoices } from '../components/venues/event-venue-options/venue-option-model.ts';
 import { EMPTY_VENUE_FORM, parseList, validateVenueForm } from '../components/venue-staff/venue-management/venue-form-rules.ts';
 import { canViewPath } from '../lib/auth.ts';
 
@@ -73,4 +74,71 @@ test('detail lists split on commas and new lines', () => {
 test('[SPM-73 TC9] only Venue Staff may open venue management pages', () => {
   assert.equal(canViewPath('VENUE_STAFF', '/venues/12'), true);
   for (const role of ['COORDINATOR', 'COORDINATOR_LEAD', 'ORGANISER', 'TECH_SUPPORT', 'ATTENDEE']) assert.equal(canViewPath(role, '/venues/12'), false, role);
+});
+
+test('[SPM-72 AC1] /venues is Venue Staff only; coordinators and Leads use the event venue section', () => {
+  assert.equal(canViewPath('VENUE_STAFF', '/venues'), true);
+  for (const role of ['COORDINATOR', 'COORDINATOR_LEAD', 'ORGANISER', 'TECH_SUPPORT', 'ATTENDEE']) assert.equal(canViewPath(role, '/venues'), false, role);
+});
+
+test('[SPM-72 AC3][AC5] venue option queries trim filters, de-duplicate required facilities and omit defaults', () => {
+  assert.equal(venueOptionsQuery({}), '');
+  assert.equal(venueOptionsQuery({ sort: 'match', order: 'asc' }), '');
+  assert.equal(
+    venueOptionsQuery({ search: ' Hall ', minCapacity: '200', requiredFacilities: 'Projector, Stage ,, Projector', sort: 'capacity', order: 'desc' }),
+    '?search=Hall&minCapacity=200&requiredFacilities=Projector%2CStage&sort=capacity&order=desc',
+  );
+});
+
+test('[SPM-74 TC3][TC16] the calendar opens on the event window in Singapore time, across every day of a multi-day event', () => {
+  assert.deepEqual(eventCalendarCheck('2027-03-10T02:00:00Z', '2027-03-10T04:00:00Z'), { date: '2027-03-10', startTime: '10:00', endDate: '2027-03-10', endTime: '12:00' });
+  // 23:30 SGT on 9 March is still the 9th in Singapore.
+  assert.deepEqual(eventCalendarCheck('2027-03-09T15:30:00Z', '2027-03-09T17:00:00Z'), { date: '2027-03-09', startTime: '23:30', endDate: '2027-03-10', endTime: '01:00' });
+  // A three-day event is checked from its first start to its last end.
+  const multiDay = eventCalendarCheck('2027-03-10T01:00:00Z', '2027-03-12T09:00:00Z');
+  assert.deepEqual(multiDay, { date: '2027-03-10', startTime: '09:00', endDate: '2027-03-12', endTime: '17:00' });
+  const params = new URLSearchParams(availabilityQuery({ date: '2027-03-08', days: 7, venueIds: [45], check: multiDay }));
+  assert.equal(params.get('checkStart'), '2027-03-10T09:00:00+08:00');
+  assert.equal(params.get('checkEnd'), '2027-03-12T17:00:00+08:00');
+  assert.equal(eventCalendarCheck(null, '2027-03-10T04:00:00Z'), null);
+});
+
+test('[SPM-72 AC8] a venue too small for the attendance cannot be selected', () => {
+  const venue = (status) => ({ requirements: [{ key: 'capacity', label: 'Capacity', status, detail: '' }] });
+  assert.match(suggestionBlocker(venue('UNMET')), /cannot hold/);
+  assert.equal(suggestionBlocker(venue('MET')), null);
+  assert.equal(suggestionBlocker({ requirements: [] }), null);
+});
+
+test('[SPM-72 AC3][SPM-75 AC2] the list shows 12 venues by default and "Show more" adds a page or what is left', () => {
+  assert.equal(DEFAULT_VENUE_PAGE_SIZE, 12);
+  assert.equal(showMoreCount(10, 256, 10), 10);
+  assert.equal(showMoreCount(50, 256, 50), 50);
+  assert.equal(showMoreCount(250, 256, 10), 6);
+  assert.equal(showMoreCount(256, 256, 10), 0);
+});
+
+test('[SPM-75] the filter dropdowns list every value the venues carry, once, and keep earlier ones', () => {
+  const venue = (rooms, supportedLayouts, facilities, accessibilityFeatures) => ({ rooms: rooms.map((layoutType) => ({ layoutType })), supportedLayouts, facilities, accessibilityFeatures });
+  const first = venueFilterChoices([
+    venue(['THEATRE'], ['Banquet'], ['Stage', 'Projector'], ['Ramp']),
+    venue(['theatre', 'CLASSROOM'], null, [' Stage ', ''], null),
+  ]);
+  assert.deepEqual(first, { layouts: ['Banquet', 'CLASSROOM', 'THEATRE'], facilities: ['Projector', 'Stage'], accessibility: ['Ramp'] });
+  // A filtered load returns fewer venues; the earlier choices stay.
+  assert.deepEqual(venueFilterChoices([venue([], [], ['PA system'], [])], first).facilities, ['PA system', 'Projector', 'Stage']);
+});
+
+test('[SPM-75 TC-VS-006] "Show x results" takes whole numbers from 1 to 100', () => {
+  assert.equal(parsePageSize('7'), 7);
+  assert.equal(parsePageSize(' 100 '), 100);
+  for (const value of ['', '0', '101', '2.5', '-3', 'ten']) assert.equal(parsePageSize(value), null, value);
+});
+
+test('[SPM-75] several layout, facility or accessibility values go as repeated parameters, once each', () => {
+  assert.equal(
+    venueOptionsQuery({ layout: ['Theater', 'Banquet'], facility: ['Projector', ' projector ', 'Stage'], accessibility: [] }),
+    '?layout=Theater&layout=Banquet&facility=Projector&facility=Stage',
+  );
+  assert.equal(catalogueQuery({ layout: 'Theater' }), '?layout=Theater');
 });

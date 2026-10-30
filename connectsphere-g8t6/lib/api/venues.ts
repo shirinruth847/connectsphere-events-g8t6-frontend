@@ -2,7 +2,6 @@ import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
 import {
   availabilityQuery,
-  catalogueQuery,
   managedVenueQuery,
   type AvailabilityParams,
   type CatalogueFilters,
@@ -19,6 +18,8 @@ export type VenueRoom = {
 
 export type DetailStatus = "CURRENT" | "NOT_AVAILABLE" | "NOT_CHECKED";
 
+// A venue's catalogue fields; the event venue section (lib/api/event-venues.ts)
+// adds each event's requirements and availability to them.
 export type Venue = {
   venueId: number;
   name: string;
@@ -40,16 +41,11 @@ export type Venue = {
   supportedLayouts: string[] | null;
   emergencyAccess: string | null;
   knownRestrictions: string[] | null;
+  // Venues of the same building (a hall and its rooms), each bookable on its
+  // own; only those still available. null when the detail service is down;
+  // absent from older backends.
+  relatedVenues?: { venueId: number; name: string }[] | null;
 };
-
-export type VenueCatalogue = {
-  venues: Venue[];
-  detailsAvailable: boolean;
-  filtersNotChecked?: string[];
-};
-
-export const getVenueCatalogue = (filters: CatalogueFilters = {}) =>
-  apiRequest<VenueCatalogue>(`/venues${catalogueQuery(filters)}`);
 
 // ---------- maintenance (SPM-73, Venue Staff) ----------
 
@@ -266,4 +262,4 @@ export type VenueCalendar = {
 export type VenueAvailability = { from: string; to: string; generatedAt?: string; venues: VenueCalendar[] };
 
 export const getVenueAvailability = (params: AvailabilityParams) =>
-  apiRequest<VenueAvailability>(`/venues/availability${availabilityQuery(params)}`);
+  apiRequest<VenueAvailability>(`${params.eventId ? `/events/${params.eventId}/venue-availability` : "/venues/availability"}${availabilityQuery(params)}`);

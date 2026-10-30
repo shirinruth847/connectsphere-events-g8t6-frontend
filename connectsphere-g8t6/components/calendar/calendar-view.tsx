@@ -6,14 +6,7 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
-import {
-  calendarDate,
-  calendarDayBounds,
-  overlapsCalendarDay,
-  shiftCalendarMonth,
-  calendarLabelInstant,
-  calendarHourInstant,
-} from "@/lib/coordinator-calendar";
+import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
 import styles from "./calendar-view.module.css";
 
 export type CalendarViewMode = "year" | "month" | "week" | "day";
@@ -44,9 +37,20 @@ export type CalendarEvent = {
 // What each lane (legend entry) is called. Defaults to coordinators; the venue
 // availability calendar (SPM-181) shows venues.
 export type CalendarEntityLabel = { singular: string; plural: string };
-const COORDINATOR_LABEL: CalendarEntityLabel = {
-  singular: "coordinator",
-  plural: "coordinators",
+const COORDINATOR_LABEL: CalendarEntityLabel = { singular: "coordinator", plural: "coordinators" };
+
+// A shaded period in the week and day views, drawn over the timeline rather
+// than as an event (developer request of 24 October 2026): "request" is the
+// period being checked (translucent yellow, with label in the block and detail
+// in a hover window), "conflict" where it overlaps existing occupied time
+// (red), "closed" outside operating hours (grey, beneath everything).
+export type CalendarOverlay = {
+  id: string;
+  start: string;
+  end: string;
+  tone: "request" | "conflict" | "closed";
+  label?: string;
+  detail?: string;
 };
 
 export type CalendarCoordinator = {
@@ -59,13 +63,14 @@ const SLOT_HEIGHT = 26;
 const HOURS_IN_DAY = 24;
 const CALENDAR_TIME_ZONE = "Asia/Singapore";
 
+// No red: red marks a requested period that overlaps existing time.
 const COORDINATOR_COLORS = [
   "#4F46E5",
   "#2563EB",
   "#0D9488",
   "#16A34A",
   "#CA8A04",
-  "#DC2626",
+  "#0E7490",
   "#7C3AED",
   "#BE1882",
 ];
@@ -100,8 +105,7 @@ function getTextColor(backgroundColor: string): string {
 
   const luminance = 0.2126 * sRGB(r) + 0.7152 * sRGB(g) + 0.0722 * sRGB(b);
   const whiteContrast = 1.05 / (luminance + 0.05);
-  const darkLuminance =
-    0.2126 * sRGB(32) + 0.7152 * sRGB(33) + 0.0722 * sRGB(36);
+  const darkLuminance = 0.2126 * sRGB(32) + 0.7152 * sRGB(33) + 0.0722 * sRGB(36);
   const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
   return darkContrast >= whiteContrast ? "#202124" : "#ffffff";
 }
@@ -145,9 +149,7 @@ function addYears(date: Date, years: number): Date {
   const month = d.getMonth();
   d.setDate(1);
   d.setFullYear(d.getFullYear() + years);
-  d.setDate(
-    Math.min(date.getDate(), new Date(d.getFullYear(), month + 1, 0).getDate()),
-  );
+  d.setDate(Math.min(date.getDate(), new Date(d.getFullYear(), month + 1, 0).getDate()));
   return d;
 }
 
@@ -165,6 +167,7 @@ const timeFormat = new Intl.DateTimeFormat("en-SG", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+
 
 const monthFormat = new Intl.DateTimeFormat("en-SG", {
   timeZone: "Asia/Singapore",
@@ -200,8 +203,7 @@ function formatYearLabel(date: Date): string {
 
 function dateToMinutes(date: Date): number {
   const parts = timeFormat.formatToParts(date);
-  const value = (type: "hour" | "minute") =>
-    Number(parts.find((part) => part.type === type)?.value);
+  const value = (type: "hour" | "minute") => Number(parts.find((part) => part.type === type)?.value);
   return value("hour") * 60 + value("minute");
 }
 
@@ -227,14 +229,11 @@ function layoutDayEvents(
   const bounds = calendarDayBounds(day);
 
   const items: ParsedEvent[] = events
-    .filter((event) =>
-      overlapsCalendarDay(event.startDatetime, event.endDatetime, day),
-    )
+    .filter((event) => overlapsCalendarDay(event.startDatetime, event.endDatetime, day))
     .map((e) => {
       const startMs = new Date(e.startDatetime).getTime();
       const endMs = new Date(e.endDatetime).getTime();
-      const startMin =
-        (Math.max(startMs, bounds.start) - bounds.start) / 60_000;
+      const startMin = (Math.max(startMs, bounds.start) - bounds.start) / 60_000;
       const endMin = (Math.min(endMs, bounds.end) - bounds.start) / 60_000;
       return { ...e, startMin, endMin };
     })
@@ -345,9 +344,7 @@ function CoordinatorLegend({
     return c.name;
   };
 
-  const allVisible =
-    coordinators.length > 0 &&
-    coordinators.every((c) => visibleIds.has(c.coordinatorId));
+  const allVisible = coordinators.length > 0 && coordinators.every((c) => visibleIds.has(c.coordinatorId));
   const noneVisible = coordinators.length > 0 && visibleIds.size === 0;
 
   const filtered = coordinators.filter((c) =>
@@ -358,16 +355,10 @@ function CoordinatorLegend({
     return null;
   }
 
-  const selectedCoords = coordinators.filter((c) =>
-    visibleIds.has(c.coordinatorId),
-  );
+  const selectedCoords = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
 
   return (
-    <div
-      className="cal-legend"
-      role="group"
-      aria-label={`Filter by ${singular}`}
-    >
+    <div className="cal-legend" role="group" aria-label={`Filter by ${singular}`}>
       <button
         type="button"
         className="cal-legend-trigger"
@@ -376,12 +367,9 @@ function CoordinatorLegend({
         aria-haspopup="listbox"
       >
         <span className="cal-legend-trigger-label">
-          {selectedCoords.length === coordinators.length
-            ? `All ${plural}`
-            : selectedCoords.length === 0
-              ? `No ${plural}`
-              : `${selectedCoords.length} ${selectedCoords.length === 1 ? singular : plural}`}
-        </span>
+          {selectedCoords.length === coordinators.length ? `All ${plural}`
+            : selectedCoords.length === 0 ? `No ${plural}`
+            : `${selectedCoords.length} ${selectedCoords.length === 1 ? singular : plural}`}</span>
         <span className="cal-legend-trigger-arrow">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
@@ -409,12 +397,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => {
-                onSetVisibleIds(
-                  new Set(coordinators.map((c) => c.coordinatorId)),
-                );
-                setOpen(false);
-              }}
+              onClick={() => { onSetVisibleIds(new Set(coordinators.map((c) => c.coordinatorId))); setOpen(false); }}
               disabled={allVisible}
             >
               All
@@ -422,10 +405,7 @@ function CoordinatorLegend({
             <button
               type="button"
               className="cal-legend-toggle"
-              onClick={() => {
-                onSetVisibleIds(new Set());
-                setOpen(false);
-              }}
+              onClick={() => { onSetVisibleIds(new Set()); setOpen(false); }}
               disabled={noneVisible}
             >
               None
@@ -452,17 +432,10 @@ function CoordinatorLegend({
                     />
                     <span
                       className="cal-legend-swatch"
-                      style={{
-                        backgroundColor: color,
-                        opacity: visible ? 1 : 0.3,
-                      }}
+                      style={{ backgroundColor: color, opacity: visible ? 1 : 0.3 }}
                     />
-                    <span className="cal-legend-name">
-                      {displayName(coordinator)}
-                    </span>
-                    <span className="cal-legend-count">
-                      {coordinator.events.length}
-                    </span>
+                    <span className="cal-legend-name">{displayName(coordinator)}</span>
+                    <span className="cal-legend-count">{coordinator.events.length}</span>
                   </label>
                 );
               })
@@ -473,6 +446,7 @@ function CoordinatorLegend({
     </div>
   );
 }
+
 
 function EventBlock({
   event,
@@ -486,8 +460,7 @@ function EventBlock({
   onHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
 }) {
   const isTerminal =
-    event.status &&
-    ["COMPLETED", "REJECTED", "CANCELLED"].includes(event.status);
+    event.status && ["COMPLETED", "REJECTED", "CANCELLED"].includes(event.status);
   const heightPct = event.height;
   const statusLabel = STATUS_LABELS[event.status ?? ""] ?? event.status;
 
@@ -518,10 +491,7 @@ function EventBlock({
       onMouseLeave={() => onHover?.(null)}
       aria-label={`${formatTime(new Date(event.startDatetime))}–${formatTime(new Date(event.endDatetime))}: ${event.title}; ${statusLabel}`}
     >
-      <span
-        className="cal-event-color-strip"
-        style={{ backgroundColor: color }}
-      />
+      <span className="cal-event-color-strip" style={{ backgroundColor: color }} />
       {heightPct > 10 && (
         <>
           <small className="cal-event-time">
@@ -532,8 +502,7 @@ function EventBlock({
             {event.title}
           </strong>
           <span className="cal-event-meta">
-            {statusLabel}
-            {event.organisation ? ` · ${event.organisation}` : ""}
+            {statusLabel}{event.organisation ? ` · ${event.organisation}` : ""}
           </span>
         </>
       )}
@@ -546,12 +515,42 @@ function EventBlock({
         </span>
       )}
       {heightPct <= 4 && (
-        <span
-          className="cal-event-tiny"
-          title={`${event.title} · ${statusLabel}`}
-        />
+        <span className="cal-event-tiny" title={`${event.title} · ${statusLabel}`} />
       )}
     </div>
+  );
+}
+
+// The overlays that fall on one day, placed like events: a percentage of the day.
+function OverlayBlocks({ overlays, day }: { overlays: CalendarOverlay[]; day: Date }) {
+  const bounds = calendarDayBounds(day);
+  const total = bounds.end - bounds.start;
+  return (
+    <>
+      {overlays
+        .filter((overlay) => overlapsCalendarDay(overlay.start, overlay.end, day))
+        .map((overlay) => {
+          const start = Math.max(new Date(overlay.start).getTime(), bounds.start);
+          const end = Math.min(new Date(overlay.end).getTime(), bounds.end);
+          const top = ((start - bounds.start) / total) * 100;
+          const height = ((end - start) / total) * 100;
+          const style: CSSProperties = { top: `${top}%`, height: `${height}%` };
+          if (overlay.tone !== "request") {
+            return <div key={overlay.id} className={`cal-overlay cal-overlay--${overlay.tone}`} style={style} aria-hidden="true" />;
+          }
+          // Only the label takes the pointer, so events under the block stay clickable.
+          return (
+            <div key={overlay.id} className="cal-overlay cal-overlay--request" style={style}>
+              {overlay.label ? (
+                <span className="cal-overlay-label" tabIndex={0} aria-label={[overlay.label, overlay.detail].filter(Boolean).join(". ")}>
+                  {overlay.label}
+                  {overlay.detail ? <span className="cal-overlay-tip" aria-hidden="true">{overlay.detail}</span> : null}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+    </>
   );
 }
 
@@ -609,15 +608,17 @@ function WeekView({
   onEventHover,
   onDayClick,
   selectedEvent,
+  overlays = [],
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
   colorMap: Map<number, string>;
   visibleIds: Set<number>;
-  onEventClick?: (event: LayoutEvent) => void;
+   onEventClick?: (event: LayoutEvent) => void;
   onEventHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
   onDayClick?: (date: Date) => void;
   selectedEvent?: CalendarEvent;
+  overlays?: CalendarOverlay[];
 }) {
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -628,9 +629,7 @@ function WeekView({
     return { hour: h, label: formatTime(slotDate) };
   });
 
-  const visibleCoordinators = coordinators.filter((c) =>
-    visibleIds.has(c.coordinatorId),
-  );
+  const visibleCoordinators = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
   const allEvents = visibleCoordinators.flatMap((c) => c.events);
   const now = new Date();
   const showNowLine = days.some((d) => isSameDay(d, calendarDate(now)));
@@ -669,28 +668,27 @@ function WeekView({
               .sort((a, b) => a - b)[0];
             const nowMs = now.getTime();
             const targetTime = firstEvent !== undefined ? firstEvent : nowMs;
-            const targetTop =
-              (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
+            const targetTop = (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
             const scrollToPx = (targetTop / 100) * el.scrollHeight - 60;
             if (scrollToPx > 0) el.scrollTop = scrollToPx;
           }
         }}
       >
-        <TimeGrid hours={hours} now={now} showNowLine={showNowLine}>
+        <TimeGrid
+          hours={hours}
+          now={now}
+          showNowLine={showNowLine}
+        >
           {days.map((day) => {
             const layouted = layoutDayEvents(allEvents, day, colorMap);
             const selectedLayouted =
-              selectedEvent &&
-              overlapsCalendarDay(
-                selectedEvent.startDatetime,
-                selectedEvent.endDatetime,
-                day,
-              )
+              selectedEvent && overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, day)
                 ? layoutDayEvents([selectedEvent], day, colorMap)
                 : [];
 
             return (
               <div key={day.getTime()} className="cal-day-column">
+                <OverlayBlocks overlays={overlays} day={day} />
                 {layouted.map((event) => (
                   <EventBlock
                     key={event.eventId}
@@ -730,6 +728,7 @@ function DayView({
   onEventClick,
   onEventHover,
   selectedEvent,
+  overlays = [],
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
@@ -738,6 +737,7 @@ function DayView({
   onEventClick?: (event: LayoutEvent) => void;
   onEventHover?: (event: LayoutEvent | null, x?: number, y?: number) => void;
   selectedEvent?: CalendarEvent;
+  overlays?: CalendarOverlay[];
 }) {
   const today = calendarDate(new Date());
   const isToday = isSameDay(currentDate, today);
@@ -747,9 +747,7 @@ function DayView({
     return { hour: h, label: formatTime(slotDate) };
   });
 
-  const visibleCoordinators = coordinators.filter((c) =>
-    visibleIds.has(c.coordinatorId),
-  );
+  const visibleCoordinators = coordinators.filter((c) => visibleIds.has(c.coordinatorId));
   const allEvents = visibleCoordinators.flatMap((c) => c.events);
   const now = new Date();
 
@@ -776,15 +774,19 @@ function DayView({
               .sort((a, b) => a - b)[0];
             const nowMs = now.getTime();
             const targetTime = firstEvent !== undefined ? firstEvent : nowMs;
-            const targetTop =
-              (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
+            const targetTop = (dateToMinutes(new Date(targetTime)) / (HOURS_IN_DAY * 60)) * 100;
             const scrollToPx = (targetTop / 100) * el.scrollHeight - 60;
             if (scrollToPx > 0) el.scrollTop = scrollToPx;
           }
         }}
       >
-        <TimeGrid hours={hours} now={now} showNowLine={isToday}>
+        <TimeGrid
+          hours={hours}
+          now={now}
+          showNowLine={isToday}
+        >
           <div className="cal-day-column">
+            <OverlayBlocks overlays={overlays} day={currentDate} />
             {layoutDayEvents(allEvents, currentDate, colorMap).map((event) => (
               <EventBlock
                 key={event.eventId}
@@ -795,11 +797,7 @@ function DayView({
               />
             ))}
             {selectedEvent &&
-              overlapsCalendarDay(
-                selectedEvent.startDatetime,
-                selectedEvent.endDatetime,
-                currentDate,
-              ) && (
+              overlapsCalendarDay(selectedEvent.startDatetime, selectedEvent.endDatetime, currentDate) && (
                 <div
                   className="cal-event-phantom"
                   style={{
@@ -818,16 +816,54 @@ function DayView({
   );
 }
 
+// Month "bars" (developer request of 25 October 2026, after Google Calendar's
+// month view): each entry is a labelled bar across its days, kept in the same
+// lane through a week so a multi-day bar reads as one. The checked request is
+// a yellow bar, red where it overlaps existing time.
+type MonthItem = {
+  key: string;
+  start: string;
+  end: string;
+  label: string;
+  color?: string;
+  event?: CalendarEvent;
+  tone?: "request" | "conflict";
+};
+const MONTH_LANES = 3;
+
+function weekLanes(items: MonthItem[], week: Date[]) {
+  const placed: { item: MonthItem; from: number; to: number; lane: number }[] = [];
+  const spans = items
+    .map((item) => {
+      const days = week.map((day, index) => (overlapsCalendarDay(item.start, item.end, day) ? index : -1)).filter((index) => index >= 0);
+      return days.length ? { item, from: days[0], to: days[days.length - 1] } : null;
+    })
+    .filter((span): span is { item: MonthItem; from: number; to: number } => span !== null)
+    .sort((a, b) => a.from - b.from || b.to - b.from - (a.to - a.from));
+  for (const span of spans) {
+    let lane = 0;
+    while (placed.some((other) => other.lane === lane && other.from <= span.to && span.from <= other.to)) lane += 1;
+    placed.push({ ...span, lane });
+  }
+  return placed;
+}
+
 function MonthView({
   coordinators,
   currentDate,
   colorMap,
   onDayClick,
+  bars = false,
+  overlays = [],
+  onEventClick,
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
   colorMap: Map<number, string>;
   onDayClick?: (date: Date) => void;
+  bars?: boolean;
+  overlays?: CalendarOverlay[];
+  onEventClick?: (event: CalendarEvent) => void;
 }) {
   const monthStart = startOfMonth(currentDate);
   const firstDayOfMonth = monthStart.getDay();
@@ -881,7 +917,63 @@ function MonthView({
         ))}
       </div>
       <div className="cal-month-grid">
-        {weeks.map((week, wi) => (
+        {bars ? weeks.map((week, wi) => {
+          const items: MonthItem[] = [
+            ...overlays.filter((overlay) => overlay.tone === "request").map((overlay) => ({
+              key: overlay.id, start: overlay.start, end: overlay.end, label: overlay.label ?? "Requested period", tone: "request" as const,
+            })),
+            ...coordinators.flatMap((coordinator) => coordinator.events.map((event) => ({
+              key: `event-${event.eventId}`, start: event.startDatetime, end: event.endDatetime,
+              label: `${formatTime(new Date(event.startDatetime))} ${event.title}`, color: colorMap.get(coordinator.coordinatorId), event,
+            }))),
+          ];
+          const conflicts = overlays.filter((overlay) => overlay.tone === "conflict");
+          const lanes = weekLanes(items, week);
+          return (
+            <div key={wi} className="cal-month-week">
+              {week.map((date, dayIndex) => {
+                const here = lanes.filter((entry) => entry.from <= dayIndex && dayIndex <= entry.to);
+                const hidden = here.filter((entry) => entry.lane >= MONTH_LANES).length;
+                return (
+                  <div key={date.getTime()} className={`cal-month-day cal-month-day--bars ${date.getMonth() !== monthStart.getMonth() ? "other-month" : ""} ${isSameDay(date, today) ? "today" : ""}`}>
+                    <button type="button" className="cal-month-day-number" aria-label={`Open ${fullDateFormat.format(calendarLabelInstant(date))}`} onClick={() => onDayClick?.(date)}>
+                      {date.getDate()}
+                    </button>
+                    {Array.from({ length: MONTH_LANES }, (_, lane) => {
+                      const entry = here.find((candidate) => candidate.lane === lane);
+                      if (!entry) return <span key={lane} className="cal-month-bar-spacer" aria-hidden="true" />;
+                      const first = dayIndex === entry.from;
+                      const shape = `${first ? " is-start" : ""}${dayIndex === entry.to ? " is-end" : ""}`;
+                      if (entry.item.tone === "request") {
+                        const clash = conflicts.some((overlay) => overlapsCalendarDay(overlay.start, overlay.end, date));
+                        return (
+                          <span key={lane} className={`cal-month-bar cal-month-bar--request${clash ? " has-conflict" : ""}${shape}`} title={entry.item.label}>
+                            {first ? entry.item.label : <span className="sr-only">{entry.item.label}</span>}
+                          </span>
+                        );
+                      }
+                      const color = entry.item.color ?? "#4F46E5";
+                      return (
+                        <button
+                          key={lane}
+                          type="button"
+                          className={`cal-month-bar${shape}`}
+                          style={{ backgroundColor: color, color: getTextColor(color) }}
+                          title={entry.item.label}
+                          aria-label={entry.item.label}
+                          onClick={() => entry.item.event && onEventClick?.(entry.item.event)}
+                        >
+                          {first ? entry.item.label : null}
+                        </button>
+                      );
+                    })}
+                    {hidden ? <span className="cal-month-dot-more">+{hidden} more</span> : null}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }) : weeks.map((week, wi) => (
           <div key={wi} className="cal-month-week">
             {week.map((date) => {
               const isOtherMonth = date.getMonth() !== monthStart.getMonth();
@@ -933,14 +1025,20 @@ function YearView({
   currentDate,
   colorMap,
   onMonthClick,
+  bars = false,
+  overlays = [],
 }: {
   coordinators: CalendarCoordinator[];
   currentDate: Date;
   colorMap: Map<number, string>;
   onMonthClick?: (date: Date) => void;
+  bars?: boolean;
+  overlays?: CalendarOverlay[];
 }) {
   const yearStart = startOfYear(currentDate);
-  const months = Array.from({ length: 12 }, (_, i) => addMonths(yearStart, i));
+  const months = Array.from({ length: 12 }, (_, i) =>
+    addMonths(yearStart, i),
+  );
 
   return (
     <div className="cal-year-view">
@@ -974,13 +1072,24 @@ function YearView({
                     monthStart.getMonth(),
                     d,
                   );
-                  const dots = getCoordinatorDots(coordinators, colorMap, date);
+                  const dots = getCoordinatorDots(
+                    coordinators,
+                    colorMap,
+                    date,
+                  );
+                  // With bars on, a busy day is tinted in its venue's colour and
+                  // the requested days are yellow (red where they clash).
+                  const requested = bars && overlays.some((overlay) => overlay.tone === "request" && overlapsCalendarDay(overlay.start, overlay.end, date));
+                  const clash = requested && overlays.some((overlay) => overlay.tone === "conflict" && overlapsCalendarDay(overlay.start, overlay.end, date));
+                  const tint = bars && dots.length ? { backgroundColor: `color-mix(in srgb, ${dots[0].color} 22%, white)` } : undefined;
                   cells.push(
                     <div
                       key={d}
                       className={`cal-year-day ${
                         dots.length > 0 ? "has-events" : ""
-                      }`}
+                      }${requested ? " is-requested" : ""}${clash ? " has-conflict" : ""}`}
+                      style={tint}
+                      title={bars && dots.length ? dots.map((dot) => dot.name).join(", ") : undefined}
                     >
                       <span className="cal-year-day-number">{d}</span>
                       {dots.length > 0 && (
@@ -1046,56 +1155,48 @@ function CalendarTooltip({
   x: number;
   y: number;
 }) {
-  const coord = coordinators.find(
-    (c) => c.coordinatorId === event.coordinatorId,
-  );
+  const coord = coordinators.find((c) => c.coordinatorId === event.coordinatorId);
   const color = event.color;
-  const statusLabel =
-    STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
+  const statusLabel = STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
 
   return (
-    <div className="cal-tooltip" style={{ left: `${x}px`, top: `${y}px` }}>
+    <div
+      className="cal-tooltip"
+      style={{ left: `${x}px`, top: `${y}px` }}
+    >
       <div className="cal-tooltip-title">{event.title}</div>
       {event.purpose && (
         <div className="cal-tooltip-purpose">{event.purpose}</div>
       )}
       <div className="cal-tooltip-row">
-        <span className="cal-tooltip-dot" style={{ backgroundColor: color }} />
+        <span
+          className="cal-tooltip-dot"
+          style={{ backgroundColor: color }}
+        />
         <span>{coord?.name ?? "Unknown coordinator"}</span>
       </div>
       <div className="cal-tooltip-time">
-        {formatTime(new Date(event.startDatetime))}
-        {" – "}
+        {formatTime(new Date(event.startDatetime))}{" – "}
         {formatTime(new Date(event.endDatetime))}
       </div>
-      {event.preferredLayoutType &&
-        event.preferredLayoutType !== "NO_PREFERENCE" && (
-          <div className="cal-tooltip-row">
-            <span
-              className="cal-tooltip-dot"
-              style={{ backgroundColor: "#64748b" }}
-            />
-            <span>Layout: {event.preferredLayoutType}</span>
-          </div>
-        )}
+      {event.preferredLayoutType && event.preferredLayoutType !== "NO_PREFERENCE" && (
+        <div className="cal-tooltip-row">
+          <span className="cal-tooltip-dot" style={{ backgroundColor: "#64748b" }} />
+          <span>Layout: {event.preferredLayoutType}</span>
+        </div>
+      )}
       {event.isRegistrationEnabled && (
         <div className="cal-tooltip-row">
-          <span
-            className="cal-tooltip-dot"
-            style={{ backgroundColor: "#16A34A" }}
-          />
+          <span className="cal-tooltip-dot" style={{ backgroundColor: "#16A34A" }} />
           <span>
-            Registration:{" "}
-            {event.registrationCapacity
-              ? `${event.registrationCapacity} seats`
-              : "Open"}
+            Registration: {event.registrationCapacity ? `${event.registrationCapacity} seats` : "Open"}
           </span>
         </div>
       )}
       {event.status && (
-        <span className="cal-tag" title={statusLabel}>
-          {statusLabel}
-        </span>
+          <span className="cal-tag" title={statusLabel}>
+            {statusLabel}
+          </span>
       )}
     </div>
   );
@@ -1114,13 +1215,10 @@ function EventPopover({
   selectedCoordinatorId?: number | null;
   onSelectCoordinator?: (id: number) => void;
 }) {
-  const coord = coordinators.find(
-    (c) => c.coordinatorId === event.coordinatorId,
-  );
+  const coord = coordinators.find((c) => c.coordinatorId === event.coordinatorId);
   const color = event.color;
   const textColor = getTextColor(color);
-  const statusLabel =
-    STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
+  const statusLabel = STATUS_LABELS[event.status ?? ""] ?? event.status ?? "Unknown";
   const [showDetails, setShowDetails] = useState(false);
 
   const nameCounts = useMemo(() => {
@@ -1165,7 +1263,10 @@ function EventPopover({
 
   return (
     <div className="cal-popover-backdrop" onClick={onClose}>
-      <div className="cal-popover" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="cal-popover"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="cal-popover-header">
           <span
             className="cal-popover-swatch"
@@ -1186,20 +1287,17 @@ function EventPopover({
           <div className="cal-popover-summary">
             <div className="cal-popover-time">
               <span className="cal-popover-time-date">{dateStr}</span>
-              <span className="cal-popover-time-range">
-                {startStr} – {endStr}
-              </span>
+              <span className="cal-popover-time-range">{startStr} – {endStr}</span>
             </div>
 
             <div className="cal-popover-coordinator">
-              <span
-                className="cal-popover-coord-dot"
-                style={{ backgroundColor: color }}
-              />
+              <span className="cal-popover-coord-dot" style={{ backgroundColor: color }} />
               <span className="cal-popover-coord-name">{displayName}</span>
             </div>
 
-            <span className="cal-tag">{statusLabel}</span>
+            <span className="cal-tag">
+              {statusLabel}
+            </span>
           </div>
 
           <div className="cal-popover-divider" />
@@ -1211,11 +1309,7 @@ function EventPopover({
             aria-expanded={showDetails}
           >
             <span>Event details</span>
-            <span
-              className={`cal-popover-chevron ${showDetails ? "open" : ""}`}
-            >
-              ▼
-            </span>
+            <span className={`cal-popover-chevron ${showDetails ? "open" : ""}`}>▼</span>
           </button>
 
           {showDetails && (
@@ -1229,33 +1323,25 @@ function EventPopover({
               {event.description && (
                 <div>
                   <div className="cal-popover-meta-label">Description</div>
-                  <div className="cal-popover-meta-value">
-                    {event.description}
-                  </div>
+                  <div className="cal-popover-meta-value">{event.description}</div>
                 </div>
               )}
               {event.expectedAttendance && (
                 <div>
                   <div className="cal-popover-meta-label">Attendance</div>
-                  <div className="cal-popover-meta-value">
-                    {event.expectedAttendance} people
-                  </div>
+                  <div className="cal-popover-meta-value">{event.expectedAttendance} people</div>
                 </div>
               )}
               {event.organisation && (
                 <div>
                   <div className="cal-popover-meta-label">Organisation</div>
-                  <div className="cal-popover-meta-value">
-                    {event.organisation}
-                  </div>
+                  <div className="cal-popover-meta-value">{event.organisation}</div>
                 </div>
               )}
               {event.requestId && (
                 <div>
                   <div className="cal-popover-meta-label">Request ID</div>
-                  <div className="cal-popover-meta-value">
-                    {event.requestId}
-                  </div>
+                  <div className="cal-popover-meta-value">{event.requestId}</div>
                 </div>
               )}
               {event.createdAt && (
@@ -1271,30 +1357,23 @@ function EventPopover({
                   </div>
                 </div>
               )}
-              {event.preferredLayoutType &&
-                event.preferredLayoutType !== "NO_PREFERENCE" && (
-                  <div>
-                    <div className="cal-popover-meta-label">Layout</div>
-                    <div className="cal-popover-meta-value">
-                      {event.preferredLayoutType}
-                    </div>
-                  </div>
-                )}
+              {event.preferredLayoutType && event.preferredLayoutType !== "NO_PREFERENCE" && (
+                <div>
+                  <div className="cal-popover-meta-label">Layout</div>
+                  <div className="cal-popover-meta-value">{event.preferredLayoutType}</div>
+                </div>
+              )}
               {event.accessibilityNeeds && (
                 <div>
                   <div className="cal-popover-meta-label">Accessibility</div>
-                  <div className="cal-popover-meta-value">
-                    {event.accessibilityNeeds}
-                  </div>
+                  <div className="cal-popover-meta-value">{event.accessibilityNeeds}</div>
                 </div>
               )}
               {event.isRegistrationEnabled && (
                 <div>
                   <div className="cal-popover-meta-label">Registration</div>
                   <div className="cal-popover-meta-value">
-                    {event.registrationCapacity
-                      ? `${event.registrationCapacity} seats`
-                      : "Open"}
+                    {event.registrationCapacity ? `${event.registrationCapacity} seats` : "Open"}
                   </div>
                 </div>
               )}
@@ -1308,9 +1387,7 @@ function EventPopover({
                 <select
                   className="cal-popover-select"
                   value={selectedCoordinatorId ?? ""}
-                  onChange={(e) =>
-                    onSelectCoordinator?.(Number(e.target.value))
-                  }
+                  onChange={(e) => onSelectCoordinator?.(Number(e.target.value))}
                 >
                   {coordinators.map((c) => (
                     <option key={c.coordinatorId} value={c.coordinatorId}>
@@ -1341,6 +1418,9 @@ export type CalendarViewProps = {
   currentDate?: Date;
   onCurrentDateChange?: (date: Date) => void;
   entityLabel?: CalendarEntityLabel;
+  overlays?: CalendarOverlay[];
+  // Month view as labelled bars (and tinted days in the year view) instead of dots.
+  monthBars?: boolean;
 };
 
 export function CalendarView({
@@ -1355,15 +1435,14 @@ export function CalendarView({
   currentDate: controlledDate,
   onCurrentDateChange,
   entityLabel = COORDINATOR_LABEL,
+  overlays,
+  monthBars = false,
 }: CalendarViewProps) {
-  const [internalViewMode, setInternalViewMode] =
-    useState<CalendarViewMode>(defaultView);
-  const [internalCurrentDate, setInternalCurrentDate] = useState(() =>
-    calendarDate(new Date()),
+  const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
+    defaultView,
   );
-  const [manualVisibleIds, setManualVisibleIds] = useState<Set<number> | null>(
-    null,
-  );
+  const [internalCurrentDate, setInternalCurrentDate] = useState(() => calendarDate(new Date()));
+  const [manualVisibleIds, setManualVisibleIds] = useState<Set<number> | null>(null);
 
   const visibleIds = useMemo(() => {
     if (manualVisibleIds === null) {
@@ -1404,25 +1483,23 @@ export function CalendarView({
     setInternalCurrentDate(date);
   };
 
-  const handleDayClick = (date: Date) => {
-    setInternalCurrentDate(date);
-    onCurrentDateChange?.(date);
-    setInternalViewMode("day");
-    onViewModeChange?.("day");
-  };
+   const handleDayClick = (date: Date) => {
+     setInternalCurrentDate(date);
+     onCurrentDateChange?.(date);
+     setInternalViewMode("day");
+     onViewModeChange?.("day");
+   };
 
-  const handleMonthClick = (date: Date) => {
-    setInternalCurrentDate(date);
-    onCurrentDateChange?.(date);
-    setInternalViewMode("month");
-    onViewModeChange?.("month");
-  };
+   const handleMonthClick = (date: Date) => {
+     setInternalCurrentDate(date);
+     onCurrentDateChange?.(date);
+     setInternalViewMode("month");
+     onViewModeChange?.("month");
+   };
 
   const toggleCoordinator = (id: number) => {
     setManualVisibleIds((prev) => {
-      const next = new Set(
-        prev ?? coordinators.map((coordinator) => coordinator.coordinatorId),
-      );
+      const next = new Set(prev ?? coordinators.map((coordinator) => coordinator.coordinatorId));
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
@@ -1511,7 +1588,10 @@ export function CalendarView({
             >
               ‹
             </button>
-            <button className="cal-btn cal-btn--today" onClick={handleToday}>
+            <button
+              className="cal-btn cal-btn--today"
+              onClick={handleToday}
+            >
               Today
             </button>
             <button className="cal-btn" onClick={handleNext} aria-label="Next">
@@ -1541,6 +1621,7 @@ export function CalendarView({
           </div>
         </div>
 
+
         <CoordinatorLegend
           coordinators={coordinators}
           visibleIds={visibleIds}
@@ -1554,8 +1635,8 @@ export function CalendarView({
           {visibleCoordinators.length === 0 ? (
             <div className="calendar-empty">
               <p>
-                No {entityLabel.plural} selected. Click a name in the legend
-                above to show their events.
+                No {entityLabel.plural} selected. Click a name in the legend above to
+                show their events.
               </p>
             </div>
           ) : (
@@ -1566,6 +1647,8 @@ export function CalendarView({
                   currentDate={effectiveCurrentDate}
                   colorMap={colorMap}
                   onMonthClick={handleMonthClick}
+                  bars={monthBars}
+                  overlays={overlays}
                 />
               )}
               {effectiveViewMode === "month" && (
@@ -1574,6 +1657,9 @@ export function CalendarView({
                   currentDate={effectiveCurrentDate}
                   colorMap={colorMap}
                   onDayClick={handleDayClick}
+                  bars={monthBars}
+                  overlays={overlays}
+                  onEventClick={onEventClick}
                 />
               )}
               {effectiveViewMode === "week" && (
@@ -1594,6 +1680,7 @@ export function CalendarView({
                     else setTooltipEvent(null);
                   }}
                   selectedEvent={selectedEvent}
+                  overlays={overlays}
                 />
               )}
               {effectiveViewMode === "day" && (
@@ -1614,6 +1701,7 @@ export function CalendarView({
                     else setTooltipEvent(null);
                   }}
                   selectedEvent={selectedEvent}
+                  overlays={overlays}
                 />
               )}
             </>

@@ -6,6 +6,7 @@ import { PageContent } from "@/components/layout/page-content";
 import { AlertBanner, Button, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { ROLE_LABELS } from "@/lib/auth";
 import type { NotificationItem } from "@/lib/api/notifications";
+import { emptyInboxText } from "@/lib/notifications";
 import { NotificationDialog } from "./notification-dialog";
 import { NotificationRow } from "./notification-row";
 import { useNotificationList } from "./use-notification-list";
@@ -124,7 +125,7 @@ export function NotificationsInbox() {
         {inbox.status === "ready" && inbox.items.length === 0 && !inbox.nextCursor ? (
           <EmptyState
             title="No notifications yet"
-            description="Updates about your events, such as registration confirmations, changes and reminders, will appear here."
+            description={emptyInboxText(user?.role)}
           />
         ) : null}
 

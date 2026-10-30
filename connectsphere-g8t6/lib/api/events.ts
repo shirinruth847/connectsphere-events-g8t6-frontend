@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/api";
 
 export type ApiEvent = {
   eventId: number;
@@ -33,11 +33,18 @@ export function getLeadAssignments() {
   return apiRequest<{ assignments: LeadAssignment[] }>("/events/assignments");
 }
 
-export function reassignCoordinator(eventId: number, coordinatorId: number, expectedCoordinatorId: number) {
-  return apiRequest<{ event: { eventId: number; coordinatorId: number }; coordinator: { coordinatorId: number; name: string } }>(`/events/${eventId}/coordinator`, {
+export async function reassignCoordinator(eventId: number, coordinatorId: number, expectedCoordinatorId: number, idempotencyKey: string) {
+  const result = await apiRequest<{ event: { eventId: number; coordinatorId: number }; coordinator: { coordinatorId: number; name: string }; replayed: boolean }>(`/events/${eventId}/coordinator`, {
     method: "PATCH",
+    headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify({ coordinatorId, expectedCoordinatorId }),
   });
+  if (result?.event?.eventId !== eventId || result.event.coordinatorId !== coordinatorId
+    || result.coordinator?.coordinatorId !== coordinatorId || typeof result.coordinator.name !== "string"
+    || typeof result.replayed !== "boolean") {
+    throw new ApiError("The reassignment response could not be confirmed. Retry the previous reassignment.", 0, "INVALID_RESPONSE");
+  }
+  return result;
 }
 
 export function getUnassignedEvents() {

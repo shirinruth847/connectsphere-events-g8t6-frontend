@@ -36,6 +36,6 @@ export function CoordinatorAvailabilityCalendar({
           onSelectCoordinator={onSelectCoordinator}
         />
       </section>
-      </div>
+    </div>
   );
 }

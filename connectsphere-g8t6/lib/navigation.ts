@@ -1,22 +1,24 @@
 import { ROUTES, type UserRole } from "@/lib/auth";
 
-export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "assignments" | "calendar";
+export type NavigationIcon = "dashboard" | "event" | "registrations" | "notifications" | "support" | "settings" | "assignments" | "calendar" | "equipment";
 type NavigationItem = { id: string; title: string; icon: NavigationIcon; href?: string };
 type NavigationGroup = { title: string; items: NavigationItem[] };
 
 // An absent href renders an unavailable item, never a link to an unfinished page.
 const organiserItems: NavigationItem[] = [
   { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
-  { id: "requests", title: "My Requests", icon: "event", href: ROUTES.dashboard },
-  { id: "drafts", title: "My Drafts", icon: "event", href: ROUTES.drafts },
+  { id: "requests", title: "My Requests", icon: "event", href: ROUTES.requests },
   { id: "registrations-unavailable", title: "Registrations", icon: "registrations" },
-  { id: "notifications", title: "Notifications", icon: "notifications" },
+  // The same inbox attendees use (SPM-192); the Updates panel's See more leads here too.
+  { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
 ];
 
 const mainItems: Record<UserRole, NavigationItem[]> = {
   ORGANISER: organiserItems,
   COORDINATOR: [
-    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard }
+    { id: "home", title: "Assigned Events", icon: "event", href: ROUTES.dashboard },
+    // The same inbox attendees and organisers use (SPM-193).
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
   COORDINATOR_LEAD: [
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
@@ -28,7 +30,11 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
     { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
   ],
-  TECH_SUPPORT: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
+  TECH_SUPPORT: [
+    { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
+    // Equipment catalogue (SPM-52).
+    { id: "equipment", title: "Equipment", icon: "equipment", href: ROUTES.equipment },
+  ],
   // SPM-243 AC1: the only tab; a review opens on the event's /events/[eventId] page.
   SAFETY_OFFICER: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
   ATTENDEE: [
@@ -47,20 +53,30 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
   ];
 }
 
-export function activeNavigationId(role: UserRole, pathname: string, status: string | null) {
+export function activeNavigationId(role: UserRole, pathname: string, status: string | null, scope: string | null = null) {
   if (role === "COORDINATOR_LEAD") {
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
     if (pathname === "/calendar") return "calendar";
+    // A supervised event is opened from Assignments (SPM-72/74).
+    if (pathname.startsWith("/events/")) return "assignments";
     return "home";
   }
   if (role === "ATTENDEE") {
-    if (pathname === ROUTES.events) return "discovery";
+    if (pathname === ROUTES.events || /^\/events\/[^/]+$/.test(pathname)) return "discovery";
     if (pathname === ROUTES.notifications) return "notifications";
+    // Opened from the sidebar identity block, not a tab, so no tab is current.
+    if (pathname === ROUTES.attendeeProfile) return "profile";
     return "home";
+  }
+  // Only roles with an inbox reach /notifications; the others are refused before the shell renders.
+  if (pathname === ROUTES.notifications) return "notifications";
+  if (role === "TECH_SUPPORT") {
+    return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";
-  if (pathname === ROUTES.dashboard && status === "DRAFT") return "drafts";
+  if (pathname === ROUTES.dashboard && status === "DRAFT") return "requests";
+  if (pathname === ROUTES.dashboard && scope !== "MINE") return "home";
   return "requests";
 }

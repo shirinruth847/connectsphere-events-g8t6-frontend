@@ -90,7 +90,7 @@ Validation used Node.js 24.9.0.
   and traces are under ignored `playwright-report/` and `test-results/`.
   Live-account browser checks may use `E2E_COORDINATOR_EMAIL`,
   `E2E_COORDINATOR_PASSWORD`, `E2E_ATTENDEE_EMAIL`, and
-  `E2E_ATTENDEE_PASSWORD`; the venue catalogue tests do not require these
+  `E2E_ATTENDEE_PASSWORD`; the event venue section tests do not require these
   variables because they mock authentication and venue responses.
 - `npm run build` uses Webpack and performs TypeScript checks.
 - `npm run test:live` requires both real applications already running at
@@ -99,6 +99,16 @@ Validation used Node.js 24.9.0.
   users. It removes only this run's event data; audit entries remain under the
   existing seed users. LIVE_FRONTEND_URL/LIVE_BACKEND_URL may override hosts;
   LIVE_ROLES may select a comma-separated subset for focused checks.
+- The Technical Support run walks the SPM-52 equipment catalogue end to end:
+  create (Details pending until the MongoDB detail is applied), search and
+  filters, edit, a two-tab conflict, unavailable stock with its Singapore-time
+  refusals, and deactivate/reactivate. Every other role is checked for no
+  Equipment tab, "Access denied" on `/equipment` and `403` from the API. It
+  needs MongoDB Atlas reachable from the backend and `TEST_DATABASE_URL` in
+  the backend `.env`: the run's items are named with its run ID and removed
+  afterwards (their `equipment_details` documents first, then unavailable
+  stock, outbox entries and the items). Run only this part with
+  `LIVE_ROLES=TECH_SUPPORT npm run test:live`.
 
 The live checker reads the backend's private environment only in its Node.js
 process; no private key is bundled into the browser. Rebuild/restart the normal
@@ -139,7 +149,8 @@ production build and type checks.
 
 ## Lead assignment workspace (SPM-174)
 
-Leads assign submitted unassigned requests on `/events` and reassign their
+Leads see and assign submitted unassigned requests directly on `/dashboard`
+and on `/events`, using the same queue component and backend scope. They reassign their
 supervised or legacy unsupervised active events on `/assignments`. The shared
 shell, trusted session profile and Express API helpers remain in use. Assignment
 requires explicit confirmation; busy coordinators are disabled, the backend
@@ -147,17 +158,48 @@ checks availability again, and success is shown only after its response. Stale
 or uncertain results require refreshing before another attempt. The calendar
 uses half-open Singapore scheduling windows and clamps month-end navigation.
 
-The backend must enable `ENABLE_COORDINATOR_WORKFLOWS=true` and deploy
-`20261020075714_spm174_lead_assignment_conflict_guard.sql` before this frontend.
+The backend must deploy `20261020075714_spm174_lead_assignment_conflict_guard.sql`
+before this frontend. The paired `fix/lead-workflow-availability` backend change
+retires the rollout environment switch; its Lead routes are always registered
+and retain authentication and Lead-only authorization. Older backends still
+require `ENABLE_COORDINATOR_WORKFLOWS=true` until upgraded.
 Existing legacy overlaps are preserved for Lead-controlled reassignment; the
 guard prevents new conflicts while the full exclusion constraint remains
 deferred. See the backend's `docs/test-plans/spm-174.md` for deployment,
 rollback and real hosted/browser verification commands.
 
+The Dashboard home correction and its mocked browser regression coverage are
+documented in `docs/test-plans/lead-dashboard.md`.
+
 `npm run test:e2e -- --grep SPM-174` covers initial assignment, reassignment,
 stale rejection, role restrictions, queue resilience and calendar boundaries
 using mocked APIs. These journeys do not establish real backend/database
 integration; the backend's opt-in `leadAssignment.browser.cjs` runner does.
+
+## Attendee event viewing (SPM-44)
+
+Attendees land on Event Discovery (`/events`) after login when no permitted
+return URL is supplied. My Events remains at `/my-registrations`, and the
+notifications inbox remains at `/notifications`.
+
+Discovery cards open the shared details dialog. Direct `/events/<id>` URLs
+render an attendee detail page using `GET /api/events/discovery/:id`; staff
+continue to use their existing role-specific workspace at that URL. Discovery
+uses `GET /api/events/discovery` with cursor pagination. Both reads go through
+Express, which enforces publication, lifecycle and attendee-safe fields.
+Published `CONFIRMED` and `PREPARATION` events are eligible under Master §5.3;
+ended events are excluded by the current backend query.
+
+Cards retain the labels **Registration Open**, **Full - Waitlist** and
+**Registration Closed**. Events without registration show no registration
+wording or actions. Register/waitlist/notify buttons remain unavailable with
+an explanatory note; SPM-44 does not implement registration writes. A detail
+404 removes the discovery card and replaces the dialog's stale title with
+**Event unavailable**. Session expiry, denied access and retryable failures
+have distinct states.
+
+See [the SPM-44 test plan](docs/test-plans/spm-44.md), including the outstanding
+Jira wording reconciliation and the limits of mocked browser verification.
 
 ## Attendee notifications (SPM-155)
 
@@ -173,9 +215,19 @@ of the five latest notifications; **See more** and the attendee sidebar's
 - Data comes from the backend `/api/notifications` routes through
   `lib/api/notifications.ts`; display rules (Go to Event targets, SGT times,
   offer expiry, badge text, page merging) are in `lib/notifications.ts`.
-- Components are role-agnostic in `components/notifications/`. Other roles get
-  the inbox by widening `canViewPath`, the page's `DashboardWorkspace` role and
-  placing `NotificationsBell` on their pages (SPM-192/193).
+- Components are role-agnostic in `components/notifications/`. A role gets
+  the inbox by joining `NOTIFICATION_ROLES` in `lib/auth.ts` (used by
+  `canViewPath` and the page's `DashboardWorkspace`), linking its sidebar tab
+  and placing `NotificationsBell` on its pages. Organisers joined with SPM-192
+  (Updates after the search box on `/dashboard`); coordinators with SPM-193
+  (Updates in the Assigned Events header, Notifications sidebar tab). The
+  Coordinator Lead and other staff roles have no inbox yet and get 403.
+- A coordinator sees notifications only for events assigned to them now, plus
+  the "Event assignment ended" notice (`ASSIGNMENT_ENDED`) after a
+  reassignment; the backend decides. Go to Event on that notice opens
+  `/events/<id>`, which shows "Event not available"; Go to Event on a notice
+  hidden since the list loaded removes it with "This event is no longer
+  assigned to you."
 - Read state and the unread count change only after the backend confirms them.
   The count refreshes on window focus, on tab visibility and after each read
   action; nothing promises instant delivery. After an action that writes a
@@ -183,12 +235,15 @@ of the five latest notifications; **See more** and the attendee sidebar's
   `announceNotificationsChanged()` without a count and the badge fetches it again.
 - **Go to Event** marks the notification read, then opens
   `/my-registrations?eventId=<id>&from=notification` (attendees) or
-  `/events/<id>` (staff workspace, other roles later). On My Events that URL
+  `/events/<id>` (the event workspace, for organisers and staff). On My Events that URL
   opens the event details dialog (frame `282:1271`) over the outlined card, labelled "Opened from your
   notification"; **View Event Details** on a card opens the same dialog
   without that label, and closing removes the parameters. A notification the
   backend no longer shows (404 `NOTIFICATION_NOT_FOUND`) is removed without
-  navigating, and a background refresh drops any it no longer returns.
+  navigating, with a role-worded reason (`notificationGoneText`), and a
+  background refresh reads the current list and unread count and updates the
+  Updates badge. It can drop other hidden notices and include new arrivals;
+  the client does not estimate the count by subtracting one.
 - Event Discovery and My Events share that dialog
   (`components/attendee/discovery/event-details-dialog.tsx`), and each reads
   its own endpoint through `useAttendeeEvent`. From Event Discovery it reads
@@ -204,12 +259,62 @@ of the five latest notifications; **See more** and the attendee sidebar's
   state only what is known ("This event has been cancelled" or "This event's
   details are being confirmed"), without promising a notification
   (`TODO(SPM-163)` marks the offer follow-up). The attendee's own place reads
-  "On the waitlist", since "Waitlisted" is Event Discovery's word for a full
-  event. The dialog is the attendee's whole event view: there is no separate
-  attendee event page (team decision), and `/events/<id>` stays the staff
-  workspace.
+  "On the waitlist"; Event Discovery uses "Full - Waitlist" for an event
+  at capacity. My Events and notification links continue to open this dialog using
+  the registration endpoint. SPM-44 also supports direct `/events/<id>` URLs
+  through the attendee discovery endpoint; those URLs remain the role-specific
+  workspace for staff.
 - Accept Slot and Decline for waitlist offers belong to SPM-163; the
   notification shows the offer expiry, and the dialog keeps a footer slot.
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
+
+SPM-193's user-approved staged delivery explicitly defers technical decision
+notifications (AC6), hold warning/expiry notifications (AC8) and the
+operational-block portion of AC5 until their owning workflows exist. Their
+backend helpers alone do not complete those criteria. See
+[the coordinator test plan](docs/test-plans/spm-193.md) for the scope and stale
+Jira wording; existing venue status changes remain supported.
+
+## Event venue search and calendar fixes (SPM-72 / SPM-75)
+
+Applying unchanged filters refreshes the results. Rejected filter values retain
+previous results and comparison choices, with errors beside the fields.
+The coordinator's embedded calendar uses
+`GET /api/events/:id/venue-availability` with the existing date/venue query.
+The backend must deploy this route before the frontend: it verifies assigned
+coordinator access and excludes that event's own bookings and holds. Venue
+Staff continue to use `/api/venues/availability`. No schema migration is needed.
+
+## Venue booking requests (SPM-179)
+
+The event's venue section (`/events/[eventId]`, step 3 "Venue & layout")
+lists the event's venue bookings for the assigned coordinator and the
+supervising Lead, from `GET /api/events/:id/venue-bookings`. When the
+backend's `canRequestVenueBookings` is true (assigned coordinator, event in
+`PLANNING`), "Request venue bookings" and each venue card's "Request booking"
+open the request form in a popup:
+
+- Event details are read-only; the first venue section starts with the
+  coordinator's suggestion or the organiser's first choice (or the card's venue).
+- One section per venue (up to 10): venue, label, start and end (SGT),
+  attendance and layout are required; facilities, accessibility needs and
+  special requirements (including catering) are optional. With several venues
+  and no primary venue yet, one is marked primary; `isPrimary` is sent only
+  then (a single venue becomes primary by itself, and an event with a primary
+  keeps it). Venues already booked for the event, chosen in another section or
+  without setup/turnaround times are listed but cannot be chosen.
+- Checks before sending are instant feedback only. Each section's
+  availability and operating-hours warning come from
+  `GET /api/events/:id/venue-availability` (the SPM-74 period check); layout,
+  facility and accessibility warnings never block.
+- `POST /api/events/:id/venue-bookings` sends an `Idempotency-Key` that is
+  reused while the body is unchanged, so a retry cannot book twice. Refusals
+  are shown in their venue section and every value is kept. Closing a changed
+  form asks before discarding it. After a request the event, its readiness and
+  its history are loaded again (the request moves `arrangement_version`, not
+  the event version).
+
+The backend route needs the SPM-179 migrations and `VENUE_LOCK_DATABASE_URL`;
+until then it answers `503`, which the form shows as a retryable error.

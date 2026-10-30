@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AttendeeEventDetailsPage } from "@/components/attendee/discovery/attendee-event-details-page";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { EventRequestDetails } from "@/components/events/event-request-details";
 import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton } from "@/components/shared/primitives";
@@ -8,6 +9,7 @@ import { Icon } from "@/components/shared/icon";
 import { homeForRole, ROUTES } from "@/lib/auth";
 import { SafetyReviewView } from "@/components/safety-officer/review-view";
 import { VenueStaffEventView } from "@/components/venue-staff/booking-requests/venue-staff-event-view";
+import { SupervisedEventView } from "@/components/coordinator-lead/supervised-event-view";
 import { CoordinatorEventView } from "./coordinator-event-view";
 import { useEventView } from "./use-event-view";
 
@@ -59,15 +61,18 @@ function LoadedWorkspace({ eventId, home, reason }: { eventId: number; home: str
   if (state.event.viewerRelationship === "SAFETY_OFFICER") {
     return <SafetyReviewView event={state.event} onEventChanged={refresh} />;
   }
-  return <EventRequestDetails event={state.event} />;
+  if (state.event.viewerRelationship === "SUPERVISING_LEAD") return <SupervisedEventView event={state.event} />;
+  return <EventRequestDetails event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
 }
 
 // /events/[eventId]: the role-aware event workspace (SPM-33). Render inside
 // DashboardWorkspace; what it shows comes from the relationship the backend
-// reports for this event, and unrelated events answer "not found".
+// reports for this event, and unrelated events answer "not found". Attendees
+// get the published attendee view from the discovery endpoint instead (SPM-44).
 export function EventWorkspace({ eventId: rawEventId }: { eventId: string }) {
   const user = useSessionUser();
   const eventId = parseEventId(rawEventId);
+  if (user?.role === "ATTENDEE") return <AttendeeEventDetailsPage eventId={eventId} />;
   const home = user ? homeForRole(user.role) : ROUTES.dashboard;
   const reason = (user && UNAVAILABLE_REASONS[user.role]) || DEFAULT_UNAVAILABLE_REASON;
   if (eventId === null) return <EventUnavailable home={home} reason={reason} />;

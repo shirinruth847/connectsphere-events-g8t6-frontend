@@ -47,3 +47,12 @@ test('[SPM-173 AC6] organiser responses without a stored status work from the la
  assert.equal(eventStatusLabel({}),'Unknown status');
  assert.equal(isDraftEvent({}),false);
 });
+
+
+test('[SPM-38] support needs survive resume and are included in draft/submission payloads', () => {
+ const values=formValuesFromEvent({title:'Synthetic request',technicalSupportNeeds:' AV setup '});
+ assert.equal(toPayload(values).technicalSupportNeeds,'AV setup');
+ assert.equal(toPayload({...EMPTY_EVENT_FORM,title:'Synthetic request'}).technicalSupportNeeds,null);
+ assert.deepEqual(validateEventStep({...values,technicalSupportNeeds:'a'.repeat(2000)},4),{});
+ assert.ok(validateEventStep({...values,technicalSupportNeeds:'a'.repeat(2001)},4).technicalSupportNeeds);
+});
