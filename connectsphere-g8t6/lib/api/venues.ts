@@ -285,5 +285,9 @@ export type VenueCalendar = {
 
 export type VenueAvailability = { from: string; to: string; generatedAt?: string; venues: VenueCalendar[] };
 
-export const getVenueAvailability = (params: AvailabilityParams) =>
-  apiRequest<VenueAvailability>(`${params.eventId ? `/events/${params.eventId}/venue-availability` : "/venues/availability"}${availabilityQuery(params)}`);
+export const getVenueAvailability = (params: AvailabilityParams) => {
+  if (params.bookingId) {
+    return apiRequest<VenueAvailability>(`/venues/bookings/${params.bookingId}/availability${availabilityQuery({ ...params, venueIds: [], check: null })}`);
+  }
+  return apiRequest<VenueAvailability>(`${params.eventId ? `/events/${params.eventId}/venue-availability` : "/venues/availability"}${availabilityQuery(params)}`);
+};

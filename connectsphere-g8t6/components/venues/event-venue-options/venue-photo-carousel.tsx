@@ -6,7 +6,7 @@ import { Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { useVenuePhoto, type PhotoSource } from "@/components/venues/use-venue-photo";
 import { listSelectableVenuePhotos } from "@/lib/api/event-venues";
-import type { VenuePhoto } from "@/lib/api/venues";
+import { listVenuePhotos, type VenuePhoto } from "@/lib/api/venues";
 
 type PhotoList = { status: "loading" } | { status: "ready"; photos: VenuePhoto[] } | { status: "error" };
 
@@ -38,7 +38,9 @@ function PhotoImage({ source, alt, className }: { source: PhotoSource | null; al
 
 // The venue's gallery, read-only (Venue Staff maintain it, T28). A photo opens
 // enlarged in a popup (developer request of 24 October 2026).
-export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; venueName: string }) {
+// "options" reads the coordinator's selectable-venue photos; "staff" reads
+// the Venue Staff gallery (SPM-186 venue popup).
+export function VenuePhotoCarousel({ venueId, venueName, source = "options" }: { venueId: number; venueName: string; source?: "options" | "staff" }) {
   const [list, setList] = useState<PhotoList>({ status: "loading" });
   const [index, setIndex] = useState(0);
   const [enlarged, setEnlarged] = useState(false);
@@ -46,15 +48,15 @@ export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; ve
   const shown = photos[Math.min(index, photos.length - 1)];
   // One fetch per photo, shared by the card and the enlarged view, so the
   // enlarged photo shows at once.
-  const source = useVenuePhoto(venueId, shown?.photoId ?? null, 0, true);
+  const image = useVenuePhoto(venueId, shown?.photoId ?? null, 0, source === "options");
 
   useEffect(() => {
     let alive = true;
-    listSelectableVenuePhotos(venueId)
+    (source === "options" ? listSelectableVenuePhotos(venueId) : listVenuePhotos(venueId))
       .then((result) => { if (alive) setList({ status: "ready", photos: result.photos }); })
       .catch(() => { if (alive) setList({ status: "error" }); });
     return () => { alive = false; };
-  }, [venueId]);
+  }, [venueId, source]);
 
   if (list.status === "loading") return <Skeleton className="aspect-video w-full rounded-control" />;
   if (list.status === "error") {
@@ -83,7 +85,7 @@ export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; ve
         aria-label={`Enlarge photo: ${caption}`}
         onClick={() => setEnlarged(true)}
       >
-        <PhotoImage source={source} alt={alt} className="aspect-video w-full rounded-control" />
+        <PhotoImage source={image} alt={alt} className="aspect-video w-full rounded-control" />
         <span aria-hidden="true" className="absolute right-2 bottom-2 grid size-8 place-items-center rounded-full bg-on-surface/60 text-white opacity-80 group-hover:opacity-100">
           <Icon name="zoom" size={16} />
         </span>
@@ -95,7 +97,7 @@ export function VenuePhotoCarousel({ venueId, venueName }: { venueId: number; ve
       <Dialog open={enlarged} onClose={() => setEnlarged(false)} title={venueName} size="wide">
         {enlarged ? (
           <div className="grid gap-2">
-            <PhotoImage source={source} alt={alt} className="aspect-video max-h-[calc(100dvh-14rem)] w-full rounded-control bg-on-surface/5 object-contain!" />
+            <PhotoImage source={image} alt={alt} className="aspect-video max-h-[calc(100dvh-14rem)] w-full rounded-control bg-on-surface/5 object-contain!" />
             <div className="flex items-center justify-between gap-2 text-sm text-on-surface-variant">
               <span className="min-w-0">{caption}</span>
               {stepper}

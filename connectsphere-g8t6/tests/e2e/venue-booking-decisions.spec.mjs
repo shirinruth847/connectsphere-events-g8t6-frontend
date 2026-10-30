@@ -280,3 +280,69 @@ test("[SPM-186-AC11][SPM-186-TC13] availability that cannot be checked is never 
   await expect(shown.getByText("Available", { exact: true })).toHaveCount(0);
   await expect(panel(page, 110).getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
 });
+
+test("[SPM-186] the venue name opens its details, and its calendar marks this booking in yellow and overlaps in red", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-03T10:00:00+08:00"));
+  const state = decisionState([booking(110, "PENDING", 45, "Synthetic Hall")]);
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeDecisions(page, state);
+  const calendarQueries = [];
+  await page.route("**/api/venues/bookings/110/availability**", async (route) => {
+    const url = new URL(route.request().url());
+    calendarQueries.push(Object.fromEntries(url.searchParams));
+    return json(route, {
+      bookingId: 110, venueId: 45, from: url.searchParams.get("from"), to: url.searchParams.get("to"),
+      venues: [{
+        venueId: 45, name: "Synthetic Hall", address: "1 Synthetic Road", status: "ACTIVE", operatingHours: "08:00-22:00",
+        setupMinutes: 30, turnaroundMinutes: 45, buffersRecorded: true, overlaps: [], freePeriods: [], summary: "UNAVAILABLE_BLOCK", summaryLabel: "Unavailable",
+        entries: [{
+          entryId: "block-1", type: "BLOCK", status: "ACTIVE", label: "Operational block", blocking: true,
+          start: "2026-11-04T03:00:00.000Z", end: "2026-11-04T03:30:00.000Z", occupiedStart: "2026-11-04T03:00:00.000Z", occupiedEnd: "2026-11-04T03:30:00.000Z",
+          bookingId: null, eventId: null, requestId: null, eventTitle: null, holdExpiresAt: null, reason: "MAINTENANCE", reasonLabel: "Maintenance", note: null, operatingHoursWarning: null,
+        }],
+        check: {
+          venueId: 45, start: "2026-11-04T01:00:00.000Z", end: "2026-11-04T04:00:00.000Z",
+          occupiedStart: "2026-11-04T00:30:00.000Z", occupiedEnd: "2026-11-04T04:45:00.000Z",
+          availability: "UNAVAILABLE_BLOCK", availabilityLabel: "Unavailable – block", canRequest: false,
+          conflicts: [{ entryId: "block-1", type: "BLOCK", occupiedStart: "2026-11-04T03:00:00.000Z", occupiedEnd: "2026-11-04T03:30:00.000Z" }],
+          operatingHoursWarning: null,
+        },
+      }],
+    });
+  });
+  await page.route("**/api/venues/45", (route) => json(route, {
+    venue: {
+      venueId: 45, name: "Synthetic Hall", address: "1 Synthetic Road", maxCapacity: 200, status: "ACTIVE", statusReason: null,
+      contactPerson: "Pat Lee", contactEmail: "hall@example.test", contactNumber: "+65 6000 0000", version: 3,
+      createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z", createdBy: null, updatedBy: null,
+    },
+    details: {
+      description: "A large hall.", facilities: ["Projector", "PA system"], accessibilityFeatures: ["Step-free access"], supportedLayouts: ["Theatre"],
+      emergencyAccess: null, knownRestrictions: [], setupMinutes: 30, turnaroundMinutes: 45, version: 2, updatedAt: null,
+    },
+    detailStatus: "CURRENT",
+  }));
+  await page.route("**/api/venues/45/photos", (route) => json(route, { photos: [] }));
+  await page.goto("/events/442?booking=110");
+
+  await panel(page, 110).getByRole("button", { name: "Synthetic Hall", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Synthetic Hall" });
+  await expect(dialog.getByText("200 people")).toBeVisible();
+  await expect(dialog.getByText("30 / 45 min")).toBeVisible();
+  await expect(dialog.getByText("Pat Lee · +65 6000 0000 · hall@example.test")).toBeVisible();
+  await expect(dialog.getByText("Projector", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /Open venue page/ })).toHaveAttribute("href", "/venues/45");
+  // Read-only: nothing to edit here.
+  await expect(dialog.getByRole("textbox")).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: "Show availability calendar" }).click();
+  const calendar = dialog.getByRole("region", { name: "Venue availability calendar" });
+  await expect(calendar).toBeVisible();
+  // Only the range is sent: the venue and period come from the booking.
+  expect(Object.keys(calendarQueries.at(-1)).sort()).toEqual(["from", "to"]);
+  // The period fields are not offered; the booking fixes the period.
+  await expect(dialog.getByRole("button", { name: "Check period" })).toHaveCount(0);
+  await calendar.getByRole("button", { name: "Day", exact: true }).click();
+  await expect(calendar.locator(".cal-overlay--request .cal-overlay-label")).toHaveAttribute("aria-label", /^REQ-000442 · 09:00–12:00/);
+  await expect(calendar.locator(".cal-overlay--conflict")).not.toHaveCount(0);
+});

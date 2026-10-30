@@ -17,6 +17,7 @@ import { getEventBookingHistory, getEventVenueBookings, type EventVenueBookings,
 import { formatBookingId } from "./booking-filters";
 import { BookingDecision, type DecisionNotice } from "./booking-decision";
 import { BookingChecksPanel } from "@/components/venues/booking-checks";
+import { VenueInfoDialog } from "./venue-info-dialog";
 import { BookingStatusChip } from "./booking-status-chip";
 import { Collapse } from "./collapse";
 import { useOpenedBookings } from "./use-opened-bookings";
@@ -74,7 +75,8 @@ const buffers = (venue: VenueBookingDetail["venue"]) => {
 
 // What Venue Staff decide on (SPM-186): the venue and how the request fits it,
 // then the requirements. The booking window is in the row header only.
-function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
+function BookingRequirements({ booking, requestId }: { booking: VenueBookingDetail; requestId: string }) {
+  const [venueOpen, setVenueOpen] = useState(false);
   const { venue } = booking;
   const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > venue.roomCapacity;
   return (
@@ -82,8 +84,20 @@ function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
       <div className="grid gap-3">
         <p className="flex items-start gap-2 text-sm text-on-surface">
           <Icon name="venue" size={16} />
-          <span><span className="font-semibold">{venue.name}</span> · <span className="text-on-surface-variant">{venue.address}</span></span>
+          <span>
+            {/* The venue's details and calendar for this booking (SPM-186). */}
+            <button
+              type="button"
+              className="font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              aria-haspopup="dialog"
+              onClick={() => setVenueOpen(true)}
+            >
+              {venue.name}
+            </button>
+            {" · "}<span className="text-on-surface-variant">{venue.address}</span>
+          </span>
         </p>
+        <VenueInfoDialog open={venueOpen} onClose={() => setVenueOpen(false)} booking={booking} requestId={requestId} />
         <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <Fact
             label="Attendance / capacity"
@@ -125,8 +139,9 @@ function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
   );
 }
 
-function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
+function VenueBookingsSection({ bookings, requestId, selectedId, onSelect, onDecided }: {
   bookings: VenueBookingDetail[];
+  requestId: string;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
   onDecided: (notice: DecisionNotice) => void;
@@ -168,7 +183,7 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onDecided }: {
               </button>
               <Collapse open={selected} id={panelId}>
                 <div className="grid gap-5 border-t border-outline-variant p-4">
-                  <BookingRequirements booking={booking} />
+                  <BookingRequirements booking={booking} requestId={requestId} />
                   <BookingDecision booking={booking} onDecided={onDecided} />
                 </div>
               </Collapse>
@@ -251,7 +266,7 @@ function LoadedView({ data, selectedId, onSelect, notice, onDecided, refreshKey 
             />
           </ReviewSection>
 
-          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onDecided={onDecided} />
+          <VenueBookingsSection bookings={bookings} requestId={event.requestId} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onDecided={onDecided} />
 
           <div className="grid gap-5 md:grid-cols-2">
             <ReviewSection step={4} title="Accessibility" action={readOnly}>

@@ -87,7 +87,9 @@ function EntryRow({ entry }: { entry: CalendarEntry }) {
 // The venues an event's calendar shows, opened on the event's date with its
 // window checked (SPM-72/74 venue section); the venue picker is hidden.
 export interface FixedCalendarVenues {
-  eventId: number;
+  // The coordinator's event, or the Venue Staff booking whose window is checked.
+  eventId?: number;
+  bookingId?: number;
   venueIds: number[];
   date: Date;
   check: AvailabilityParams["check"];
@@ -120,9 +122,10 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
   // Keyed on the IDs' contents: a fixed list is rebuilt on every parent render.
   const selectedKey = selected.join(",");
   const eventId = fixed?.eventId;
+  const bookingId = fixed?.bookingId;
   const params: AvailabilityParams | null = useMemo(
-    () => (selectedKey ? { eventId, date: range.date, days: range.days, venueIds: selectedKey.split(",").map(Number), check } : null),
-    [eventId, selectedKey, range.date, range.days, check],
+    () => (selectedKey ? { eventId, bookingId, date: range.date, days: range.days, venueIds: selectedKey.split(",").map(Number), check } : null),
+    [eventId, bookingId, selectedKey, range.date, range.days, check],
   );
 
   // Loads whenever the venues, the visible range or the checked period change.
@@ -174,7 +177,8 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
 
   return (
     <div className="grid gap-4">
-      <div className={`grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 ${fixed ? "" : "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"}`}>
+      {/* A booking's own calendar has its period fixed by the booking (SPM-186). */}
+      {fixed?.bookingId ? null : <div className={`grid gap-4 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 ${fixed ? "" : "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"}`}>
         {fixed ? null : <div className="grid content-start gap-1">
           <FormLabel htmlFor="calendar-venues">Venues ({selected.length}/{MAX_VENUES} selected)</FormLabel>
           {picker.error ? <AlertBanner tone="error">{picker.error}</AlertBanner> : null}
@@ -220,7 +224,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
             Occupied time includes each venue&apos;s setup and turnaround. Click an entry in the calendar for its details.
           </p>
         </form>
-      </div>
+      </div>}
 
       <div aria-live="polite">
         {state.status === "idle" ? (
