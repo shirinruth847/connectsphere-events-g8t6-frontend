@@ -12,6 +12,7 @@ import {
   rejectVenueBooking,
   type VenueBookingDetail,
 } from "@/lib/api/venue-bookings";
+import { hasBlockingProblem } from "@/components/venues/booking-checks";
 import { formatBookingId } from "./booking-filters";
 
 export type DecisionNotice = { tone: "success" | "warning"; text: string };
@@ -35,6 +36,10 @@ export function BookingDecision({ booking, onDecided }: {
 
   const actions = booking.actions;
   const approved = booking.status === "APPROVED";
+  // A blocking check stops approval; the backend re-checks under the venue lock (SPM-186 AC8).
+  const blocked = hasBlockingProblem(booking.checks);
+  const warnings = booking.checks?.warnings ?? [];
+  const blockedId = useId();
   const decisionLine = booking.reviewedAt
     ? `${booking.statusLabel} by ${booking.reviewedByName ?? "Venue Staff"} · ${formatTimestamp(booking.reviewedAt)}`
     : null;
@@ -105,13 +110,16 @@ export function BookingDecision({ booking, onDecided }: {
               </Button>
             ) : null}
             {actions.canApprove ? (
-              <Button onClick={() => { setDialog("approve"); setError(""); }}>
+              <Button disabled={blocked} aria-describedby={blocked ? blockedId : undefined} onClick={() => { setDialog("approve"); setError(""); }}>
                 <Icon name="check" size={16} />Approve
               </Button>
             ) : null}
           </div>
         ) : null}
       </div>
+      {actions.canApprove && blocked ? (
+        <p id={blockedId} className="text-xs font-semibold text-error">Can&apos;t approve: {booking.checks?.blocking[0].message}</p>
+      ) : null}
       {approved && actions.canReject ? (
         <p className="text-xs text-on-surface-variant">
           Only if the venue can no longer host it (e.g. maintenance). The event is not cancelled.
@@ -139,7 +147,17 @@ export function BookingDecision({ booking, onDecided }: {
             <span className="text-on-surface-variant">{formatEventWindow(booking.startDatetime, booking.endDatetime)}</span>
           </p>
           {dialog === "approve" ? (
-            <p className="text-sm text-on-surface-variant">Only this booking is approved. Other bookings under the event keep their status.</p>
+            <div className="grid gap-2">
+              <p className="text-sm text-on-surface-variant">Only this booking is approved. Other bookings under the event keep their status.</p>
+              {warnings.length ? (
+                <div className="grid gap-1 rounded-control border border-[#F59E0B] p-3">
+                  <p className="text-sm font-semibold text-on-surface">You are approving with {warnings.length === 1 ? "a warning" : `${warnings.length} warnings`}:</p>
+                  <ul className="list-disc pl-5 text-sm text-on-surface">
+                    {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div>
               <FormLabel htmlFor={reasonId} required>Reason</FormLabel>

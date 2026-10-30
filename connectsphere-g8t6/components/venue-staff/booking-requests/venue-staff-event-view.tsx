@@ -16,6 +16,7 @@ import { formatDuration, formatEventWindow, formatTimestamp } from "@/lib/dateti
 import { getEventBookingHistory, getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
 import { formatBookingId } from "./booking-filters";
 import { BookingDecision, type DecisionNotice } from "./booking-decision";
+import { BookingChecksPanel } from "@/components/venues/booking-checks";
 import { BookingStatusChip } from "./booking-status-chip";
 import { Collapse } from "./collapse";
 import { useOpenedBookings } from "./use-opened-bookings";
@@ -95,6 +96,12 @@ function BookingRequirements({ booking }: { booking: VenueBookingDetail }) {
         </dl>
         {overCapacity ? <p className="text-xs font-semibold text-error">Attendance is above the room capacity.</p> : null}
       </div>
+      {booking.checks ? (
+        <div className="grid gap-2">
+          <h4 className={subheading}>Checks for this booking</h4>
+          <BookingChecksPanel checks={booking.checks} />
+        </div>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="grid gap-2">
           <h4 className={subheading}>Facilities</h4>

@@ -221,3 +221,62 @@ test("[SPM-186-AC15] Venue Staff see the venue-relevant history of the event", a
   await page.getByRole("dialog", { name: "Approve this venue booking?" }).getByRole("button", { name: "Approve booking" }).click();
   await expect.poll(() => state.historyQueries).toBeGreaterThan(before);
 });
+
+const checks = (overrides = {}) => ({
+  venueId: 45, availability: "AVAILABLE",
+  occupiedStart: "2026-11-04T00:30:00.000Z", occupiedEnd: "2026-11-04T04:45:00.000Z",
+  blocking: [], warnings: [], ...overrides,
+});
+
+test("[SPM-186-AC7][SPM-186-AC8][SPM-189-AC14] a blocking check disables Approve with its reason; Reject stays", async ({ page }) => {
+  const blocked = checks({ availability: "UNAVAILABLE", blocking: [{ code: "VENUE_BLOCKED", message: "Blocked (Maintenance) 4 Nov, 11:00–11:30." }] });
+  const state = decisionState([
+    booking(110, "PENDING", 45, "Synthetic Hall", { checks: blocked }),
+    booking(111, "PENDING", 46, "Synthetic Room B", { checks: checks({ venueId: 46 }) }),
+  ]);
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeDecisions(page, state);
+  await page.goto("/events/442?booking=110");
+
+  const selected = panel(page, 110);
+  const shown = selected.getByTestId("booking-checks");
+  await expect(shown.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(shown.getByText("Blocked (Maintenance) 4 Nov, 11:00–11:30.")).toBeVisible();
+  await expect(selected.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  await expect(selected.getByText("Can't approve: Blocked (Maintenance) 4 Nov, 11:00–11:30.")).toBeVisible();
+  await expect(selected.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
+
+  // The other booking is checked on its own venue and window.
+  await page.getByRole("button", { name: /Synthetic Room B/ }).first().click();
+  await expect(panel(page, 111).getByText("All checks passed.")).toBeVisible();
+  await expect(panel(page, 111).getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+});
+
+test("[SPM-186-AC9][SPM-186-TC11] warnings do not block, and the confirmation lists them", async ({ page }) => {
+  const warned = checks({ warnings: ["Occupied time 22:00–22:45 is outside operating hours (08:00-22:00).", "Synthetic Hall does not list the Banquet layout."] });
+  const state = decisionState([booking(110, "PENDING", 45, "Synthetic Hall", { checks: warned })]);
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeDecisions(page, state);
+  await page.goto("/events/442?booking=110");
+
+  await expect(panel(page, 110).getByText("Synthetic Hall does not list the Banquet layout.")).toBeVisible();
+  await panel(page, 110).getByRole("button", { name: "Approve", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Approve this venue booking?" });
+  await expect(dialog.getByText("You are approving with 2 warnings:")).toBeVisible();
+  await expect(dialog.getByText("Occupied time 22:00–22:45 is outside operating hours (08:00-22:00).")).toBeVisible();
+  await dialog.getByRole("button", { name: "Approve booking" }).click();
+  expect(state.requests).toEqual([{ bookingId: 110, decision: "approve", body: { expectedStatus: "PENDING" } }]);
+});
+
+test("[SPM-186-AC11][SPM-186-TC13] availability that cannot be checked is never shown as available", async ({ page }) => {
+  const unknown = checks({ availability: "NOT_CHECKED", occupiedStart: null, occupiedEnd: null, blocking: [{ code: "AVAILABILITY_NOT_CHECKED", message: "Availability cannot be checked right now. Try again shortly." }] });
+  const state = decisionState([booking(110, "PENDING", 45, "Synthetic Hall", { checks: unknown })]);
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeDecisions(page, state);
+  await page.goto("/events/442?booking=110");
+
+  const shown = panel(page, 110).getByTestId("booking-checks");
+  await expect(shown.getByText("Cannot be checked", { exact: true })).toBeVisible();
+  await expect(shown.getByText("Available", { exact: true })).toHaveCount(0);
+  await expect(panel(page, 110).getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+});

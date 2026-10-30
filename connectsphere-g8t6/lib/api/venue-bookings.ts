@@ -36,6 +36,19 @@ export interface VenueBookingListItem extends VenueBookingSummary {
   };
 }
 
+// One booking against its own venue and window (SPM-186): blocking problems
+// stop approval and requests; warnings are for Venue Staff to weigh. The
+// backend never reports "AVAILABLE" when it could not check.
+export type BookingAvailability = "AVAILABLE" | "UNAVAILABLE" | "NOT_CHECKED";
+export interface BookingChecks {
+  venueId: number | null;
+  availability: BookingAvailability;
+  occupiedStart: string | null;
+  occupiedEnd: string | null;
+  blocking: { code: string; message: string }[];
+  warnings: string[];
+}
+
 export interface VenueBookingDetail extends VenueBookingSummary {
   venue: {
     venueId: number;
@@ -61,6 +74,8 @@ export interface VenueBookingDetail extends VenueBookingSummary {
   reviewedByName?: string | null;
   // Which decisions the backend allows now (SPM-186 AC4, SPM-189 AC6, T32).
   actions?: { canApprove: boolean; canReject: boolean };
+  // This booking's checks for its own venue and window; null once decided (SPM-186).
+  checks?: BookingChecks | null;
 }
 
 export interface VenueBookingEvent {
