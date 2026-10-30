@@ -363,5 +363,10 @@ retains its exact input and idempotency key in per-user, per-venue sessionStorag
 reopening after a reload or automatic session expiry retries that command with
 its original key. Its inputs stay locked until a definitive result is received.
 Success clears recovery, and explicit logout uses the existing recovery cleanup.
-Cancellation remains an integration dependency; this frontend does not add a
-cancellation API or claim that cancellation is currently available.
+Cancellation remains an integration dependency owned by
+[SPM-176 — Cancel Event - Coordinator](https://yvery.atlassian.net/browse/SPM-176),
+which was To Do when checked on 30 October 2026. No coordinator cancellation
+endpoint exists in the inspected backend. This frontend does not add that API
+or claim cancellation is available. Jira SPM-195 AC7 still assumes an existing
+cancel action; completing or explicitly deferring that dependency requires a
+scope decision. The unavailable label alone does not complete AC7.
