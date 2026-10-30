@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, EmptyState, PageHeader, ReferenceIdTag, SectionCard, Skeleton, buttonClasses, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
@@ -13,6 +13,7 @@ import {
   VENUE_STATUS_LABELS,
   changeVenueStatus,
   getManagedVenue,
+  getVenueHistory,
   updateVenue,
   updateVenueDetails,
   type AffectedEvent,
@@ -23,6 +24,8 @@ import {
 } from "@/lib/api/venues";
 import { BufferFields, Field, VenueCoreFields, VenueStatusChip, type FieldErrors } from "./venue-fields";
 import { VenueGallery } from "./venue-gallery";
+import { HistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { useHistory, type HistoryLoader } from "@/components/events/workspace/use-event-history";
 import { EMPTY_VENUE_FORM, formatList, parseList, validateVenueForm, type VenueFormValues } from "./venue-form-rules";
 
 type Loaded = { venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus };
@@ -324,6 +327,34 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
 
 // /venues/[venueId] for Venue Staff (SPM-73): edit the record, change status
 // with confirmation, and edit the MongoDB details including setup/turnaround.
+// The venue's own change history (SPM-186): edits, status, details, photos and
+// blocks, newest first; `refreshKey` changes after each save here.
+function VenueHistory({ venueId, refreshKey }: { venueId: number; refreshKey: string }) {
+  const load = useCallback<HistoryLoader>((options) => getVenueHistory(venueId, options), [venueId]);
+  const [key, setKey] = useState(0);
+  const [lastRefresh, setLastRefresh] = useState(refreshKey);
+  // Photo changes are saved in the gallery, so the panel also reloads on focus.
+  if (lastRefresh !== refreshKey) {
+    setLastRefresh(refreshKey);
+    setKey((value) => value + 1);
+  }
+  useEffect(() => {
+    const onFocus = () => setKey((value) => value + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+  const history = useHistory(load, key);
+  return (
+    <HistoryPanel
+      id={`venue-${venueId}-history`}
+      description="Every change to this venue, its status, details and photos. Staff only."
+      emptyText="No changes have been recorded for this venue yet."
+      history={history}
+      statusLabels={VENUE_STATUS_LABELS}
+    />
+  );
+}
+
 export function VenueDetailManager({ venueId }: { venueId: number | null }) {
   const [state, setState] = useState<PageState>(venueId ? { status: "loading" } : { status: "not-found" });
   const [attempt, setAttempt] = useState(0);
@@ -389,7 +420,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
       />
       <div className="-mt-2 flex flex-wrap items-center gap-3">
         <ReferenceIdTag value={`VENUE-${venue.venueId}`} />
-        <Link href={`/venues?view=availability&venueId=${venue.venueId}`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+        <Link href={`/venues?view=availability&venueId=${venue.venueId}&from=venue`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
           <Icon name="calendar" size={16} />View availability
         </Link>
       </div>
@@ -427,8 +458,8 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
                 { icon: "history", label: "Details updated", value: details?.updatedAt ? formatTimestamp(details.updatedAt) : "Not recorded" },
               ]}
             />
-            <p className="mt-3 text-xs text-on-surface-variant">Every create, update and status change is recorded in the audit log.</p>
           </section>
+          <VenueHistory venueId={venue.venueId} refreshKey={`${venue.version}-${details?.version ?? "none"}-${revision}`} />
           <Button variant="secondary" onClick={reload}><Icon name="refresh" size={16} />Reload venue</Button>
         </aside>
       </div>

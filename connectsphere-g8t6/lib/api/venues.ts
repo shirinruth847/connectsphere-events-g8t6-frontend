@@ -1,5 +1,6 @@
 import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
+import type { EventHistoryEntry } from "@/lib/api/event-workspace";
 import {
   availabilityQuery,
   managedVenueQuery,
@@ -119,6 +120,17 @@ export const listManagedVenues = (filters: ManagedVenueFilters = {}, offset = 0)
 export type VenueOption = { venueId: number; name: string; status: VenueStatus };
 
 export const listVenueOptions = () => apiRequest<{ venues: VenueOption[] }>("/venues/manage/options");
+
+
+const historyQuery = ({ limit, cursor }: { limit: number; cursor?: string }) => {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return query.toString();
+};
+
+// A venue's own change history, staff-only (SPM-186).
+export const getVenueHistory = (venueId: number, options: { limit: number; cursor?: string }) =>
+  apiRequest<{ history: EventHistoryEntry[]; nextCursor: string | null }>(`/venues/${venueId}/history?${historyQuery(options)}`);
 
 export const getManagedVenue = (venueId: number) =>
   apiRequest<{ venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus }>(`/venues/${venueId}`);
