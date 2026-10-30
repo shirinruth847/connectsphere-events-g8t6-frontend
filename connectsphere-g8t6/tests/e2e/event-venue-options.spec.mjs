@@ -275,11 +275,44 @@ test("[SPM-72 TC-VC-006][AC4][AC6] View details shows photos, details and availa
   await expect(panel.getByText("45 min", { exact: true })).toBeVisible();
   await expect(panel.getByText("Projector, Stage")).toBeVisible();
   await expect(panel.getByText("Available", { exact: true }).first()).toBeVisible();
-  await expect(panel.getByText(/Occupied|including setup and turnaround|Availability for the event date/)).toHaveCount(0);
+  // SPM-185 AC1: the event's own occupied time is the one occupied line.
+  await expect(panel.getByText(/^Occupied .*09:30–12:45 SGT with setup and turnaround$/)).toBeVisible();
+  await expect(panel.getByText(/Occupied/)).toHaveCount(1);
+  await expect(panel.getByText(/Availability for the event date/)).toHaveCount(0);
   await expect(panel.getByRole("textbox")).toHaveCount(0);
 
   await panel.getByRole("combobox", { name: "Venue details" }).fill("Synthetic Rooftop");
-  await expect(panel.getByRole("list", { name: "Conflicts" })).toContainText("Confirmed booking");
+  // No backend message: the conflict keeps its label and occupied window.
+  await expect(panel.getByRole("list", { name: "Conflicts" })).toContainText(/Confirmed booking: .*08:00–10:15 SGT/);
+});
+
+test("[SPM-185 AC1][AC2] View details shows the backend's conflict message, and no occupied time without setup/turnaround", async ({ page }) => {
+  const message = "Venue's turnaround period (12:00pm–12:45pm) overlaps with your requested booking, including its 30-minute setup from 12:00pm.";
+  const explained = venue({
+    ...rooftop,
+    availability: { ...rooftop.availability, conflicts: [{ ...rooftop.availability.conflicts[0], message }] },
+  });
+  const unbuffered = venue({
+    venueId: 48,
+    name: "Synthetic Annex",
+    setupMinutes: null,
+    turnaroundMinutes: null,
+    availability: { status: "NOT_BOOKABLE", label: "Not bookable yet", occupiedStart: "2026-11-20T02:00:00.000Z", occupiedEnd: "2026-11-20T04:00:00.000Z", conflicts: [], operatingHoursWarning: null },
+  });
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeVenueSection(page, { venueOptions: options({ venues: [explained, unbuffered], preferredVenues: [] }) });
+  await page.goto("/events/42");
+  await openSearch(page);
+
+  await card(page, "Synthetic Rooftop").getByRole("button", { name: "View details" }).click();
+  const panel = page.getByRole("region", { name: "Venue details" });
+  const conflicts = panel.getByRole("list", { name: "Conflicts" });
+  await expect(conflicts).toHaveText(message);
+  await expect(panel.getByText(/^Occupied .*09:30–12:45 SGT with setup and turnaround$/)).toBeVisible();
+
+  await panel.getByRole("combobox", { name: "Venue details" }).fill("Synthetic Annex");
+  await expect(panel.getByRole("heading", { name: "Synthetic Annex" })).toBeVisible();
+  await expect(panel.getByText(/Occupied/)).toHaveCount(0);
 });
 
 test("[SPM-72 TC-VC-007][AC7] the comparison panel is hidden until Show comparison view opens it", async ({ page }, testInfo) => {

@@ -280,7 +280,15 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
       onSaved(result.details, result.message);
     } catch (caught) {
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
-      setMessage({ tone: "error", text: caught instanceof Error ? caught.message : "The details could not be saved." });
+      // A time was recorded elsewhere after this page loaded (SPM-185 AC5):
+      // the whole save is refused, so say so and point to the recorded value.
+      const locked = caught instanceof ApiError && caught.code === "VENUE_BUFFERS_LOCKED";
+      setMessage({
+        tone: "error",
+        text: locked
+          ? `${caught.message} Nothing was saved. Reload the venue to see the recorded times.`
+          : caught instanceof Error ? caught.message : "The details could not be saved.",
+      });
     } finally {
       setSaving(false);
     }

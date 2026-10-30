@@ -260,7 +260,8 @@ export type PeriodCheck = {
   availability: string;
   availabilityLabel: string;
   canRequest: boolean;
-  conflicts: { entryId: string; type: string; occupiedStart: string; occupiedEnd: string }[];
+  // message explains a setup/turnaround clash (SPM-185 AC2); null when not given.
+  conflicts: { entryId: string; type: string; occupiedStart: string; occupiedEnd: string; message?: string | null }[];
   operatingHoursWarning: { message: string } | null;
 };
 
