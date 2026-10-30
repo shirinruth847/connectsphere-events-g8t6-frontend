@@ -176,6 +176,20 @@ stale rejection, role restrictions, queue resilience and calendar boundaries
 using mocked APIs. These journeys do not establish real backend/database
 integration; the backend's opt-in `leadAssignment.browser.cjs` runner does.
 
+## Lead assignment overview (SPM-182)
+
+`/assignments` opens with counts of supervised, unassigned and conflicting
+events, then two sections that load independently. **Unassigned** lists the
+shared queue (`GET /api/events/unassigned`, oldest submission first), and
+"Assign in queue" opens `/events` to assign. **Supervised events**
+(`GET /api/events/assignments`) shows each event's current coordinator and
+the reassignment action. If one request fails, only that section shows an
+error with Retry. No backend change was needed.
+
+`npm run test:e2e -- --grep SPM-182` covers the journeys with mocked APIs.
+The backend's `tests/database/spm182LeadAssignmentOverview.test.cjs` covers
+the scope rules against the real SQL function.
+
 ## Attendee event viewing (SPM-44)
 
 Attendees land on Event Discovery (`/events`) after login when no permitted
