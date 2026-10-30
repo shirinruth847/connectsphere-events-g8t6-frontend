@@ -32,6 +32,7 @@ import {
   type BookingDraft,
 } from "./venue-booking-form-model";
 import { VenueBookingSection, type VenueChoiceGroups } from "./venue-booking-section";
+import { findBookingConflicts, type BookingConflict } from "./booking-precheck";
 
 interface VenueBookingRequestDialogProps {
   // Kept mounted while closing, so focus returns to the button that opened it;
@@ -92,6 +93,8 @@ export function VenueBookingRequestDialog({
   const [banner, setBanner] = useState<{ message: string; stale: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [conflicts, setConflicts] = useState<BookingConflict[] | null>(null);
   // One key per request body: a retry of the same body cannot book twice (AC13).
   const attempt = useRef<{ body: string; key: string } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -164,6 +167,15 @@ export function VenueBookingRequestDialog({
     attempt.current = { body, key };
     setSaving(true);
     setBanner(null);
+    // SPM-185: a setup/turnaround clash found now stops the request before it is sent.
+    setChecking(true);
+    const clashes = await findBookingConflicts(event.eventId, drafts, (venueId) => venueById.get(venueId)?.name ?? "This venue");
+    setChecking(false);
+    if (clashes.length) {
+      setSaving(false);
+      setConflicts(clashes);
+      return;
+    }
     try {
       const result = await requestEventVenueBookings(event.eventId, items, key);
       attempt.current = null;
@@ -178,6 +190,12 @@ export function VenueBookingRequestDialog({
     } finally {
       setSaving(false);
     }
+  };
+
+  const closeConflicts = () => {
+    const first = conflicts?.[0]?.index ?? null;
+    setConflicts(null);
+    showSection(first);
   };
 
   const unavailableFor = (index: number) =>
@@ -206,7 +224,7 @@ export function VenueBookingRequestDialog({
           <>
             <Button type="button" variant="quiet" disabled={saving} onClick={close}>Cancel</Button>
             <Button type="button" disabled={saving || Boolean(banner?.stale)} onClick={() => void submit()}>
-              {saving ? "Sending…" : "Send booking request"}
+              {checking ? "Checking availability…" : saving ? "Sending…" : "Send booking request"}
             </Button>
           </>
         )}
@@ -289,6 +307,28 @@ export function VenueBookingRequestDialog({
         )}
       >
         <p className="text-sm text-on-surface">The venue sections you filled in will be lost. Nothing has been sent to Venue Staff.</p>
+      </Dialog>
+
+      {/* SPM-185: clashes found before sending; the form keeps every value. */}
+      <Dialog
+        open={conflicts !== null}
+        onClose={closeConflicts}
+        title={conflicts && conflicts.length > 1 ? "Some venues are not available at those times" : "This venue is not available at that time"}
+        footer={<Button type="button" onClick={closeConflicts}>Change times or venue</Button>}
+      >
+        <div className="grid gap-3 text-sm text-on-surface">
+          <p>Nothing was sent. Each venue&apos;s setup and turnaround time is included.</p>
+          {(conflicts ?? []).map((conflict) => (
+            <section key={conflict.index} aria-label={`Venue section ${conflict.index + 1}: ${conflict.venueName}`} className="grid gap-1">
+              <h3 className="font-semibold">Venue section {conflict.index + 1}: {conflict.venueName}</h3>
+              <ul className="grid gap-1">
+                {conflict.messages.map((message, at) => (
+                  <li key={at} className="rounded-control bg-[#FEF2F2] px-3 py-1.5">{message}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       </Dialog>
     </>
   );

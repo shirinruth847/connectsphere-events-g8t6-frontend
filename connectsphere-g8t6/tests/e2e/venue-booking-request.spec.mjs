@@ -94,7 +94,8 @@ const list = (overrides = {}) => ({
   ...overrides,
 });
 
-const periodCheck = (venueId, { canRequest = true, hours = null } = {}) => ({
+// `message` is the backend's SPM-185 conflict explanation; left out, the conflict has none.
+const periodCheck = (venueId, { canRequest = true, hours = null, message } = {}) => ({
   start: START,
   end: END,
   occupiedStart: "2030-03-10T00:30:00.000Z",
@@ -102,7 +103,7 @@ const periodCheck = (venueId, { canRequest = true, hours = null } = {}) => ({
   availability: canRequest ? (hours ? "AVAILABLE_WITH_WARNING" : "AVAILABLE") : "UNAVAILABLE_BOOKING",
   availabilityLabel: canRequest ? (hours ? "Potentially suitable – operating-hours warning" : "Available") : "Unavailable – booking",
   canRequest,
-  conflicts: canRequest ? [] : [{ entryId: "booking-5", type: "BOOKING", occupiedStart: "2030-03-10T02:30:00.000Z", occupiedEnd: "2030-03-10T05:45:00.000Z" }],
+  conflicts: canRequest ? [] : [{ entryId: "booking-5", type: "BOOKING", occupiedStart: "2030-03-10T02:30:00.000Z", occupiedEnd: "2030-03-10T05:45:00.000Z", ...(message === undefined ? {} : { message }) }],
   operatingHoursWarning: hours ? { message: hours } : null,
   venueId,
 });
@@ -348,8 +349,9 @@ test("[SPM-179 TC-02][TC-03][AC4][AC5][AC10] several venues need valid sections 
 test("[SPM-179 TC-09][TC-22][AC7][AC13][AC16] a refused request keeps every value and retries with the same key", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const conflictText = "This venue is unavailable from 10 Mar, 10:30 to 10 Mar, 13:45 (another booking), including setup and turnaround time.";
+  // The period check passes (SPM-185's pre-check sends the request); the slot
+  // is taken before the server's own check under the venue lock, which refuses it.
   const sent = await routeBookingSection(page, {
-    availability: { 46: { canRequest: false } },
     respond: (body, attempt) => {
       if (attempt === 1) return { status: 409, json: { error: conflictText, code: "BOOKING_CONFLICT", bookingIndex: 1, venueId: 46, fields: { "bookings.1.start": conflictText }, conflicts: [{ index: 1, type: "BOOKING", occupiedStart: "2030-03-10T02:30:00.000Z", occupiedEnd: "2030-03-10T05:45:00.000Z" }] } };
       if (attempt === 2) return { status: 503, json: { error: "Availability could not be checked. Try again later.", code: "AVAILABILITY_UNAVAILABLE" } };
@@ -364,10 +366,7 @@ test("[SPM-179 TC-09][TC-22][AC7][AC13][AC16] a refused request keeps every valu
   await second.getByLabel("Expected attendance at this venue").fill("60");
   await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
   await section(page, 1).getByRole("radio", { name: "Primary venue" }).check();
-
-  // The calendar already shows the clash before sending (advisory).
-  await expect(second.getByText("Unavailable – booking")).toBeVisible();
-  await expect(second.getByText(/Taken 10:30–13:45 SGT by another booking/)).toBeVisible();
+  await expect(second.getByText("Available", { exact: true })).toBeVisible();
 
   await form(page).getByRole("button", { name: "Send booking request" }).click();
   await expect(second.getByText(conflictText)).toBeVisible();
@@ -386,6 +385,57 @@ test("[SPM-179 TC-09][TC-22][AC7][AC13][AC16] a refused request keeps every valu
   await form(page).getByRole("button", { name: "Send booking request" }).click();
   await expect(form(page)).toBeHidden();
   expect(sent.requests[2].key).toBe(sent.requests[0].key);
+});
+
+test("[SPM-185 AC2] a setup/turnaround clash found before sending opens a dialog and sends nothing", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const turnaround = "Venue's turnaround period (10:00am–10:45am) overlaps with your requested booking, including its 30-minute setup from 10:00am.";
+  const sent = await routeBookingSection(page, { availability: { 45: { canRequest: false, message: turnaround }, 46: { canRequest: false } } });
+  await page.goto("/events/42");
+  await openForm(page);
+  await form(page).getByRole("button", { name: "Add another venue" }).click();
+  const second = section(page, 2);
+  await second.getByRole("combobox", { name: "Venue (required)", exact: true }).selectOption("46");
+  await second.getByLabel("Expected attendance at this venue").fill("60");
+  await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
+  await section(page, 1).getByRole("radio", { name: "Primary venue" }).check();
+
+  // The section's own advisory check already warns.
+  await expect(second.getByText("Unavailable – booking")).toBeVisible();
+  await expect(second.getByText(/Taken 10:30–13:45 SGT by another booking/)).toBeVisible();
+
+  await form(page).getByRole("button", { name: "Send booking request" }).click();
+  const clash = page.getByRole("dialog", { name: "Some venues are not available at those times" });
+  await expect(clash).toBeVisible();
+  await expect(clash.getByText("Nothing was sent.", { exact: false })).toBeVisible();
+  // The backend's message, else the conflicting occupied window.
+  await expect(clash.getByRole("region", { name: "Venue section 1: Synthetic Grand Hall" })).toContainText(turnaround);
+  await expect(clash.getByRole("region", { name: /^Venue section 2: / })).toContainText(/Another booking occupies this venue .*10:30–13:45 SGT, including setup and turnaround\./);
+  expect(sent.requests).toHaveLength(0);
+
+  await clash.getByRole("button", { name: "Change times or venue" }).click();
+  await expect(clash).toBeHidden();
+  await expect(form(page)).toBeVisible();
+  await expect(second.getByLabel("Expected attendance at this venue")).toHaveValue("60");
+  expect(sent.requests).toHaveLength(0);
+});
+
+test("[SPM-185 AC2] with no clash the pre-check passes and the request is sent as before", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const sent = await routeBookingSection(page);
+  await page.goto("/events/42");
+  await openForm(page);
+  await expect(section(page, 1).getByText("Available", { exact: true })).toBeVisible();
+  const before = sent.availability.length;
+
+  await form(page).getByRole("button", { name: "Send booking request" }).click();
+  await expect(form(page)).toBeHidden();
+  // Checked again at send time, then sent once.
+  expect(sent.availability.length).toBeGreaterThan(before);
+  expect(sent.availability.at(-1)).toEqual(expect.objectContaining({ venueId: "45" }));
+  expect(sent.requests).toHaveLength(1);
+  await expect(page.getByRole("dialog", { name: /not available at th/ })).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "Booking request sent" })).toBeVisible();
 });
 
 test("[SPM-179 AC1][AC10][TC-15] an event with a primary venue adds venues as additional ones; booked venues are not offered", async ({ page }) => {
