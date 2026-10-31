@@ -184,7 +184,8 @@ test('[SPM-163 AC3, AC4] My Events shows the position; Leave Waitlist asks first
   const message = page.getByText('You left the waitlist for Design Sprint.', { exact: true });
   await expect(message).toBeVisible();
   await expect(card(page, 'Design Sprint')).toHaveCount(0);
-  await expect(page.getByText('You have no registrations or waitlist entries.', { exact: true })).toBeVisible();
+  // SPM-141 AC4 replaced the earlier empty-state wording.
+  await expect(page.getByText('You are not registered for any events yet.', { exact: true })).toBeVisible();
   await expect(page.locator('[aria-live="polite"]').filter({ has: message })).toBeFocused();
   expect(state.actions).toMatchObject([{ eventId: 201, action: 'waitlist/leave', body: {} }]);
   await attachScreenshot(testInfo, page, 'left-waitlist');

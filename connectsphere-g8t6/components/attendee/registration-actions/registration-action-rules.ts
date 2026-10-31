@@ -18,6 +18,18 @@ export interface PlaceContext {
 // Cancelled and completed events have no place left to change.
 const CLOSED_STATUSES = new Set(["CANCELLED", "COMPLETED"]);
 
+// The event's attendee-visible status (attendee_status), which is separate
+// from the attendee's own place (SPM-141 AC1). An unknown value is shown as
+// sent rather than guessed.
+export const ATTENDEE_STATUS_LABELS: Record<string, string> = {
+  CONFIRMED: "Confirmed",
+  PENDING_CONFIRMATION: "Event confirmation pending",
+  CANCELLED: "Cancelled",
+  COMPLETED: "Completed",
+};
+export const attendeeStatusLabel = (status: string) =>
+  Object.hasOwn(ATTENDEE_STATUS_LABELS, status) ? ATTENDEE_STATUS_LABELS[status] : status.replaceAll("_", " ");
+
 // The open offer, exactly as the backend returned it. The backend omits an
 // offer once it is answered or past its deadline; the browser clock never
 // hides one, because a late answer is refused (OFFER_EXPIRED) and the place
