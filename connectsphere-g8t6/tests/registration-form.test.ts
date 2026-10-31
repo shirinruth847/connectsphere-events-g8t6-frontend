@@ -125,8 +125,18 @@ describe("[SPM-134 AC16/AC17] outcomes of a refused or failed registration", () 
 
   it("should_keep_answers_and_allow_retry_with_safe_wording_when_the_server_fails", () => {
     const outcome = registrationOutcome({ status: 500, code: "INTERNAL_ERROR", message: "Internal Server Error" });
-    expect(outcome).toMatchObject({ canRetry: true, refresh: false, tone: "error" });
+    expect(outcome).toMatchObject({ canRetry: true, refresh: false, tone: "error", title: "We couldn't confirm your registration" });
+    expect(outcome.message).toContain("may have been received");
+    expect(outcome.title).not.toContain("not submitted");
     expect(outcome.message).not.toContain("Internal Server Error");
+  });
+
+  it("should_keep_a_lost_network_response_uncertain_and_allow_the_original_request_to_be_retried", () => {
+    const outcome = registrationOutcome({ status: 0, code: "NETWORK_ERROR", message: "Connection interrupted." });
+    expect(outcome).toMatchObject({ title: "We couldn't confirm your registration", canRetry: true, refresh: false });
+    expect(outcome.newKey).toBeUndefined();
+    expect(outcome.message).toContain("Connection interrupted.");
+    expect(outcome.message).toContain("may have been received");
   });
 
   it("should_show_safe_generic_wording_when_a_409_code_is_unknown", () => {

@@ -98,10 +98,12 @@ const OUTCOMES: Record<string, RegistrationOutcome> = {
   },
 };
 
+// A request can commit before its reply is lost. Preserve uncertainty until
+// the same-key retry returns the backend's result.
 const GENERIC_FAILURE: RegistrationOutcome = {
   tone: "error", refresh: false, canRetry: true,
-  title: "Your registration was not submitted",
-  message: "Something went wrong. Your answers are still here, so you can try again.",
+  title: "We couldn't confirm your registration",
+  message: "Your registration may have been received. Your answers are still here. Select Try again to check the result without registering twice.",
 };
 
 // The outcome of a failed POST, from the status and stable code only; the
@@ -109,7 +111,7 @@ const GENERIC_FAILURE: RegistrationOutcome = {
 export function registrationOutcome(error: { status: number; code: string; message: string }): RegistrationOutcome {
   if (error.status === 404) return OUTCOMES.EVENT_NOT_FOUND;
   if (error.status === 409 && Object.prototype.hasOwnProperty.call(OUTCOMES, error.code)) return OUTCOMES[error.code];
-  if (error.status === 0 && error.code === "NETWORK_ERROR") return { ...GENERIC_FAILURE, message: `${error.message} Your answers are still here.` };
+  if (error.status === 0 && error.code === "NETWORK_ERROR") return { ...GENERIC_FAILURE, message: `${error.message} ${GENERIC_FAILURE.message}` };
   return GENERIC_FAILURE;
 }
 
