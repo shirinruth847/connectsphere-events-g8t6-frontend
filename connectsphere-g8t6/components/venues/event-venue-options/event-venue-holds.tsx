@@ -32,7 +32,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // The chip shows the hold's own state once placed, otherwise the request's.
 export const holdChipStatus = (request: VenueHoldRequest, now = Date.now()) => (
-  request.hold?.status === "ACTIVE" && request.hold.expiresAt && Date.parse(request.hold.expiresAt) <= now
+  request.hold?.bookingUnavailable ? "NOT_CHECKED" : request.hold?.status === "ACTIVE" && request.hold.expiresAt && Date.parse(request.hold.expiresAt) <= now
     ? "EXPIRED" : request.hold?.status ?? request.status
 );
 export const holdChipLabel = (request: VenueHoldRequest, now: number) =>
@@ -42,7 +42,7 @@ export const holdChipLabel = (request: VenueHoldRequest, now: number) =>
 export const canConfirmAgain = (request: VenueHoldRequest) => request.status === "PLACED" && Boolean(request.hold?.bookingMissing);
 
 // bookingLink: Venue Staff open the booking a confirmed hold became.
-export function HoldSummary({ request, now, bookingLink = false }: { request: VenueHoldRequest; now: number; bookingLink?: boolean }) {
+export function HoldSummary({ request, now, bookingLink = false, onRetry }: { request: VenueHoldRequest; now: number; bookingLink?: boolean; onRetry?: () => void }) {
   const hold = request.hold;
   const countdown = isActiveHold(request, now) ? holdCountdown(hold?.expiresAt, now) : null;
   const booking = hold?.convertedBooking ?? null;
@@ -69,6 +69,12 @@ export function HoldSummary({ request, now, bookingLink = false }: { request: Ve
       ) : null}
       {hold?.bookingMissing ? (
         <p className="font-semibold text-error">The booking was not saved. Confirm the hold again to send it to Venue Staff.</p>
+      ) : null}
+      {hold?.bookingUnavailable ? (
+        <div role="status" className="grid justify-items-start gap-1">
+          <p>The booking&apos;s outcome could not be checked. Reload holds to try again.</p>
+          {onRetry ? <Button type="button" variant="quiet" onClick={onRetry}>Retry booking lookup</Button> : null}
+        </div>
       ) : null}
       {request.holdUnavailable ? <p className="text-xs">The hold&apos;s current state cannot be read right now.</p> : null}
       {request.note ? <p className="text-xs"><span className="font-semibold">Note:</span> {request.note}</p> : null}
@@ -333,7 +339,7 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
                 </h4>
                 <BookingStatusChip status={holdChipStatus(request, now)} label={holdChipLabel(request, now)} />
               </div>
-              <HoldSummary request={request} now={now} />
+              <HoldSummary request={request} now={now} onRetry={reload} />
               {isCoordinator && (request.status === "PENDING" || isActiveHold(request, now) || canConfirmAgain(request)) ? (
                 <div className="flex flex-wrap gap-2">
                   {onConfirm && (isActiveHold(request, now) || canConfirmAgain(request)) ? (

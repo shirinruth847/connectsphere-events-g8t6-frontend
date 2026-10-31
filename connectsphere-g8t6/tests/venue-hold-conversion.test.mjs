@@ -70,3 +70,13 @@ test('[SPM-188-AC9] an ordinary booking sends no holdId', () => {
   const [item] = toRequestItems([newDraft('n1', EVENT, { venueId: 7, name: 'Synthetic Hall' })], false);
   assert.equal('holdId' in item, false);
 });
+
+test('[SPM-188-AC9] confirmation preserves second and millisecond precision through display and submission', () => {
+  const precise = { ...HOLD, start: '2030-03-10T02:00:30.125Z', end: '2030-03-10T04:00:45.789Z' };
+  const draft = holdDraft('precise', EVENT, precise, null);
+  assert.equal(draft.start, '2030-03-10T10:00:30.125');
+  assert.equal(draft.end, '2030-03-10T12:00:45.789');
+  const [item] = toRequestItems([draft], false);
+  assert.equal(item.start, precise.start);
+  assert.equal(item.end, precise.end);
+});

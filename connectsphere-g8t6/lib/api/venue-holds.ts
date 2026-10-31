@@ -24,6 +24,8 @@ export interface VenueHold {
   // Confirmed, but its booking was never saved (a lost commit, Master T35):
   // the coordinator confirms it again.
   bookingMissing: boolean;
+  // The linked booking could not be read; no conversion outcome is confirmed.
+  bookingUnavailable?: boolean;
 }
 
 export interface HoldPreview extends BookingChecks {
