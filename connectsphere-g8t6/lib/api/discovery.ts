@@ -3,7 +3,10 @@ import { apiRequest } from "@/lib/api";
 // Attendee event discovery (SPM-34). Only the fields the backend returns for
 // attendees are typed here, so internal planning data cannot leak into the UI.
 
-export const REGISTRATION_AVAILABILITY = ["OPEN", "FULL_WAITLIST", "CLOSED", "NOT_ENABLED"] as const;
+// Decided by the backend from database time, the registration start and end
+// times and the primary venue's capacity (SPM-134, Master 5.6). UNAVAILABLE
+// means the event's data is not complete enough to decide eligibility.
+export const REGISTRATION_AVAILABILITY = ["NOT_YET_OPEN", "OPEN", "FULL_WAITLIST", "CLOSED", "UNAVAILABLE"] as const;
 
 export type RegistrationAvailability = (typeof REGISTRATION_AVAILABILITY)[number];
 
@@ -16,7 +19,7 @@ export interface AttendeeEventSummary {
   organisationName: string | null;
   // The attendee-visible primary venue; null while the venue is not confirmed.
   location: string | null;
-  // Kept as string so a value the backend adds later is shown as "no chip"
+  // Kept as string so a value the backend adds later is shown as unavailable
   // rather than breaking the page.
   registrationAvailability: RegistrationAvailability | (string & {});
 }

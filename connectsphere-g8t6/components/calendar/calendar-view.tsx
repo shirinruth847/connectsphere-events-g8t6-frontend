@@ -1421,6 +1421,9 @@ export type CalendarViewProps = {
   overlays?: CalendarOverlay[];
   // Month view as labelled bars (and tinted days in the year view) instead of dots.
   monthBars?: boolean;
+  // The "All <plural>" filter above the grid; off where the page already picks
+  // the lanes, as the venue calendar does (SPM-186).
+  laneFilter?: boolean;
 };
 
 export function CalendarView({
@@ -1437,6 +1440,7 @@ export function CalendarView({
   entityLabel = COORDINATOR_LABEL,
   overlays,
   monthBars = false,
+  laneFilter = true,
 }: CalendarViewProps) {
   const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
     defaultView,
@@ -1622,14 +1626,16 @@ export function CalendarView({
         </div>
 
 
-        <CoordinatorLegend
-          coordinators={coordinators}
-          visibleIds={visibleIds}
-          onToggle={toggleCoordinator}
-          onSetVisibleIds={setManualVisibleIds}
-          colorMap={colorMap}
-          entityLabel={entityLabel}
-        />
+      {laneFilter ? (
+          <CoordinatorLegend
+            coordinators={coordinators}
+            visibleIds={visibleIds}
+            onToggle={toggleCoordinator}
+            onSetVisibleIds={setManualVisibleIds}
+            colorMap={colorMap}
+            entityLabel={entityLabel}
+          />
+      ) : null}
 
         <div className="calendar-grid-wrapper">
           {visibleCoordinators.length === 0 ? (

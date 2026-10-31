@@ -35,6 +35,12 @@ const details = (overrides = {}) => ({
   ...overrides,
 });
 
+// Events with bookings ahead at a venue being taken out of service (T32).
+const AFFECTED_EVENTS = [
+  { eventId: 442, requestId: "REQ-000442", title: "Synthetic planning forum", status: "CONFIRMED", firstStart: "2026-11-04T01:00:00.000Z", bookings: 1 },
+  { eventId: 443, requestId: "REQ-000443", title: "Synthetic product launch", status: "PLANNING", firstStart: "2026-11-09T02:00:00.000Z", bookings: 1 },
+];
+
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
 // A real 1x1 PNG, so the browser decodes and shows the photo.
@@ -88,7 +94,8 @@ async function routeManagement(page, state) {
     if (url.pathname === "/api/venues/manage") {
       const search = (url.searchParams.get("search") ?? "").toLowerCase();
       const status = url.searchParams.get("status");
-      const venues = state.venues.filter((venue) => (!search || venue.name.toLowerCase().includes(search)) && (!status || venue.status === status));
+      // One box searches name or location (SPM-186).
+      const venues = state.venues.filter((venue) => (!search || `${venue.name} ${venue.address}`.toLowerCase().includes(search)) && (!status || venue.status === status));
       return json(route, { venues, nextOffset: null, sortNotChecked: Boolean(state.sortNotChecked) });
     }
     if (url.pathname === "/api/venues" && method === "POST") {
@@ -101,6 +108,7 @@ async function routeManagement(page, state) {
       return json(route, { message: "Venue created.", venue: created }, 201);
     }
     if (url.pathname === "/api/venues/900/details") return json(route, { message: "Venue details updated.", details: details({ version: 1 }), changed: true });
+    if (url.pathname === "/api/venues/7/history") return json(route, { history: state.history ?? [], nextCursor: null });
     if (url.pathname === "/api/venues/7" && method === "GET") return json(route, { venue: state.venues[0], details: state.details, detailStatus: "CURRENT" });
     if (url.pathname === "/api/venues/7" && method === "PUT") {
       const body = request.postDataJSON();
@@ -110,10 +118,10 @@ async function routeManagement(page, state) {
     if (url.pathname === "/api/venues/7/status") {
       const body = request.postDataJSON();
       if (!body.confirmUpcomingBookings) {
-        return json(route, { error: "This venue has 2 upcoming bookings. Confirm to continue; existing bookings are kept.", code: "VENUE_HAS_UPCOMING_BOOKINGS", upcomingBookings: 2, firstStart: "2026-11-04T01:00:00.000Z" }, 409);
+        return json(route, { error: "This venue has 2 upcoming bookings. Confirm to continue; existing bookings and events are kept, and their coordinators and organisers are notified.", code: "VENUE_HAS_UPCOMING_BOOKINGS", upcomingBookings: 2, firstStart: "2026-11-04T01:00:00.000Z", affectedEvents: AFFECTED_EVENTS }, 409);
       }
       state.venues[0] = { ...state.venues[0], status: body.status, statusReason: body.reason ?? null, version: state.venues[0].version + 1 };
-      return json(route, { message: "Venue status updated.", venue: state.venues[0], changed: true, upcomingBookings: 2 });
+      return json(route, { message: "Venue status updated.", venue: state.venues[0], changed: true, upcomingBookings: 2, affectedEvents: AFFECTED_EVENTS });
     }
     if (url.pathname === "/api/venues/7/details") {
       const body = request.postDataJSON();
@@ -147,7 +155,7 @@ test("[SPM-73 TC1][TC11] Venue Staff list, search, filter and create venues from
   const filters = page.getByRole("region", { name: "Search, sort and filter venues" });
   // Search runs as you type: there is no Search button to press.
   await expect(filters.getByRole("button", { name: "Search", exact: true })).toHaveCount(0);
-  await filters.getByLabel("Venue name").fill("MARINA");
+  await filters.getByLabel("Search", { exact: true }).fill("MARINA");
   await expect(page.getByRole("list", { name: "Venues" }).getByRole("listitem")).toHaveCount(1);
   await filters.getByLabel("Status").selectOption("UNDER_MAINTENANCE");
   await expect(page.getByText("No venues match these filters")).toBeVisible();
@@ -232,8 +240,12 @@ test("[SPM-73 TC6][TC8] Venue Staff edit a venue and confirm deactivation with u
   await confirm.getByRole("button", { name: "Confirm" }).click();
   await expect(confirm.getByText("This venue has upcoming bookings")).toBeVisible();
   await expect(confirm.getByText(/2 upcoming bookings/)).toBeVisible();
-  await confirm.getByRole("button", { name: "Confirm" }).click();
-  await expect(page.getByText(/Venue status updated\. 2 upcoming booking\(s\) were kept\./)).toBeVisible();
+  // T32: the warning names the affected events and says who will be told.
+  await expect(confirm.getByText(/coordinator and organiser are notified/)).toBeVisible();
+  await expect(confirm.getByText("Synthetic planning forum")).toBeVisible();
+  await expect(confirm.getByText("REQ-000443")).toBeVisible();
+  await confirm.getByRole("button", { name: "Proceed and notify" }).click();
+  await expect(page.getByText(/Venue status updated\. 2 upcoming booking\(s\) were kept\. The coordinators and organisers of 2 affected events were notified\./)).toBeVisible();
   expect(state.venues[0].status).toBe("INACTIVE");
 });
 
@@ -258,6 +270,32 @@ test("[T16] setup and turnaround times are set once, then locked", async ({ page
 
   await expect(page.getByLabel("Turnaround time (minutes)")).toHaveAttribute("readonly", "");
   await expect(page.getByText("Set once; it cannot be changed.")).toHaveCount(2);
+});
+
+test("[SPM-185 AC5][TC5] a time recorded elsewhere is refused with VENUE_BUFFERS_LOCKED and the reason is shown", async ({ page }) => {
+  const state = managementState();
+  state.details = details({ setupMinutes: null, turnaroundMinutes: null });
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  // Another Venue Staff member set 30/45 after this page loaded.
+  await page.route((url) => url.pathname === "/api/venues/7/details", (route) => route.fulfill({
+    status: 409,
+    json: {
+      error: "Setup and turnaround times can be set only once and cannot be changed.",
+      code: "VENUE_BUFFERS_LOCKED",
+      fields: { setupMinutes: "Setup time has already been set and cannot be changed.", turnaroundMinutes: "Turnaround time has already been set and cannot be changed." },
+    },
+  }));
+  await page.goto("/venues/7");
+
+  await page.getByLabel("Setup time (minutes)").fill("60");
+  await page.getByLabel("Turnaround time (minutes)").fill("90");
+  await page.getByRole("button", { name: "Save details" }).click();
+
+  await expect(page.getByText("Setup and turnaround times can be set only once and cannot be changed. Nothing was saved. Reload the venue to see the recorded times.")).toBeVisible();
+  await expect(page.getByText("Setup time has already been set and cannot be changed.")).toBeVisible();
+  await expect(page.getByText("Turnaround time has already been set and cannot be changed.")).toBeVisible();
+  await expect(page.getByText("Venue details updated.")).toHaveCount(0);
 });
 
 test("[SPM-73 TC9] other roles cannot open venue management", async ({ page }) => {
@@ -368,6 +406,8 @@ test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active an
 
   await expect(page.getByRole("heading", { name: "Venue Availability", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Availability", exact: true })).toHaveAttribute("aria-current", "page");
+  // Venues are chosen in a dropdown (SPM-186).
+  await page.getByRole("button", { name: /^Venues:/ }).click();
   await page.getByLabel("Synthetic Grand Hall").check();
 
   // Month view loads November with a week either side, without a Show button.
@@ -378,7 +418,8 @@ test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active an
   // Day timeline for 4 November: entries span the occupied range.
   await openDay(page, 4);
   await expect(calendarRegion(page).getByRole("button", { name: "Day", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await calendarRegion(page).getByLabel(/^09:30–12:45: Confirmed booking · Booking #110/).click();
+  // SPM-186: each entry names its event (here its request ID) and its start and end.
+  await calendarRegion(page).getByLabel(/^09:30–12:45: Confirmed booking · REQ-000442 · Wed, 4 Nov 2026 · 10:00–12:00 SGT/).click();
   const details = page.getByRole("dialog", { name: "Synthetic Grand Hall" });
   await expect(details.getByText("Occupied Wed, 4 Nov 2026 · 09:30–12:45 SGT")).toBeVisible();
   await expect(details.getByText("Booking #110")).toBeVisible();
@@ -394,8 +435,8 @@ test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active an
   await expect(details.getByText(/Hold expired 19 Oct 2026/)).toBeVisible();
   await details.getByRole("button", { name: "Close dialog" }).click();
 
-  // Check a requested period.
-  await page.getByText("Check a requested period").click();
+  // Check a requested period: the fields are always shown (SPM-186).
+  await expect(page.getByText("Check a requested period")).toHaveCount(0);
   await page.getByLabel("Date", { exact: true }).fill("2026-11-04");
   await page.getByLabel("Start", { exact: true }).fill("12:44");
   await page.getByLabel("End", { exact: true }).fill("14:00");
@@ -415,7 +456,8 @@ test("[SPM-74] the calendar's year view loads the whole year and its legend name
   await page.goto("/venues?view=availability&venueId=45");
 
   await expect(calendarRegion(page)).toBeVisible();
-  await expect(calendarRegion(page).getByRole("button", { name: "All venues" })).toBeVisible();
+  // The page picks the venues, so the calendar has no second venue filter (SPM-186).
+  await expect(calendarRegion(page).getByRole("button", { name: "All venues" })).toHaveCount(0);
   await expect(calendarRegion(page).getByText(/coordinator/i)).toHaveCount(0);
 
   await calendarRegion(page).getByRole("button", { name: "Year" }).click();
@@ -444,6 +486,7 @@ test("[SPM-74 TC8][TC14] blocks show reason and note; an empty range says the ve
     },
   });
   await page.goto("/venues?view=availability");
+  await page.getByRole("button", { name: /^Venues:/ }).click();
   await page.getByLabel("Synthetic Grand Hall").check();
   await page.getByLabel("Synthetic Seminar Centre").check();
 
@@ -491,7 +534,7 @@ test("[SPM-74] the availability calendar works at mobile width", async ({ page }
 
   await expect(calendarRegion(page)).toBeVisible();
   await openDay(page, 4);
-  await expect(calendarRegion(page).getByLabel(/Confirmed booking · Booking #110/)).toBeVisible();
+  await expect(calendarRegion(page).getByLabel(/Confirmed booking · REQ-000442 · /)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -532,15 +575,16 @@ test("[TC-VENUE-181-61] alphabetical is the default My Venues order and can be r
   await expect.poll(lastQuery).toEqual({ order: "desc" });
 });
 
-test("[TC-VENUE-181-62] location search also runs as you type", async ({ page }) => {
+test("[TC-VENUE-181-62][SPM-186] one search box finds a venue by its location as you type", async ({ page }) => {
   const state = managementState();
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeManagement(page, state);
   await page.goto("/venues");
   const filters = page.getByRole("region", { name: "Search, sort and filter venues" });
 
-  await filters.getByLabel("Location").pressSequentially("7 Bay", { delay: 30 });
-  await expect.poll(() => state.requests.filter((item) => item.path === "/api/venues/manage").at(-1)?.query).toEqual({ location: "7 Bay" });
+  await expect(filters.getByLabel("Location")).toHaveCount(0);
+  await filters.getByLabel("Search", { exact: true }).pressSequentially("7 Bay", { delay: 30 });
+  await expect.poll(() => state.requests.filter((item) => item.path === "/api/venues/manage").at(-1)?.query).toEqual({ search: "7 Bay" });
 });
 
 test("[TC-VENUE-181-63] large icons show a picture area with name, location, capacity and update time; list hides it", async ({ page }) => {
@@ -815,4 +859,45 @@ test("[TC-VENUE-181-158] should_flip_my_venues_order_with_the_funnel_toggle", as
   await expect.poll(lastQuery).toMatchObject({ order: "desc" });
   await filters.getByRole("button", { name: "Descending order. Switch to ascending" }).click();
   await expect.poll(lastQuery).not.toHaveProperty("order");
+});
+
+test("[SPM-186-AC15] the venue page shows the venue's change history, newest first", async ({ page }) => {
+  const state = managementState();
+  state.history = [
+    {
+      historyId: 31, action: "VENUE_STATUS_CHANGED", actor: { userId: 5, name: "Synthetic Venue Staff", role: "VENUE_STAFF" },
+      occurredAt: "2026-10-29T02:00:00.000Z", summary: "Venue status changed",
+      changes: [{ field: "status", before: "ACTIVE", after: "UNDER_MAINTENANCE" }, { field: "statusReason", before: null, after: "Roof repairs" }],
+      audience: "STAFF_ONLY",
+    },
+    {
+      historyId: 30, action: "VENUE_CREATED", actor: { userId: 5, name: "Synthetic Venue Staff", role: "VENUE_STAFF" },
+      occurredAt: "2026-10-20T02:00:00.000Z", summary: "Venue created", changes: [], audience: "STAFF_ONLY",
+    },
+  ];
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  await page.goto("/venues/7");
+
+  const history = page.getByRole("region", { name: "Change history" });
+  await expect(history.getByRole("listitem")).toHaveCount(2);
+  await expect(history.getByRole("listitem").first()).toContainText("Venue status changed");
+  await expect(history.getByText("To: Under Maintenance")).toBeVisible();
+  await expect(history.getByText("To: Roof repairs")).toBeVisible();
+  await expect(history.getByText("Staff only").first()).toBeVisible();
+});
+
+test("[SPM-186] from a venue's availability, Manage venues returns to that venue", async ({ page }) => {
+  const state = managementState();
+  await pinClock(page);
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  await routeAvailability(page);
+  await page.goto("/venues/7");
+
+  await page.getByRole("link", { name: "View availability" }).click();
+  await expect(page).toHaveURL(/view=availability&venueId=7&from=venue$/);
+  await page.getByRole("link", { name: "Manage venues", exact: true }).click();
+  await expect(page).toHaveURL(/\/venues\/7$/);
+  await expect(page.getByRole("heading", { name: "Marina Conference Hall", exact: true })).toBeVisible();
 });

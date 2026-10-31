@@ -11,7 +11,7 @@ test('[SPM-173 AC9-AC12] each status offers only its next coordinator actions', 
   assert.deepEqual(actions('SAFETY_REVIEW'), [['confirm', true]]);
   assert.deepEqual(actions('CONFIRMED'), [['startPreparation', true], ['complete', false]]);
   assert.deepEqual(actions('PREPARATION'), [['complete', false]]);
-  for (const status of ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'AWAITING_CLARIFICATION', 'COMPLETED', 'REJECTED', 'CANCELLED', 'APPROVED']) {
+  for (const status of ['DRAFT', 'SUBMITTED', 'AWAITING_CLARIFICATION', 'COMPLETED', 'APPROVED']) {
     assert.deepEqual(actions(status), [], status);
   }
 });
@@ -73,4 +73,9 @@ test('[SPM-173 AC5] a retry after an ambiguous failure reuses the key; a refusal
     [409, 'EVENT_VERSION_CONFLICT'], [409, 'READINESS_BLOCKED'], [409, 'SAFETY_APPROVAL_REQUIRED'], [409, 'IDEMPOTENCY_KEY_REUSED']]) {
     assert.equal(keepsIdempotencyKey({ status, code }), false, code);
   }
+});
+
+ test('[SPM-39] approval is offered only under review; terminal requests stay disabled', () => {
+  assert.deepEqual(actions('UNDER_REVIEW'), [['acceptFeasibility', true]]);
+  for (const status of ['REJECTED', 'CANCELLED']) assert.deepEqual(actions(status), [['acceptFeasibility', false]]);
 });

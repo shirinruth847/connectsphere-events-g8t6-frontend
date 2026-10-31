@@ -45,6 +45,7 @@ export interface VenueSuggestion {
 }
 
 export interface EventView {
+  rejectionReason?: string | null;
   eventId: number;
   requestId: string;
   // Stored state, returned only to the assigned coordinator (SPM-173 AC6);
@@ -96,6 +97,8 @@ export interface EventHistoryChange {
   field: string;
   before: unknown;
   after: unknown;
+  // The API's name for the change, e.g. "Technical request" (SPM-286/287).
+  label?: string;
   beforeLabel?: string;
   afterLabel?: string;
 }
@@ -204,6 +207,7 @@ export interface EventReadiness {
 }
 
 export const LIFECYCLE_ACTION_PATHS = {
+  acceptFeasibility: "accept-feasibility",
   submitForSafetyReview: "submit-for-safety-review",
   confirm: "confirm",
   startPreparation: "start-preparation",

@@ -23,9 +23,11 @@ import {
 } from "./event-detail-rows";
 import { EventHistoryPanel } from "./event-history-panel";
 import { EventIdentityEditor } from "./event-identity-editor";
+import { RejectionPanel } from "@/components/coordinator/rejection-panel";
 import { LifecyclePanel } from "@/components/coordinator/lifecycle-panel";
 import { EventVenueSection } from "@/components/venues/event-venue-options/event-venue-section";
 import { SafetyReviewSection } from "./safety-review-section";
+import { TechnicalRequestSection } from "@/components/coordinator/technical-request-section";
 
 interface CoordinatorEventViewProps {
   event: EventView;
@@ -57,6 +59,7 @@ const significantPill = <PermissionPill tone="read-only">Change request only</Pe
 export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: CoordinatorEventViewProps) {
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [statusNotice, setStatusNotice] = useState("");
+  const [identityEditing, setIdentityEditing] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
   const [clarificationKey, setClarificationKey] = useState(0);
   const clarifications = useEventClarifications(event.eventId, clarificationKey);
@@ -145,6 +148,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
           >
             <EventIdentityEditor
               event={event}
+              onEditingChange={setIdentityEditing}
               onSaved={(saved, message) => {
                 onEventChange(saved);
                 setHistoryKey((value) => value + 1);
@@ -183,15 +187,27 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             />
           </ReviewSection>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <ReviewSection step={4} title="Accessibility" action={significantPill}>
-              <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
-            </ReviewSection>
-            <ReviewSection step={5} title="Technical & equipment" action={significantPill}>
+          <ReviewSection step={4} title="Accessibility" action={significantPill}>
+            <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
+          </ReviewSection>
+
+          {/* Full width, like the venue section: the technical request (SPM-286) sits under the requirements. */}
+          <ReviewSection step={5} title="Technical & equipment" description="The organiser's equipment and support needs. In planning, send them to Technical Support as one technical request." action={significantPill}>
+            <div className="grid gap-4 md:grid-cols-2">
               <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Equipment requirements</h3><RequirementList items={equipmentItems(event)} empty="No equipment was requested." /></div>
               <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Technical support needs</h3><p className="whitespace-pre-wrap text-sm text-on-surface [overflow-wrap:anywhere]">{event.technicalSupportNeeds || "No technical support needs were provided."}</p></div>
-            </ReviewSection>
-          </div>
+            </div>
+            <TechnicalRequestSection
+              event={event}
+              onSent={() => {
+                // Sending changes the arrangement version and history; the request is
+                // saved either way, so a failed re-fetch keeps the page as it is.
+                setHistoryKey((value) => value + 1);
+                getEventView(event.eventId).then(({ event: latest }) => onEventChange(latest)).catch(() => {});
+              }}
+              onStale={onAccessChanged}
+            />
+          </ReviewSection>
 
           <ReviewSection step={6} title="Registration" action={<PermissionPill tone="read-only">Read-only</PermissionPill>}>
             <KeyValuePanel rows={registrationRows(event)} />
@@ -201,6 +217,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         <aside className="grid min-w-0 gap-5 xl:col-span-4" aria-label="Coordination and history">
           <LifecyclePanel
             event={event}
+            approvalBlockedReason={identityEditing ? "Save or cancel your event details before approving." : null}
             onEventChange={(updated, message) => {
               onEventChange(updated);
               setHistoryKey((value) => value + 1);
@@ -210,6 +227,13 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             onAccessChanged={onAccessChanged}
             refreshKey={historyKey}
           />
+          <RejectionPanel event={event} editing={identityEditing} onAccessChanged={onAccessChanged}
+            onEventChange={(updated, message) => {
+              onEventChange(updated);
+              setHistoryKey(value => value + 1);
+              setNotice(null);
+              setStatusNotice(message ?? "");
+            }} />
           {clarificationPanel}
           <SafetyReviewSection eventId={event.eventId} refreshKey={historyKey} />
           <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">

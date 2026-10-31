@@ -1,9 +1,12 @@
+import { MyPlaceChip } from "@/components/attendee/event-details/event-details-parts";
 import { Button } from "@/components/shared/primitives";
 import type { AttendeeEventSummary } from "@/lib/api/discovery";
+import type { AttendeeRegistration } from "@/lib/api/my-events";
 import { DiscoveryIcon } from "./discovery-icon";
 import { formatDateTile, formatEventDate, formatEventTime } from "./format-event-time";
-import { getAvailabilityPresentation } from "./registration-availability";
+import { getAvailabilityPresentation, getRegistrationState } from "./registration-availability";
 import { RegistrationAvailabilityChip } from "./registration-availability-chip";
+import { RegistrationStateControl } from "./registration-state-control";
 
 // The backend does not expose the primary venue yet, so location is null; this
 // says nothing about whether the venue itself is confirmed.
@@ -12,12 +15,20 @@ export const LOCATION_PENDING_LABEL = "Location details coming soon";
 interface EventDiscoveryCardProps {
   event: AttendeeEventSummary;
   onViewDetails: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
+  // The attendee's own place on this event, from their registrations (SPM-134).
+  place?: AttendeeRegistration | null;
+  // Whether the attendee's places have loaded; Register Now waits for them.
+  placesKnown?: boolean;
+  onRegister?: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
+  // Opens the waitlist confirmation for a full event (SPM-163).
+  onJoinWaitlist?: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
 }
 
 // List-row card from the "Event Discovery" Figma frame (282:346), limited to
 // fields the backend returns: no photos, tracks, speakers or capacity numbers.
-export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardProps) {
+export function EventDiscoveryCard({ event, onViewDetails, place = null, placesKnown = false, onRegister, onJoinWaitlist }: EventDiscoveryCardProps) {
   const availability = getAvailabilityPresentation(event.registrationAvailability);
+  const registrationState = onRegister ? getRegistrationState(event.registrationAvailability, place, placesKnown) : null;
   const tile = formatDateTile(event.startDatetime);
   const titleId = `discovery-event-${event.eventId}-title`;
 
@@ -28,7 +39,8 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
-          <RegistrationAvailabilityChip value={event.registrationAvailability} />
+          {/* Availability is for deciding whether to sign up, so a held place replaces it. */}
+          {place ? <MyPlaceChip registration={place} /> : <RegistrationAvailabilityChip value={event.registrationAvailability} />}
           <span className="inline-flex items-center gap-1 rounded-tag bg-surface-container-high px-2 py-0.5 text-[11px] font-bold leading-[14px] tracking-[0.04em] text-primary">
             <DiscoveryIcon name="venue" size={16} />
             <span className="sr-only">Location: </span>
@@ -82,7 +94,7 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
         </div>
       </div>
 
-      <div className="flex justify-end border-t border-outline-variant/40 pt-3">
+      <div className="flex flex-col gap-2 border-t border-outline-variant/40 pt-3 sm:flex-row sm:justify-end">
         <Button
           variant="secondary"
           className="w-full max-lg:min-h-11 sm:w-auto"
@@ -91,6 +103,14 @@ export function EventDiscoveryCard({ event, onViewDetails }: EventDiscoveryCardP
         >
           View Event Details
         </Button>
+        {registrationState && onRegister ? (
+          <RegistrationStateControl
+            state={registrationState}
+            eventTitle={event.title}
+            onRegister={(trigger) => onRegister(event, trigger)}
+            onJoinWaitlist={onJoinWaitlist ? (trigger) => onJoinWaitlist(event, trigger) : undefined}
+          />
+        ) : null}
       </div>
     </article>
   );

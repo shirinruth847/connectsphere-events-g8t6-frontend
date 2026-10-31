@@ -1,41 +1,44 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getAvailabilityPresentation, getRegistrationAction, isRegistrationEnabled } from '../components/attendee/discovery/registration-availability.ts';
+import { getAvailabilityPresentation, getRegistrationState, showsRegistrationWindow } from '../components/attendee/discovery/registration-availability.ts';
 import { formatDateTile, formatEventDate, formatEventTime, formatTimestamp } from '../components/attendee/discovery/format-event-time.ts';
 import { appendUnique, discoveryErrorMessage, discoveryReducer, initialDiscoveryState } from '../components/attendee/discovery/discovery-state.ts';
 import { canViewPath, postLoginPath } from '../lib/auth.ts';
 
-const NOW = new Date('2026-10-18T00:00:00Z');
 const event = (eventId, title = `Event ${eventId}`) => ({ eventId, title, description: null, startDatetime: null, endDatetime: null, organisationName: null, location: null, registrationAvailability: 'OPEN' });
+const UNAVAILABLE_STATE = { kind: 'unavailable', label: 'Registration Unavailable' };
 
 test('[SPM-34 AC3] OPEN shows Registration Open and Register Now', () => {
  assert.equal(getAvailabilityPresentation('OPEN').label, 'Registration Open');
- assert.equal(isRegistrationEnabled('OPEN'), true);
- assert.deepEqual(getRegistrationAction({ registrationAvailability: 'OPEN', registrationOpenAt: null }, NOW), { label: 'Register Now', variant: 'primary' });
+ assert.equal(showsRegistrationWindow('OPEN'), true);
+ assert.deepEqual(getRegistrationState('OPEN', null, true), { kind: 'register', label: 'Register Now' });
 });
-test('[SPM-34 AC3] FULL_WAITLIST shows Full - Waitlist and Join Waitlist', () => {
+test('[SPM-134] NOT_YET_OPEN shows Not Yet Open and a disabled Registration Not Yet Open', () => {
+ assert.equal(getAvailabilityPresentation('NOT_YET_OPEN').label, 'Not Yet Open');
+ assert.equal(showsRegistrationWindow('NOT_YET_OPEN'), true);
+ assert.deepEqual(getRegistrationState('NOT_YET_OPEN', null, true), { kind: 'unavailable', label: 'Registration Not Yet Open' });
+});
+test('[SPM-34 AC3 / SPM-163 AC1] FULL_WAITLIST shows Full - Waitlist and Join Waitlist, or a disabled Registration Full while places are unknown', () => {
  assert.equal(getAvailabilityPresentation('FULL_WAITLIST').label, 'Full - Waitlist');
- assert.equal(getRegistrationAction({ registrationAvailability: 'FULL_WAITLIST', registrationOpenAt: null }, NOW).label, 'Join Waitlist');
+ assert.deepEqual(getRegistrationState('FULL_WAITLIST', null, true), { kind: 'waitlist', label: 'Join Waitlist' });
+ assert.deepEqual(getRegistrationState('FULL_WAITLIST', null, false), { kind: 'unavailable', label: 'Registration Full' });
+ assert.deepEqual(getRegistrationState('FULL_WAITLIST', { status: 'WAITLISTED', registeredAt: null, waitlistPosition: 2, offer: null }, true), { kind: 'place', label: 'On the waitlist' });
 });
-test('[SPM-34 AC3] CLOSED before the window opens offers a notify action', () => {
+test('[SPM-34 AC3] CLOSED shows a disabled Registration Closed', () => {
  assert.equal(getAvailabilityPresentation('CLOSED').label, 'Registration Closed');
- assert.deepEqual(getRegistrationAction({ registrationAvailability: 'CLOSED', registrationOpenAt: '2026-10-25T00:00:00Z' }, NOW), { label: 'Notify when registration opens', variant: 'secondary' });
+ assert.equal(showsRegistrationWindow('CLOSED'), true);
+ assert.deepEqual(getRegistrationState('CLOSED', null, true), { kind: 'unavailable', label: 'Registration Closed' });
 });
-test('[SPM-34 AC3] CLOSED after the window, or with no opening time, offers no action', () => {
- assert.equal(getRegistrationAction({ registrationAvailability: 'CLOSED', registrationOpenAt: '2026-10-01T00:00:00Z' }, NOW), null);
- assert.equal(getRegistrationAction({ registrationAvailability: 'CLOSED', registrationOpenAt: NOW.toISOString() }, NOW), null);
- assert.equal(getRegistrationAction({ registrationAvailability: 'CLOSED', registrationOpenAt: null }, NOW), null);
+test('[SPM-134] UNAVAILABLE is neutral: not full or closed, and no registration window', () => {
+ assert.equal(getAvailabilityPresentation('UNAVAILABLE').label, 'Unavailable');
+ assert.equal(showsRegistrationWindow('UNAVAILABLE'), false);
+ assert.deepEqual(getRegistrationState('UNAVAILABLE', null, true), UNAVAILABLE_STATE);
 });
-test('[SPM-34 AC4] NOT_ENABLED has no chip, wording or action', () => {
- assert.equal(getAvailabilityPresentation('NOT_ENABLED'), null);
- assert.equal(isRegistrationEnabled('NOT_ENABLED'), false);
- assert.equal(getRegistrationAction({ registrationAvailability: 'NOT_ENABLED', registrationOpenAt: '2026-10-25T00:00:00Z' }, NOW), null);
-});
-test('[SPM-34] an unknown availability value is never guessed into a chip or action', () => {
- for (const value of ['WAITLIST_ONLY', '', 'toString', '__proto__']) {
+test('[SPM-134] an unknown availability value, including the retired NOT_ENABLED, is never guessed into a chip or shown as open', () => {
+ for (const value of ['NOT_ENABLED', 'WAITLIST_ONLY', '', 'toString', '__proto__']) {
   assert.equal(getAvailabilityPresentation(value), null, value);
-  assert.equal(isRegistrationEnabled(value), false, value);
-  assert.equal(getRegistrationAction({ registrationAvailability: value, registrationOpenAt: null }, NOW), null, value);
+  assert.equal(showsRegistrationWindow(value), false, value);
+  assert.deepEqual(getRegistrationState(value, null, true), UNAVAILABLE_STATE, value);
  }
 });
 test('[SPM-34 AC2] dates and times are shown in Singapore time', () => {
