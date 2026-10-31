@@ -5,10 +5,22 @@ import type { AttendeeEventDetail } from "@/lib/api/discovery";
 // GET /api/registrations/mine/:eventId. Event Discovery keeps its own endpoint
 // and rules (GET /api/events/discovery/:id).
 
-// The attendee's own place. SPM-163 adds the offer.
+// An open offer of a freed place to a waitlisted attendee (SPM-163 AC5). The
+// backend omits it once it is answered, cancelled or past expiresAt.
+export interface PlaceOffer {
+  offerId: number;
+  expiresAt: string;
+}
+
+// The attendee's own place.
+// MOCK CONTRACT (SPM-163): waitlistPosition and offer are not returned by the
+// live GET yet; until the backend adds them they are undefined and the UI
+// shows no position and no offer.
 export interface AttendeeRegistration {
   status: "REGISTERED" | "WAITLISTED" | (string & {});
   registeredAt: string | null;
+  waitlistPosition?: number | null;
+  offer?: PlaceOffer | null;
 }
 
 // A display status, never the lifecycle state.

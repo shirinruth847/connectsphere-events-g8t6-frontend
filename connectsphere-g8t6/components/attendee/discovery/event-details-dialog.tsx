@@ -19,6 +19,7 @@ import type {
   AttendeeEventSummary,
 } from "@/lib/api/discovery";
 import type { AttendeeEventView } from "@/lib/api/my-events";
+import type { RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { discoveryErrorMessage } from "./discovery-state";
 import { DiscoveryIcon } from "./discovery-icon";
 import { DiscoveryDetailsPanel } from "./discovery-details-panel";
@@ -51,6 +52,9 @@ interface EventDetailsDialogProps {
   onNotFound?: (eventId: number) => void;
   // Explains a 404 in the opener's terms.
   notFoundDescription?: string;
+  // Runs once the backend has answered an action on the attendee's place
+  // (SPM-163). Without it the place is shown with no actions.
+  onRegistrationChange?: (change: RegistrationChange) => void;
 }
 
 const DISCOVERY_NOT_FOUND =
@@ -68,6 +72,7 @@ export function EventDetailsDialog({
   onLoaded,
   onNotFound,
   notFoundDescription = DISCOVERY_NOT_FOUND,
+  onRegistrationChange,
 }: EventDetailsDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -88,7 +93,10 @@ export function EventDetailsDialog({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
+      // React passes a nested confirmation dialog's cancel up to here, so only
+      // this dialog's own Escape closes it.
       onCancel={(cancelEvent) => {
+        if (cancelEvent.target !== cancelEvent.currentTarget) return;
         cancelEvent.preventDefault();
         onClose();
       }}
@@ -108,6 +116,7 @@ export function EventDetailsDialog({
           onLoaded={onLoaded}
           onNotFound={onNotFound}
           notFoundDescription={notFoundDescription}
+          onRegistrationChange={onRegistrationChange}
         />
       ) : null}
     </dialog>
@@ -122,6 +131,7 @@ function EventDetailsContent({
   onLoaded,
   onNotFound,
   notFoundDescription,
+  onRegistrationChange,
 }: {
   summary: EventDetailsTarget;
   titleId: string;
@@ -130,6 +140,7 @@ function EventDetailsContent({
   onLoaded?: (event: AttendeeEventView) => void;
   onNotFound?: (eventId: number) => void;
   notFoundDescription: string;
+  onRegistrationChange?: (change: RegistrationChange) => void;
 }) {
   // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
   const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom, {
@@ -137,6 +148,14 @@ function EventDetailsContent({
     onNotFound,
   });
   const event = state.status === "ready" ? state.event : null;
+  // An accepted offer, or a refusal because the place changed, reloads the
+  // details so they show the backend's latest place.
+  const handleRegistrationChange = onRegistrationChange
+    ? (change: RegistrationChange) => {
+        if (change.kind === "accept" || change.result === null) retry();
+        onRegistrationChange(change);
+      }
+    : undefined;
   const withheld = Boolean(event?.detailsWithheld);
   const myRegistration = event?.myRegistration ?? null;
   // Availability is for deciding whether to sign up, so it is not shown to
@@ -258,7 +277,7 @@ function EventDetailsContent({
         {event && !withheld ? <EventSummaryBody event={event} /> : null}
       </div>
 
-      {event ? <EventDetailsFooter event={event} /> : null}
+      {event ? <EventDetailsFooter event={event} onRegistrationChange={handleRegistrationChange} /> : null}
     </>
   );
 }

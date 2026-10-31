@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { JoinWaitlistAction } from "@/components/attendee/registration-actions/join-waitlist-action";
 import { Button } from "@/components/shared/primitives";
 import type { AttendeeEventDetail } from "@/lib/api/discovery";
 import { DiscoveryDetailsPanel, type DiscoveryDetailRow } from "./discovery-details-panel";
@@ -14,16 +15,24 @@ import { getRegistrationAction, isRegistrationEnabled } from "./registration-ava
 // is unavailable without contradicting the availability chip.
 export const REGISTRATION_UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
 
-// Shows the one registration action for this event, as unavailable: there are
-// no register, waitlist or notify endpoints yet (separate ticket). It uses
-// aria-disabled rather than disabled so keyboard and screen-reader users can
-// still reach it and hear why it is unavailable. It has no click handler.
+// Shows the one registration action for this event. Join Waitlist works
+// (SPM-163); Register Now and the notify action stay unavailable until
+// SPM-134. Those use aria-disabled rather than disabled so keyboard and
+// screen-reader users can still reach them and hear why; they have no click
+// handler.
 // The shared Button's disabled: style only matches the disabled attribute, so
 // the same classes are applied through aria-disabled: instead.
 export function RegistrationActionFooter({ event, className = "" }: { event: AttendeeEventDetail; className?: string }) {
   const helperId = useId();
   const action = getRegistrationAction(event);
   if (!action) return null;
+  if (event.registrationAvailability === "FULL_WAITLIST") {
+    return (
+      <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-4 ${className}`}>
+        <JoinWaitlistAction eventId={event.eventId} title={event.title} />
+      </footer>
+    );
+  }
 
   return (
     <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-4 ${className}`}>

@@ -6,6 +6,9 @@ import type { DiscoveryDetailRow } from "@/components/attendee/discovery/discove
 import { LOCATION_PENDING_LABEL } from "@/components/attendee/discovery/event-discovery-card";
 import { formatEventDate, formatEventTime, formatTimestamp } from "@/components/attendee/discovery/format-event-time";
 import { getRegistrationAction, isRegistrationEnabled } from "@/components/attendee/discovery/registration-availability";
+import { JoinWaitlistAction } from "@/components/attendee/registration-actions/join-waitlist-action";
+import { placeActions, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
+import { RegistrationActions, type RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { AlertBanner, Button } from "@/components/shared/primitives";
 import type { AttendeeEventDetail } from "@/lib/api/discovery";
 import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
@@ -105,9 +108,8 @@ export function MyPlaceCard({ registration }: { registration: AttendeeRegistrati
   return (
     <section aria-labelledby={headingId} className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
       <SectionLabel id={headingId}>Your place</SectionLabel>
-      <p className="mt-2 text-sm font-semibold text-on-surface">
-        {waitlisted ? "On the waitlist · a place is not yet confirmed" : "Registered"}
-      </p>
+      <p className="mt-2 text-sm font-semibold text-on-surface">{placeLabel(registration)}</p>
+      {waitlisted ? <p className="mt-1 text-xs text-on-surface-variant">A place is not yet confirmed.</p> : null}
       {registration.registeredAt ? (
         <p className="mt-1 text-xs text-on-surface-variant">Since {formatTimestamp(registration.registeredAt)}</p>
       ) : null}
@@ -141,20 +143,46 @@ export function placeRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
 // is unavailable without contradicting the availability chip.
 export const REGISTRATION_UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
 
-// The footer from the frame: the sign-up note on the left, then the one
-// registration action, shown as unavailable: there are no register, waitlist
-// or notify endpoints yet (separate ticket). It
-// uses aria-disabled rather than disabled so keyboard and screen-reader users
-// can still reach it and hear why. The shared Button's disabled: style only
+const footerClasses =
+  "flex flex-col gap-2 border-t border-outline-variant/60 bg-surface-container-lowest px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3";
+
+// The footer from the frame. Someone who holds a place gets the actions on it
+// (SPM-163 offers and Leave Waitlist) when the opener
+// handles changes. Otherwise it offers the one sign-up action: Join Waitlist
+// for a full event (SPM-163); Register Now and the notify action stay
+// unavailable until SPM-134, with the note on the left. Those use
+// aria-disabled rather than disabled so keyboard and screen-reader users can
+// still reach them and hear why. The shared Button's disabled: style only
 // matches the disabled attribute, so the same classes go through aria-disabled:.
-// Someone who already holds a place is offered no sign-up action.
-export function EventDetailsFooter({ event }: { event: AttendeeEventView }) {
+export function EventDetailsFooter({
+  event,
+  onRegistrationChange,
+}: {
+  event: AttendeeEventView;
+  onRegistrationChange?: (change: RegistrationChange) => void;
+}) {
   const helperId = useId();
-  const action = event.detailsWithheld || event.myRegistration ? null : getRegistrationAction(event);
+  if (event.myRegistration) {
+    const place = { registration: event.myRegistration, startDatetime: event.startDatetime, attendeeStatus: event.attendeeStatus };
+    if (!onRegistrationChange || !placeActions(place).length) return null;
+    return (
+      <footer className={footerClasses}>
+        <RegistrationActions eventId={event.eventId} title={event.title} place={place} onChange={onRegistrationChange} className="w-full sm:items-end" />
+      </footer>
+    );
+  }
+  const action = event.detailsWithheld ? null : getRegistrationAction(event);
   if (!action) return null;
+  if (event.registrationAvailability === "FULL_WAITLIST") {
+    return (
+      <footer className={footerClasses}>
+        <JoinWaitlistAction eventId={event.eventId} title={event.title} />
+      </footer>
+    );
+  }
 
   return (
-    <footer className="flex flex-col gap-2 border-t border-outline-variant/60 bg-surface-container-lowest px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+    <footer className={footerClasses}>
       <p id={helperId} className="text-xs text-on-surface-variant sm:order-first sm:mr-auto">
         {REGISTRATION_UNAVAILABLE_NOTE}
       </p>
@@ -167,9 +195,6 @@ export function EventDetailsFooter({ event }: { event: AttendeeEventView }) {
       >
         {action.label}
       </Button>
-      {/* TODO(SPM-163): Accept Slot and Decline for a waitlist offer go in this
-          footer (tertiary Accept, secondary Decline) with the offer expiry,
-          driven by myRegistration.offer. */}
     </footer>
   );
 }
