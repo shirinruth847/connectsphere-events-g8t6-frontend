@@ -27,16 +27,23 @@ export function calendarRange(mode: CalendarViewMode, current: Date): { date: st
   return { date: civilDate(start), days: daysBetween(start, end) };
 }
 
-const entryTitle = (entry: CalendarEntry) => {
-  if (entry.type === "BOOKING" && entry.bookingId) return `${entry.label} · Booking #${entry.bookingId}`;
-  if (entry.type === "BLOCK" && entry.reasonLabel) return `${entry.label} · ${entry.reasonLabel}`;
-  return entry.requestId ? `${entry.label} · ${entry.requestId}` : entry.label;
+// Each entry reads as what it is and when (SPM-186): the event's name (or,
+// when the viewer may not see it, the label and request ID; a block's reason),
+// then its start and end. The bar itself still spans the occupied time.
+const entryTitle = (entry: CalendarEntry, formatWindow?: (start: string, end: string) => string) => {
+  const name = entry.type === "BLOCK"
+    ? (entry.reasonLabel ? `${entry.label} · ${entry.reasonLabel}` : entry.label)
+    : entry.eventTitle ?? (entry.requestId ? `${entry.label} · ${entry.requestId}` : entry.label);
+  return formatWindow ? `${name} · ${formatWindow(entry.start, entry.end)}` : name;
 };
 
 // Events span the occupied range (setup and turnaround included), so the
 // calendar shows exactly when the venue is unavailable. The status shown is the
 // backend's label; the frontend never maps states itself.
-export function toCalendarLanes(data: VenueAvailability): { lanes: CalendarCoordinator[]; refs: Map<number, CalendarEntryRef> } {
+export function toCalendarLanes(
+  data: VenueAvailability,
+  formatWindow?: (start: string, end: string) => string,
+): { lanes: CalendarCoordinator[]; refs: Map<number, CalendarEntryRef> } {
   const refs = new Map<number, CalendarEntryRef>();
   let nextId = 1;
   const lanes = data.venues.map((venue) => ({
@@ -47,7 +54,7 @@ export function toCalendarLanes(data: VenueAvailability): { lanes: CalendarCoord
       refs.set(eventId, { venueId: venue.venueId, venueName: venue.name, entry });
       return {
         eventId,
-        title: entryTitle(entry),
+        title: entryTitle(entry, formatWindow),
         purpose: entry.eventTitle ?? undefined,
         startDatetime: entry.occupiedStart,
         endDatetime: entry.occupiedEnd,

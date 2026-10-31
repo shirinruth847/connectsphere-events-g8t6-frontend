@@ -140,8 +140,48 @@ const saved = (items, eventHasPrimary = false) => ({
 
 // Routes the event page and its venue section; `respond` answers the POST.
 // Returns what the page sent.
+// The check route's answer for one booking (SPM-186): blocking problems and
+// warnings for its own venue and window, from the venue fixtures.
+const EVENT_WINDOW = { start: Date.parse(START), end: Date.parse(END) };
+function checkResult(item, index, { canRequest = true, hours = null } = {}) {
+  const at = (name) => `bookings.${index}.${name}`;
+  const start = Date.parse(item.start ?? "");
+  const end = Date.parse(item.end ?? "");
+  const fields = {};
+  if (!item.venueId) fields[at("venueId")] = "Choose a venue.";
+  if (Number.isNaN(start)) fields[at("start")] = "Enter a start date and time.";
+  if (Number.isNaN(end)) fields[at("end")] = "Enter an end date and time.";
+  else if (!Number.isNaN(start) && (start < EVENT_WINDOW.start || end > EVENT_WINDOW.end)) fields[at("start")] = "Must be within the event's dates and times.";
+  if (Object.keys(fields).length) {
+    return { index, checked: false, fields, venueId: null, availability: "NOT_CHECKED", occupiedStart: null, occupiedEnd: null, blocking: [], warnings: [] };
+  }
+  const venue = [hall, annex, terrace, workshop].find((option) => option.venueId === item.venueId);
+  const blocking = [];
+  if (item.expectedAttendance > venue.maxCapacity) {
+    blocking.push({ code: "VENUE_CAPACITY_EXCEEDED", message: `${item.expectedAttendance} people is more than ${venue.name}'s capacity of ${venue.maxCapacity}.` });
+  }
+  // Only the workshop has no setup/turnaround recorded; the others use 30/45 minutes.
+  if (venue.setupMinutes === null) {
+    blocking.push({ code: "VENUE_BUFFERS_NOT_SET", message: `Setup and turnaround times are not recorded for ${venue.name}.` });
+    return { index, checked: true, fields: {}, venueId: venue.venueId, availability: "NOT_CHECKED", occupiedStart: null, occupiedEnd: null, blocking, warnings: [] };
+  }
+  if (!canRequest) blocking.push({ code: "VENUE_BOOKING_CONFLICT", message: "Overlaps an approved booking for REQ-000005 (10 Mar, 10:30–13:45)." });
+  const warnings = [
+    ...(hours ? [hours] : []),
+    ...((venue.supportedLayouts ?? []).length && !venue.supportedLayouts.some((layout) => layout.toLowerCase() === String(item.layout).toLowerCase())
+      ? [`${venue.name} does not list the ${item.layout} layout.`] : []),
+  ];
+  return {
+    index, checked: true, fields: {}, venueId: venue.venueId,
+    availability: canRequest ? "AVAILABLE" : "UNAVAILABLE",
+    occupiedStart: new Date(start - (venue.setupMinutes ?? 30) * 60000).toISOString(),
+    occupiedEnd: new Date(end + (venue.turnaroundMinutes ?? 45) * 60000).toISOString(),
+    blocking, warnings,
+  };
+}
+
 async function routeBookingSection(page, { event = eventView(), bookingList = list(), respond = null, availability = {}, history = [] } = {}) {
-  const sent = { requests: [], availability: [], eventLoads: 0, readinessLoads: 0 };
+  const sent = { requests: [], availability: [], checks: [], eventLoads: 0, readinessLoads: 0 };
   let current = bookingList;
   await page.route(/\/api\/events\/42(\/.*)?(\?.*)?$/, async (route) => {
     const request = route.request();
@@ -163,6 +203,14 @@ async function routeBookingSection(page, { event = eventView(), bookingList = li
       const setting = availability[venueId] ?? {};
       if (setting.status) return route.fulfill({ status: setting.status, json: { error: "Availability could not be checked." } });
       return route.fulfill({ json: { from: url.searchParams.get("from"), to: url.searchParams.get("to"), venues: [{ venueId, name: "x", address: "", status: "ACTIVE", operatingHours: "08:00-22:00", setupMinutes: 30, turnaroundMinutes: 45, buffersRecorded: true, entries: [], overlaps: [], freePeriods: [], summary: "AVAILABLE", summaryLabel: "Available", check: periodCheck(venueId, setting) }] } });
+    }
+    if (url.pathname === "/api/events/42/venue-bookings/check") {
+      // Answers like the backend (SPM-186): each booking on its own venue and window.
+      const items = request.postDataJSON().bookings;
+      sent.checks.push(items);
+      const failing = items.find((item) => availability[item.venueId]?.status);
+      if (failing) return route.fulfill({ status: availability[failing.venueId].status, json: { error: "Checks could not be loaded." } });
+      return route.fulfill({ json: { bookings: items.map((item, index) => checkResult(item, index, availability[item.venueId] ?? {})) } });
     }
     if (url.pathname === "/api/events/42/venue-bookings" && request.method() === "GET") return route.fulfill({ json: current });
     if (url.pathname === "/api/events/42/venue-bookings" && request.method() === "POST") {
@@ -380,6 +428,7 @@ test("[SPM-179 TC-09][TC-22][AC7][AC13][AC16] a refused request keeps every valu
   // The period check passes (SPM-185's pre-check sends the request); the slot
   // is taken before the server's own check under the venue lock, which refuses it.
   const sent = await routeBookingSection(page, {
+    // The form looked fine; the venue was taken between the check and the send.
     respond: (body, attempt) => {
       if (attempt === 1) return { status: 409, json: { error: conflictText, code: "BOOKING_CONFLICT", bookingIndex: 1, venueId: 46, fields: { "bookings.1.start": conflictText }, conflicts: [{ index: 1, type: "BOOKING", occupiedStart: "2030-03-10T02:30:00.000Z", occupiedEnd: "2030-03-10T05:45:00.000Z" }] } };
       if (attempt === 2) return { status: 503, json: { error: "Availability could not be checked. Try again later.", code: "AVAILABILITY_UNAVAILABLE" } };
@@ -394,6 +443,7 @@ test("[SPM-179 TC-09][TC-22][AC7][AC13][AC16] a refused request keeps every valu
   await second.getByLabel("Expected attendance at this venue").fill("60");
   await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
   await section(page, 1).getByRole("radio", { name: "Primary venue" }).check();
+
   await expect(second.getByText("Available", { exact: true })).toBeVisible();
 
   await form(page).getByRole("button", { name: "Send booking request" }).click();
@@ -419,6 +469,11 @@ test("[SPM-185 AC2] a setup/turnaround clash found before sending opens a dialog
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const turnaround = "Venue's turnaround period (10:00am–10:45am) overlaps with your requested booking, including its 30-minute setup from 10:00am.";
   const sent = await routeBookingSection(page, { availability: { 45: { canRequest: false, message: turnaround }, 46: { canRequest: false } } });
+  // The advisory answer was available; a clash appears before the send-time check.
+  await page.route('**/api/events/42/venue-bookings/check', route => {
+    const items = route.request().postDataJSON().bookings;
+    return route.fulfill({ json: { bookings: items.map((item, index) => checkResult(item, index)) } });
+  });
   await page.goto("/events/42");
   await openForm(page);
   await form(page).getByRole("button", { name: "Add another venue" }).click();
@@ -428,9 +483,7 @@ test("[SPM-185 AC2] a setup/turnaround clash found before sending opens a dialog
   await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
   await section(page, 1).getByRole("radio", { name: "Primary venue" }).check();
 
-  // The section's own advisory check already warns.
-  await expect(second.getByText("Unavailable – booking")).toBeVisible();
-  await expect(second.getByText(/Taken 10:30–13:45 SGT by another booking/)).toBeVisible();
+  await expect(second.getByText("Available", { exact: true })).toBeVisible();
 
   await form(page).getByRole("button", { name: "Send booking request" }).click();
   const clash = page.getByRole("dialog", { name: "Some venues are not available at those times" });
@@ -668,4 +721,95 @@ test('[SPM-195] coordinator sees cancellation integration as unavailable', async
   await page.goto('/events/42');
   const card = page.getByRole('group', { name: 'Venue unavailable' });
   await expect(card).toContainText('Cancel event: Not available yet: the event cancellation workflow is not integrated.');
+});
+
+test("[SPM-186-AC17][SPM-186-TC20] each venue is checked on its own window as the form changes, and a blocking problem stops sending", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const sent = await routeBookingSection(page, { availability: { 46: { canRequest: false } } });
+  await page.goto("/events/42");
+  await openForm(page);
+
+  const first = section(page, 1);
+  await expect(first.getByText("Available", { exact: true })).toBeVisible();
+  await form(page).getByRole("button", { name: "Add another venue" }).click();
+  const second = section(page, 2);
+  await second.getByRole("combobox", { name: "Venue (required)", exact: true }).selectOption("46");
+  await second.getByLabel("Expected attendance at this venue").fill("60");
+  await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
+
+  // Only the second venue is taken; the first keeps its own result.
+  await expect(second.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(second.getByText("Overlaps an approved booking for REQ-000005 (10 Mar, 10:30–13:45).")).toBeVisible();
+  await expect(first.getByText("Available", { exact: true })).toBeVisible();
+  await expect(form(page).getByText("1 venue has a problem to fix first.")).toBeVisible();
+  await expect(form(page).getByRole("button", { name: "Send booking request" })).toBeDisabled();
+  // Every check sends the whole form; nothing is requested.
+  expect(sent.checks.at(-1).map((item) => item.venueId)).toEqual([45, 46]);
+  expect(sent.requests).toHaveLength(0);
+
+  // Over capacity blocks too, until it is fixed.
+  await second.getByRole("combobox", { name: "Venue (required)", exact: true }).selectOption("47");
+  await second.getByLabel("Expected attendance at this venue").fill("121");
+  await expect(second.getByText("121 people is more than Synthetic Terrace's capacity of 120.")).toBeVisible();
+  await expect(form(page).getByRole("button", { name: "Send booking request" })).toBeDisabled();
+  await second.getByLabel("Expected attendance at this venue").fill("120");
+  await expect(second.getByText(/capacity of 120/)).toHaveCount(0);
+  // A warning (layout) does not stop sending; Venue Staff decide.
+  await expect(second.getByText("Synthetic Terrace does not list the Classroom layout.")).toBeVisible();
+  await expect(form(page).getByRole("button", { name: "Send booking request" })).toBeEnabled();
+});
+
+test("[SPM-186-AC18][SPM-186-TC21] a time outside the event shows on its field and is not checked", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  const sent = await routeBookingSection(page);
+  await page.goto("/events/42");
+  await openForm(page);
+
+  const first = section(page, 1);
+  await first.getByLabel("End (SGT)").fill("2030-03-10T19:00");
+
+  await expect(first.getByText("Must be within the event's dates and times.")).toBeVisible();
+  await expect(first.getByTestId("booking-checks")).toHaveCount(0);
+  const send = form(page).getByRole("button", { name: "Send booking request", exact: true });
+  await expect(send).toBeDisabled();
+  expect(sent.requests).toHaveLength(0);
+  await first.getByLabel("End (SGT)").fill("2030-03-10T12:00");
+  await expect(first.getByText("Must be within the event's dates and times.")).toHaveCount(0);
+  await expect(first.getByText("Available", { exact: true })).toBeVisible();
+  await expect(send).toBeEnabled();
+});
+
+test('[SPM-186] advisory blockers permit only an unchanged uncertain request to recover', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  const availability = {};
+  const sent = await routeBookingSection(page, {
+    availability,
+    respond: (body, attempt) => attempt === 1
+      ? { status: 503, json: { error: 'Commit outcome uncertain.' } }
+      : { status: 200, json: { ...saved(body.bookings), replayed: true } },
+  });
+  await page.goto('/events/42');
+  await openForm(page);
+  const first = section(page, 1);
+  await expect(first.getByText('Available', { exact: true })).toBeVisible();
+  await form(page).getByRole('button', { name: 'Send booking request', exact: true }).click();
+  await expect(form(page).getByText('Commit outcome uncertain.', { exact: true })).toBeVisible();
+
+  // A committed booking (or a new block) can make advisory checks unavailable.
+  // Changing the command must not inherit permission to replay the old one.
+  availability[45] = { canRequest: false };
+  const requirements = first.getByLabel('Special requirements');
+  const original = await requirements.inputValue();
+  await requirements.fill(`${original} changed`);
+  await expect(first.getByText('Unavailable', { exact: true })).toBeVisible();
+  const send = form(page).getByRole('button', { name: 'Send booking request', exact: true });
+  await expect(send).toBeDisabled();
+  expect(sent.requests).toHaveLength(1);
+
+  await requirements.fill(original);
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(form(page)).toBeHidden();
+  expect(sent.requests).toHaveLength(2);
+  expect(sent.requests[1]).toEqual(sent.requests[0]);
 });

@@ -8,6 +8,7 @@ import { venueOptionsQuery, type VenueOptionsQuery } from "@/components/venues/v
 import type { Venue, VenuePhoto } from "@/lib/api/venues";
 import type { VenueSuggestion } from "@/lib/api/event-workspace";
 import type { VenueIncident } from "@/lib/api/venue-blocks";
+import type { BookingChecks } from "@/lib/api/venue-bookings";
 
 export type { VenueOptionsQuery };
 
@@ -210,6 +211,18 @@ export const listEventVenueBookings = async (eventId: number): Promise<EventVenu
 
 // A retry of the same form reuses its key, so a double click or a network
 // retry cannot create a second set of bookings (AC13).
+// POST /api/events/:id/venue-bookings/check (SPM-186): each booking's checks
+// for its own venue and window while the request is prepared. Advisory: nothing
+// is saved; sending the request checks again under the venue lock. A booking
+// whose venue or times are not valid yet comes back unchecked with its fields.
+export type VenueBookingCheckResult = BookingChecks & { index: number; checked: boolean; fields: Record<string, string> };
+
+export const checkEventVenueBookings = (eventId: number, bookings: VenueBookingRequestItem[]) =>
+  apiRequest<{ bookings: VenueBookingCheckResult[] }>(`/events/${eventId}/venue-bookings/check`, {
+    method: "POST",
+    body: JSON.stringify({ bookings }),
+  });
+
 export const requestEventVenueBookings = (eventId: number, bookings: VenueBookingRequestItem[], idempotencyKey: string) =>
   apiRequest<VenueBookingRequestResult>(`/events/${eventId}/venue-bookings`, {
     method: "POST",
