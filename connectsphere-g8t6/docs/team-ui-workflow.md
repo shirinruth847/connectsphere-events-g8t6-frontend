@@ -134,6 +134,8 @@ My Requests is not a sidebar item; organisers also have no Settings or Contact
 Support sidebar groups. Dashboard stays active in the sidebar for both views.
 There is no separate My Drafts navigation tab; the draft status filter and existing
 `/dashboard?status=DRAFT#my-drafts` URL remain available under My Requests.
+Manual draft saves return to My Requests (`/dashboard?scope=MINE`) with all
+statuses selected, showing personal submitted requests alongside saved drafts.
 Search also matches organisation names. Changes to these destinations touch
 `lib/auth.ts`, `lib/navigation.ts`
 and the active-tab call in `dashboard-shell.tsx`, requiring shared UI review.

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertBanner, Button, FormLabel, SectionCard, fieldClasses } from "@/components/shared/primitives";
 import { apiRequest, ApiError } from "@/lib/api";
+import { ROUTES } from "@/lib/auth";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { useNavigationGuard } from "@/components/shared/navigation-guard";
 import { SESSION_EXPIRED } from "@/lib/session";
@@ -165,7 +166,7 @@ export function EventRequestWizard() {
           changedRef.current = false; setDirty(false); sessionStorage.removeItem(recoveryKey);
           if (!auto) {
             allowNavigation(); sessionStorage.setItem("connectsphere:notice", "Draft saved successfully.");
-            router.push("/dashboard?status=DRAFT#my-drafts");
+            router.push(ROUTES.requests);
           }
         } else {
           setDirty(true); changedRef.current = true;
