@@ -53,7 +53,7 @@ const OUTCOMES: Record<string, RegistrationOutcome> = {
   REGISTRATION_FULL: {
     tone: "warning", refresh: true, canRetry: false,
     title: "This event is now full",
-    message: "The last place was taken before your registration was submitted, so direct registration is no longer available. Joining the waitlist isn't available here.",
+    message: "The last place was taken before your registration was submitted, so direct registration is no longer available. You can join the waitlist from the event's details.",
   },
   REGISTRATION_CLOSED: {
     tone: "warning", refresh: true, canRetry: false,
@@ -120,6 +120,8 @@ export function registrationOutcome(error: { status: number; code: string; messa
 // once after sign-in. They are never submitted automatically.
 export const REGISTRATION_RECOVERY_MAX_AGE_MS = 30 * 60 * 1000;
 export const registrationRecoveryKey = (userKey: string | number) => `connectsphere:recovery:${userKey}:registration`;
+// The Join Waitlist answers (SPM-163), kept and read back the same way.
+export const waitlistRecoveryKey = (userKey: string | number) => `connectsphere:recovery:${userKey}:waitlist`;
 
 export interface RegistrationTarget {
   eventId: number;
