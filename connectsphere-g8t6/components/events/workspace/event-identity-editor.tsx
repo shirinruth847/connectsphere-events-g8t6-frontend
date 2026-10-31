@@ -35,13 +35,14 @@ interface EventIdentityEditorProps {
   onEventReplaced: (event: EventView) => void;
   // The backend refused because access changed; re-read the event's permissions.
   onAccessChanged: () => void;
+  onEditingChange?: (editing: boolean) => void;
 }
 
 function validate(changes: IdentityChanges) {
   const errors: Record<string, string> = {};
   for (const field of Object.keys(changes) as IdentityField[]) {
     const value = changes[field] ?? "";
-    if (field === "title" && !value.trim()) errors.title = "Enter a title.";
+    if (!value.trim()) errors[field] = field === "title" ? "Enter a title." : `Enter a ${field}.`;
     else if (value.length > LIMITS[field]) errors[field] = `Use ${LIMITS[field].toLocaleString()} characters or fewer.`;
   }
   return errors;
@@ -49,7 +50,7 @@ function validate(changes: IdentityChanges) {
 
 // Section 1 of the coordinator review: title, purpose and description, editable
 // in place when the backend lists them in permissions.editableFields.
-export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessChanged }: EventIdentityEditorProps) {
+export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessChanged, onEditingChange }: EventIdentityEditorProps) {
   const editable = editableIdentityFields(event.permissions);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Values>(() => valuesOf(event));
@@ -75,6 +76,7 @@ export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessC
     setFieldErrors({});
     setBanner(null);
     setEditing(true);
+    onEditingChange?.(true);
   };
 
   const cancel = () => {
@@ -82,6 +84,7 @@ export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessC
     setFieldErrors({});
     setBanner(null);
     setEditing(false);
+    onEditingChange?.(false);
   };
 
   const changes: IdentityChanges = Object.fromEntries(
@@ -91,7 +94,7 @@ export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessC
 
   const save = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
-    if (!hasChanges) return;
+    if (saving || !hasChanges) return;
     const errors = validate(changes);
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
@@ -108,6 +111,7 @@ export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessC
       const result = await saveEventDetails(event.eventId, changes, event.version, attempt.key);
       pendingKey.current = null;
       setEditing(false);
+      onEditingChange?.(false);
       onSaved(result.event, result.message);
     } catch (caught) {
       handleSaveError(caught);
@@ -226,7 +230,7 @@ export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessC
           id,
           name: field,
           value: draft[field],
-          readOnly: !canChange,
+          readOnly: saving || !canChange,
           "aria-invalid": error ? true : undefined,
           "aria-describedby": describedBy,
           // Opening the form is a deliberate action, so focus moves to its first editable field.
@@ -245,7 +249,7 @@ export function EventIdentityEditor({ event, onSaved, onEventReplaced, onAccessC
         };
         return (
           <div key={field}>
-            <FormLabel htmlFor={id} required={field === "title" && canChange}>{fieldLabel(field)}</FormLabel>
+            <FormLabel htmlFor={id} required={canChange}>{fieldLabel(field)}</FormLabel>
             {field === "title" ? <input {...shared} type="text" /> : <textarea {...shared} rows={field === "purpose" ? 3 : 5} />}
             <div className="mt-1 flex justify-between gap-3 text-xs">
               <span id={`${id}-error`} className="font-semibold text-error">{error ? <><Icon name="warning" size={16} className="mr-1 inline align-[-3px]" />{error}</> : null}</span>
