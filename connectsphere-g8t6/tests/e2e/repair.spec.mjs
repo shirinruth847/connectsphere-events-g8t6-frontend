@@ -4,6 +4,7 @@ import {
   installLoginMock,
   makeDraft,
   enterCompleteRequestThroughSubmit,
+  localDateTimeInput,
 } from "./support.mjs";
 
 test("[SPM-35 UI] organiser sidebar and filters retain the shree layout", async ({
@@ -420,10 +421,33 @@ test("[SPM-35 AC1–4] Next never submits; registration is configured before exp
     .getByRole("button", { name: "Submit Request", exact: true })
     .click();
   await expect(
+    page.getByText(
+      "Registration start date and time is required when registration is enabled.",
+    ),
+  ).toBeVisible();
+  expect(state.createEventRequests).toHaveLength(0);
+  const now = await page.evaluate(() => Date.now());
+  const opens = new Date(now + 24 * 3600e3);
+  const closes = new Date(now + 72 * 3600e3);
+  opens.setSeconds(0, 0);
+  closes.setSeconds(0, 0);
+  await page
+    .getByLabel("Registration start date & time (SGT)")
+    .fill(localDateTimeInput(opens));
+  await page
+    .getByLabel("Registration end date & time (SGT)")
+    .fill(localDateTimeInput(closes));
+  await page
+    .getByRole("button", { name: "Submit Request", exact: true })
+    .click();
+  await expect(
     page.getByText("Your event request has been submitted successfully."),
   ).toBeVisible();
   expect(state.createEventRequests).toHaveLength(1);
-  expect(state.createEventRequests[0].payload.registrationCapacity).toBe(180);
+  const payload = state.createEventRequests[0].payload;
+  expect(payload.registrationCapacity).toBe(180);
+  expect(Date.parse(payload.registrationOpenAt)).toBe(opens.getTime());
+  expect(Date.parse(payload.registrationCloseAt)).toBe(closes.getTime());
   await expect(
     page.locator("article").getByText("Submitted", { exact: true }).first(),
   ).toBeVisible();

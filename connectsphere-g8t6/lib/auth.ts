@@ -48,8 +48,8 @@ export function safeNextPath(value: string | null): string | null {
 }
 
 // Roles the backend serves /api/notifications to; every other role, including
-// the Coordinator Lead, gets 403. Technical Support since SPM-287.
-export const NOTIFICATION_ROLES: readonly UserRole[] = ["ATTENDEE", "ORGANISER", "COORDINATOR", "TECH_SUPPORT"];
+// the Coordinator Lead, gets 403. Technical Support since SPM-287, Venue Staff since SPM-286.
+export const NOTIFICATION_ROLES: readonly UserRole[] = ["ATTENDEE", "ORGANISER", "COORDINATOR", "TECH_SUPPORT", "VENUE_STAFF"];
 
 export function canViewPath(role: UserRole, path: string) {
   const pathname = path.split(/[?#]/)[0];
@@ -57,7 +57,7 @@ export function canViewPath(role: UserRole, path: string) {
   if (pathname === ROUTES.registrations) return role === "ATTENDEE";
   if (pathname === ROUTES.events) return role === "COORDINATOR_LEAD" || role === "ATTENDEE";
   if (pathname === "/calendar" || pathname === "/assignments") return role === "COORDINATOR_LEAD";
-  // The inbox serves attendees (SPM-155), organisers (SPM-192), coordinators (SPM-193) and Technical Support (SPM-287).
+  // The inbox serves attendees (SPM-155), organisers (SPM-192), coordinators (SPM-193), Technical Support (SPM-287) and Venue Staff (SPM-286).
   if (pathname === ROUTES.notifications) return NOTIFICATION_ROLES.includes(role);
   // The attendee's own profile (SPM-270), opened from the sidebar identity block.
   if (pathname === ROUTES.attendeeProfile) return role === "ATTENDEE";

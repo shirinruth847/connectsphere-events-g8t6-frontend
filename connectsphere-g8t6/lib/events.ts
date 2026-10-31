@@ -36,6 +36,8 @@ export interface EventRequest {
   equipmentRequirements?: Array<{ equipmentId: number; name?: string | null; category?: string | null; quantity: number }>;
   isRegistrationEnabled?: boolean;
   registrationCapacity?: number | null;
+  registrationOpenAt?: string | null;
+  registrationCloseAt?: string | null;
   organisation?: { organisationId: number; name: string } | null;
   isAssignedToCoordinator?: boolean;
   isOwner?: boolean;
@@ -74,6 +76,9 @@ export interface EventFormValues {
   accessibilityNotes: string;
   isRegistrationEnabled: boolean;
   registrationCapacity: string;
+  // datetime-local values, read as Singapore time.
+  registrationOpenAt: string;
+  registrationCloseAt: string;
   preferredLayoutType: string;
   venuePreferences: number[];
   // SPM-76: requested times of chosen venues, keyed by venue ID, as
@@ -100,6 +105,8 @@ export interface EventRequestPayload {
   accessibilityNeeds: string[];
   isRegistrationEnabled: boolean;
   registrationCapacity: number | null;
+  registrationOpenAt: string | null;
+  registrationCloseAt: string | null;
   venuePreferences: VenuePreferencePayload[];
   equipmentRequirements: Array<{ equipmentId: number; quantity: number }>;
 }
@@ -196,7 +203,7 @@ export const eventStatusLabel = (event: { status?: string | null; statusLabel?: 
   (event.statusLabel && event.statusLabel !== event.status ? event.statusLabel : null)
   ?? (event.status ? ORGANISER_STATUS_LABELS[event.status as EventStatus] ?? statusPresentation(event.status).label : "Unknown status");
 
-export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, technicalSupportNeeds: 4, registrationCapacity: 5, isRegistrationEnabled: 5 }[field] ?? 0);
+export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, technicalSupportNeeds: 4, registrationCapacity: 5, isRegistrationEnabled: 5, registrationOpenAt: 5, registrationCloseAt: 5 }[field] ?? 0);
 // SPM-76: a chosen venue's requested time must be a real period inside the event.
 export const venueTimeProblem = (values: EventFormValues) => {
   const eventStart = Date.parse(values.startDatetime);
@@ -247,6 +254,17 @@ export function validateEventStep(values: EventFormValues, index: number, requir
   if (index === 5) {
     if (required && values.isRegistrationEnabled && !values.registrationCapacity.trim()) errors.registrationCapacity = "Registration capacity is required when registration is enabled.";
     else if (values.registrationCapacity && (!Number.isInteger(Number(values.registrationCapacity)) || Number(values.registrationCapacity) < 1 || Number(values.registrationCapacity) > 2147483647)) errors.registrationCapacity = "Registration capacity must be a positive whole number.";
+    // SPM-35: registration runs [open, close) and closes by the event start; same rules as the backend.
+    if (values.isRegistrationEnabled) {
+      const open = typedInstant(values.registrationOpenAt); const close = typedInstant(values.registrationCloseAt);
+      const start = typedInstant(values.startDatetime);
+      if (required && !values.registrationOpenAt) errors.registrationOpenAt = "Registration start date and time is required when registration is enabled.";
+      else if (values.registrationOpenAt && !Number.isFinite(open)) errors.registrationOpenAt = "Please enter a valid date and time.";
+      if (required && !values.registrationCloseAt) errors.registrationCloseAt = "Registration end date and time is required when registration is enabled.";
+      else if (values.registrationCloseAt && !Number.isFinite(close)) errors.registrationCloseAt = "Please enter a valid date and time.";
+      else if (Number.isFinite(open) && close <= open) errors.registrationCloseAt = "Registration must close after it opens.";
+      else if (Number.isFinite(start) && close > start) errors.registrationCloseAt = "Registration must close no later than the event start.";
+    }
   }
   return errors;
 }
@@ -294,6 +312,8 @@ export const EMPTY_EVENT_FORM: EventFormValues = {
   accessibilityNotes: "",
   isRegistrationEnabled: false,
   registrationCapacity: "",
+  registrationOpenAt: "",
+  registrationCloseAt: "",
   preferredLayoutType: "NO_PREFERENCE",
   venuePreferences: [],
   venueTimes: {},
@@ -344,6 +364,8 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   accessibilityNeeds: [...values.accessibilityNeeds, ...values.accessibilityNotes.split("\n").map(line => line.trim()).filter(Boolean)],
   isRegistrationEnabled: values.isRegistrationEnabled,
   registrationCapacity: values.isRegistrationEnabled && values.registrationCapacity.trim() ? Number(values.registrationCapacity) : null,
+  registrationOpenAt: values.isRegistrationEnabled ? localDateTimeToIso(values.registrationOpenAt) ?? null : null,
+  registrationCloseAt: values.isRegistrationEnabled ? localDateTimeToIso(values.registrationCloseAt) ?? null : null,
   venuePreferences: values.venuePreferences.map((venueId) => venuePreferencePayload(venueId, values.venueTimes?.[venueId])),
   // The backend refuses display fields such as name on a line.
   equipmentRequirements: values.equipmentRequirements.map(({ equipmentId, quantity }) => ({ equipmentId, quantity })),
@@ -412,6 +434,8 @@ export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
     accessibilityNotes: notes.join("\n"),
     isRegistrationEnabled: event.isRegistrationEnabled ?? false,
     registrationCapacity: event.registrationCapacity?.toString() ?? "",
+    registrationOpenAt: toLocalDateTimeInput(event.registrationOpenAt),
+    registrationCloseAt: toLocalDateTimeInput(event.registrationCloseAt),
     preferredLayoutType: event.preferredLayoutType ?? "NO_PREFERENCE",
     venuePreferences: event.venuePreferences ?? [],
     venueTimes: Object.fromEntries((event.venuePreferenceTimes ?? [])

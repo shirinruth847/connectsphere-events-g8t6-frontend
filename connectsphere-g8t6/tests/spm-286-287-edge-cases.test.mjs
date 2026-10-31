@@ -480,7 +480,7 @@ test("[SPM-287 TC-07] TECH_SUPPORT is included in NOTIFICATION_ROLES", () => {
   // Checked indirectly via canViewPath for /notifications
   assert.equal(canViewPath("TECH_SUPPORT", "/notifications"), true);
   assert.equal(canViewPath("COORDINATOR_LEAD", "/notifications"), false);
-  assert.equal(canViewPath("VENUE_STAFF", "/notifications"), false);
+  assert.equal(canViewPath("VENUE_STAFF", "/notifications"), true); // SPM-286
   assert.equal(canViewPath("SAFETY_OFFICER", "/notifications"), false);
 });
 
