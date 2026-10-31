@@ -21,3 +21,17 @@ export const isNewHistoryEntry = (
   if (!Number.isFinite(viewedAt) || !Number.isFinite(occurredAt)) return false;
   return occurredAt > viewedAt && entry.historyId <= baseline.newestSeenId;
 };
+
+// Puts entries recorded since the list loaded in front of it, keeping the
+// pages already loaded. With no overlap there may be a gap, so the list starts
+// again from the newest page.
+export function mergeNewestPage<Entry extends { historyId: number }, List extends { entries: Entry[]; nextCursor: string | null }>(
+  current: List,
+  page: { history: Entry[]; nextCursor: string | null },
+): List {
+  if (!page.history.length) return current;
+  const known = new Set(current.entries.map((entry) => entry.historyId));
+  const fresh = page.history.filter((entry) => !known.has(entry.historyId));
+  if (fresh.length === page.history.length) return { ...current, entries: page.history, nextCursor: page.nextCursor };
+  return fresh.length ? { ...current, entries: [...fresh, ...current.entries] } : current;
+}

@@ -55,14 +55,20 @@ function LoadedWorkspace({ eventId, home, reason }: { eventId: number; home: str
       </AlertBanner>
     );
   }
-  if (state.event.viewerRelationship === "ASSIGNED_COORDINATOR") {
-    return <CoordinatorEventView event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
-  }
-  if (state.event.viewerRelationship === "SAFETY_OFFICER") {
-    return <SafetyReviewView event={state.event} onEventChanged={refresh} />;
-  }
-  if (state.event.viewerRelationship === "SUPERVISING_LEAD") return <SupervisedEventView event={state.event} />;
-  return <EventRequestDetails event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
+  const eventView = state.event.viewerRelationship === "ASSIGNED_COORDINATOR"
+    ? <CoordinatorEventView event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />
+    : state.event.viewerRelationship === "SAFETY_OFFICER"
+      ? <SafetyReviewView event={state.event} onEventChanged={refresh} />
+      : state.event.viewerRelationship === "SUPERVISING_LEAD"
+        ? <SupervisedEventView event={state.event} />
+        : <EventRequestDetails event={state.event} onEventChange={replaceEvent} onAccessChanged={refresh} />;
+  return <>
+    {state.refreshError ? <AlertBanner tone="warning" title="Event refresh unavailable">
+      Your edits are still here. The displayed event may be out of date. {state.refreshError}
+      <div className="mt-3"><Button variant="secondary" onClick={refresh}><Icon name="refresh" size={16} />Retry refresh</Button></div>
+    </AlertBanner> : null}
+    {eventView}
+  </>;
 }
 
 // /events/[eventId]: the role-aware event workspace (SPM-33). Render inside
