@@ -25,6 +25,7 @@ import { eventCalendarCheck, suggestionBlocker, venueById } from "./venue-option
 import { EventVenueBookings, type BookingListState } from "./event-venue-bookings";
 import { VenueBookingRequestDialog } from "./venue-booking-request-dialog";
 import { bookedVenueIds } from "./venue-booking-form-model";
+import { EventVenueHolds } from "./event-venue-holds";
 
 type ChoicesState =
   | { status: "loading" }
@@ -68,6 +69,8 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   // Each opening of the request form gets a new key, so it starts fresh.
   const [request, setRequest] = useState<{ open: boolean; key: number; startVenueId: number | null } | null>(null);
   const [requested, setRequested] = useState<VenueBookingRequestResult | null>(null);
+  // The hold request form (SPM-190), keyed like the booking form.
+  const [holdForm, setHoldForm] = useState<{ open: boolean; key: number; venueId: number | null } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -161,11 +164,21 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
       </div>
     );
   };
+  const openHoldForm = (venueId: number | null) => {
+    if (!canRequest) return;
+    setSearchOpen(false);
+    setRelatedId(null);
+    setHoldForm((current) => ({ open: true, key: (current?.key ?? 0) + 1, venueId }));
+  };
+  // "Request hold" (SPM-190) keeps a venue for a while before booking it.
+  const holdAction = (venue: EventVenueOption) => {
+    if (!canRequest || booked.has(venue.venueId)) return null;
+    return <Button type="button" variant="quiet" aria-haspopup="dialog" onClick={() => openHoldForm(venue.venueId)}>Request hold</Button>;
+  };
   const action = (venue: EventVenueOption, place: "card" | "panel") => {
-    const select = suggestAction(venue, place);
-    const book = requestAction(venue, place);
-    if (!select || !book) return select ?? book;
-    return <div className="flex flex-wrap items-start gap-2">{select}{book}</div>;
+    const buttons = [suggestAction(venue, place), requestAction(venue, place), holdAction(venue)].filter(Boolean);
+    if (buttons.length <= 1) return buttons[0] ?? null;
+    return <div className="flex flex-wrap items-start gap-2">{buttons}</div>;
   };
 
   const confirmSuggestion = async () => {
@@ -231,6 +244,15 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
         canRequest={canRequest}
         onRequest={() => openRequest(null)}
         onRetry={() => { setBookings({ status: "loading" }); setBookingsAttempt((value) => value + 1); }}
+      />
+      <EventVenueHolds
+        event={event}
+        isCoordinator={isCoordinator}
+        canRequest={canRequest}
+        venues={requestVenues}
+        form={holdForm}
+        onOpenForm={openHoldForm}
+        onCloseForm={() => setHoldForm((current) => (current ? { ...current, open: false } : current))}
       />
       {suggestion ? (
         <p className="flex flex-wrap items-center gap-2 rounded-control border border-[#86EFAC] bg-[#DCFCE7] px-3 py-2 text-sm text-[#166534]">

@@ -29,6 +29,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      - name: Registration form unit tests
+        run: npm run test:unit -- tests/registration-form.test.ts
       - name: Install browser
         run: npx playwright install --with-deps chrome
       - name: Build and check UI journeys

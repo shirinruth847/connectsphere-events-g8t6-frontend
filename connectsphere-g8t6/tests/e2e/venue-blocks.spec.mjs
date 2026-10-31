@@ -60,6 +60,8 @@ async function routeVenuePage(page, state) {
     state.requests.push({ method, path: url.pathname, body, key: request.headers()["idempotency-key"] ?? null });
     if (url.pathname === "/api/venues/7" && method === "GET") return json(route, { venue: VENUE, details: DETAILS, detailStatus: "CURRENT" });
     if (url.pathname === "/api/venues/7/photos") return json(route, { photos: [] });
+    // The venue page's change history (SPM-186).
+    if (url.pathname === "/api/venues/7/history") return json(route, { history: [], nextCursor: null });
     if (url.pathname === "/api/venues/7/blocks" && method === "GET") {
       if (state.blocksUnavailable) return json(route, { error: "The venue calendar cannot be read or saved right now, so nothing was changed. Try again shortly.", code: "VENUE_CALENDAR_UNAVAILABLE" }, 503);
       return json(route, { venueId: 7, venueName: VENUE.name, blocks: state.blocks, hasMore: Boolean(state.hasMore) });
@@ -202,6 +204,8 @@ test("[SPM-195-AC9][AC10] Venue Staff see an affected booking on the event view 
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await page.route("**/api/venues/**", async (route) => {
     const url = new URL(route.request().url());
+    // The event's venue history beside the bookings (SPM-186).
+    if (url.pathname === "/api/venues/bookings/events/42/history") return json(route, { history: [], nextCursor: null });
     if (url.pathname === "/api/venues/bookings/events/42") {
       return json(route, {
         event: VENUE_STAFF_EVENT,
