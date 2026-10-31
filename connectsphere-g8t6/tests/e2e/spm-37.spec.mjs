@@ -1,13 +1,18 @@
 import { test, expect } from "@playwright/test";
 import { attachScreenshot, enterCompleteRequestThroughSubmit, installConnectSphereMocks, makeDraft } from "./support.mjs";
 
-test("[SPM-37 manual save] saves a title-only draft and lists it with a Draft badge", async ({ page }, testInfo) => {
+test("[SPM-37 manual save] saves and resaves a draft to unfiltered My Requests", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const state = await installConnectSphereMocks(page);
+  state.events = [makeDraft({ eventId: 44, title: "My submitted event", status: "SUBMITTED", statusLabel: "Submitted" })];
   await page.goto("/events/new");
   await page.getByLabel("Event Title").fill("SMU Alumni Gala 2026");
   await page.getByRole("button", { name: "Save as Draft", exact: false }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\?status=DRAFT#my-drafts/);
+  await expect(page).toHaveURL(/\/dashboard\?scope=MINE$/);
+  await expect(page.getByRole("heading", { name: "My Requests", level: 1, exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Filter events by status" })).toHaveValue("ALL");
+  await expect(page.getByRole("heading", { name: "My submitted event", exact: true })).toBeVisible();
   await expect(page.getByText("Draft saved successfully.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "SMU Alumni Gala 2026" })).toBeVisible();
   const savedDraftCard = page.getByRole("article").filter({
@@ -17,6 +22,21 @@ test("[SPM-37 manual save] saves a title-only draft and lists it with a Draft ba
   expect(state.draftCreateRequests).toHaveLength(1);
   expect(state.draftCreateRequests[0].title).toBe("SMU Alumni Gala 2026");
   await attachScreenshot(testInfo, page, "SPM-37-manual-save-pass");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("combobox", { name: "Filter events by status" }).selectOption("Draft");
+  await savedDraftCard.getByRole("link", { name: "Edit Draft" }).click();
+  await page.getByLabel("Event Title").fill("Updated Alumni Gala");
+  await page.getByRole("button", { name: "Save as Draft", exact: false }).click();
+  await expect(page).toHaveURL(/\/dashboard\?scope=MINE$/);
+  await expect(page.getByRole("heading", { name: "My Requests", level: 1, exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Filter events by status" })).toHaveValue("ALL");
+  await expect(page.getByRole("heading", { name: "Updated Alumni Gala", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "My submitted event", exact: true })).toBeVisible();
+  await expect(page.getByText("Draft saved successfully.")).toBeVisible();
+  expect(state.draftCreateRequests).toHaveLength(1);
+  expect(state.draftUpdateRequests).toHaveLength(1);
+  await attachScreenshot(testInfo, page, "SPM-37-manual-resave-mobile");
 });
 
 test("[SPM-37 resume and submit] prefills a saved draft and submits it", async ({ page }, testInfo) => {

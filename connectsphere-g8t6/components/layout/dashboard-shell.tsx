@@ -2,7 +2,7 @@
 
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { homeForRole, ROLE_LABELS, ROUTES } from "@/lib/auth";
 import { activeNavigationId, navigationForRole, type NavigationIcon } from "@/lib/navigation";
@@ -37,7 +37,6 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
   const profile = useSessionUser();
   const guard = useNavigationGuard();
   const pathname = usePathname();
-  const params = useSearchParams();
   const router = useRouter();
   const logout = async () => {
     try { await signOut(); router.replace(ROUTES.login); }
@@ -51,7 +50,7 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
   }, [open]);
   if (!profile) return null;
   const groups = navigationForRole(profile.role);
-  const activeId = activeNavigationId(profile.role, pathname, params.get("status"), params.get("scope"));
+  const activeId = activeNavigationId(profile.role, pathname);
   const home = homeForRole(profile.role);
   const closeMenu = () => setOpen(false);
   const identity = <>
