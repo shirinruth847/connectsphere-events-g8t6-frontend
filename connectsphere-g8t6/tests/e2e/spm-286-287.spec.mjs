@@ -55,7 +55,8 @@ test("[SPM-286 AC1][AC2][AC3] the organiser chooses equipment for the event's ti
   await next(); await next(); await next();
   await expect(page.getByRole("heading", { name: "Technical & Equipment Requirements" })).toBeVisible();
   // The settled dates are sent as the window (AC1).
-  await expect.poll(() => queries.at(-1)).toEqual({ start: start.toISOString(), end: end.toISOString() });
+  // The typed times are Singapore time, sent with their offset.
+  await expect.poll(() => queries.at(-1)).toEqual({ start: `${localDateTimeInput(start)}:00+08:00`, end: `${localDateTimeInput(end)}:00+08:00` });
 
   const equipment = page.getByRole("region", { name: "Equipment", exact: true });
   await expect(equipment.getByText("No equipment requested.")).toBeVisible();
@@ -119,24 +120,22 @@ const coordinatorEvent = (overrides = {}) => ({
 
 const NAMES = { 1: "Projector", 2: "Microphone" };
 
-async function routeCoordinatorEvent(page, event, respond = null) {
+async function routeCoordinatorEvent(page, event, respond = null, { requests = [], history = [] } = {}) {
   const sent = { requests: [], arrangementLoads: 0 };
-  const technical = { status: "READY", supportStatus: "READY", requirements: [], requests: [] };
+  // The coordinator gets the technical section only (backend SPM-286 AC5).
+  const technical = { status: "READY", supportStatus: "UNAVAILABLE", requirements: [], requests };
   await page.route(/\/api\/events\/42(\/.*)?(\?.*)?$/, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     if (request.method() === "OPTIONS") return route.fallback();
     if (pathname === "/api/events/42") return route.fulfill({ json: { event } });
+    if (pathname === "/api/events/42/history") return route.fulfill({ json: { history, nextCursor: null, lastViewedAt: null } });
     if (pathname === "/api/events/42/readiness") return route.fulfill({ json: { ready: false, failures: [], status: event.status, version: event.version, arrangementVersion: 3 } });
     if (pathname === "/api/events/42/venue-options") return route.fulfill({ json: { event: { eventId: 42 }, venues: [], preferredVenues: [], detailsAvailable: true, availabilityChecked: true, filtersNotChecked: [], canSuggestVenue: false } });
     if (pathname === "/api/events/42/venue-bookings") return route.fulfill({ json: { eventId: 42, requestId: "REQ-000042", eventType: "CONFERENCE", eventTypeLabel: "Conference", canRequestVenueBookings: false, bookings: [] } });
     if (pathname === "/api/events/42/arrangements") {
       sent.arrangementLoads += 1;
-      return route.fulfill({ json: { arrangements: {
-        venues: { status: "READY", holdsStatus: "READY", availabilityStatus: "READY", primaryVenueStatus: "NOT_DESIGNATED", bookings: [], holds: [] },
-        technical,
-        safety: { status: "READY", reviews: [] },
-      } } });
+      return route.fulfill({ json: { arrangements: { technical } } });
     }
     if (pathname === "/api/events/42/technical-requests" && request.method() === "POST") {
       const body = request.postDataJSON();
@@ -145,7 +144,7 @@ async function routeCoordinatorEvent(page, event, respond = null) {
       const answer = respond?.(body, sent.requests.length) ?? { status: 201, json: {
         technicalRequestId: 7, eventId: 42, requestId: "REQ-000042", status: "PENDING", items, arrangementVersion: 4, createdAt: "2026-10-31T02:00:00.000Z",
       } };
-      if (answer.status < 300) technical.requests = [{ requestId: 7, status: "PENDING", supportRequired: null, equipment: items }];
+      if (answer.status < 300) technical.requests = [{ requestId: 7, status: "PENDING", supportRequired: null, createdAt: "2026-10-31T02:00:00.000Z", decidedAt: null, equipment: items }, ...technical.requests];
       return route.fulfill(answer);
     }
     return route.fallback();
@@ -168,7 +167,8 @@ test("[SPM-286 AC5][AC6][AC7] the coordinator sends the event's equipment as one
   // Starts from the organiser's lines, checked against the event's window.
   await expect(dialog.getByLabel("Equipment 1", { exact: true })).toHaveValue("1");
   await expect(dialog.getByLabel("Quantity 1", { exact: true })).toHaveValue("2");
-  await expect.poll(() => queries.at(-1)).toEqual({ start: START, end: END });
+  // 09:00–17:00 SGT, sent with its offset.
+  await expect.poll(() => queries.at(-1)).toEqual({ start: "2030-03-10T09:00:00+08:00", end: "2030-03-10T17:00:00+08:00" });
   await expect(dialog.getByText("Audio · 0 of 6 available for the event's time")).toBeVisible();
   await expect(dialog.getByText("Only 0 Microphone available for the event's time.")).toBeVisible();
 
@@ -392,5 +392,5 @@ test("[SPM-287] Technical Support see new requests in Updates and the Notificati
   // There is no event workspace for Technical Support; the request is on the dashboard.
   await page.getByRole("button", { name: "Go to Event: Synthetic Planning Forum" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole("heading", { name: "Technical requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Technical requests", exact: true })).toBeVisible();
 });

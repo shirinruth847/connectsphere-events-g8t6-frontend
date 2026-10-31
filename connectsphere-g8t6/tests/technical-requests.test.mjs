@@ -11,6 +11,7 @@ import {
   technicalRequestQuery,
   technicalStatusLabel,
   unavailableItems,
+  visibleHistoryChanges,
 } from '../lib/technical-requests.ts';
 import { canViewPath } from '../lib/auth.ts';
 
@@ -20,7 +21,9 @@ const windowed = { window: { start: '2026-11-20T01:00:00.000Z', end: '2026-11-20
 const stockOnly = { window: null, note: "Availability is confirmed once the event's date and time are chosen.", equipment: [{ ...projector, availableQuantity: 10 }, microphone] };
 
 test('[SPM-286 AC1][AC2] the window is sent only when both ends are valid and in order', () => {
-  assert.equal(availabilityQuery('2026-11-20T09:00:00+08:00', '2026-11-20T11:00:00+08:00'), '?start=2026-11-20T01%3A00%3A00.000Z&end=2026-11-20T03%3A00%3A00.000Z');
+  // Sent in Singapore time with its offset, whatever form the instant arrives in (all times SGT).
+  assert.equal(availabilityQuery('2026-11-20T01:00:00.000Z', '2026-11-20T03:00:00.000Z'), '?start=2026-11-20T09%3A00%3A00%2B08%3A00&end=2026-11-20T11%3A00%3A00%2B08%3A00');
+  assert.equal(availabilityQuery('2026-11-20T09:00:00+08:00', '2026-11-20T11:00:00+08:00'), '?start=2026-11-20T09%3A00%3A00%2B08%3A00&end=2026-11-20T11%3A00%3A00%2B08%3A00');
   assert.equal(availabilityQuery('2026-11-20T09:00:00+08:00', null), '');
   assert.equal(availabilityQuery(null, null), '');
   assert.equal(availabilityQuery('not a date', '2026-11-20T11:00:00+08:00'), '');
@@ -64,4 +67,23 @@ test('[SPM-287] only Technical Support open a technical request', () => {
   assert.equal(canViewPath('TECH_SUPPORT', '/technical-requests/7'), true);
   for (const role of ['ORGANISER', 'COORDINATOR', 'VENUE_STAFF', 'ATTENDEE']) assert.equal(canViewPath(role, '/technical-requests/7'), false, role);
   assert.equal(canViewPath('TECH_SUPPORT', '/technical-requests/abc'), false);
+  assert.equal(canViewPath('TECH_SUPPORT', '/equipment/schedule'), true);
+  for (const role of ['ORGANISER', 'COORDINATOR', 'VENUE_STAFF']) assert.equal(canViewPath(role, '/equipment/schedule'), false, role);
+});
+
+test('[SPM-286/287] history shows the technical request status by label and hides empty diffs', () => {
+  const changes = visibleHistoryChanges([
+    { field: 'technicalRequestStatus', before: 'PENDING', after: 'APPROVED', label: 'Technical request', beforeLabel: 'Pending', afterLabel: 'Approved' },
+    // The earlier shape: a bare id key and a status object.
+    { field: 'technicalRequestId', before: null, after: null },
+    { field: 'technicalRequest', before: null, after: 'PENDING' },
+    { field: 'title', before: 'Old', after: 'New' },
+    { field: 'purpose', before: '', after: null },
+  ]);
+  assert.deepEqual(changes.map((change) => [change.label ?? change.field, change.beforeLabel ?? null, change.afterLabel ?? null]), [
+    ['Technical request', 'Pending', 'Approved'],
+    ['Technical request', null, 'Pending'],
+    ['title', null, null],
+  ]);
+  assert.equal(visibleHistoryChanges([{ field: 'technicalRequestId', before: null, after: 7 }])[0].afterLabel, 'Request #7');
 });
