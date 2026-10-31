@@ -223,7 +223,7 @@ export function validateEventStep(values: EventFormValues, index: number, requir
     if (values.description.trim().length > 5000) errors.description = "Event Description must be 5,000 characters or fewer.";
   }
   if (index === 1) {
-    const start = Date.parse(values.startDatetime); const end = Date.parse(values.endDatetime);
+    const start = typedInstant(values.startDatetime); const end = typedInstant(values.endDatetime);
     if (required && !values.startDatetime) errors.startDatetime = "Event start date and time is required.";
     else if (values.startDatetime && !Number.isFinite(start)) errors.startDatetime = "Please enter a valid date and time.";
     else if (required && checkLeadTime && start < now + 48 * 60 * 60 * 1000) errors.startDatetime = "Event date must be at least 48 hours in advance.";
@@ -300,19 +300,31 @@ export const EMPTY_EVENT_FORM: EventFormValues = {
   equipmentRequirements: [],
 };
 
+// Typed dates and times are Singapore time whatever the browser's time zone
+// (Master: all times SGT). Singapore has no daylight saving, so the offset is fixed.
+const SGT_OFFSET = "+08:00";
+const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
+const LOCAL_INPUT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+
+// An instant -> the datetime-local value that shows it in Singapore time.
 export const toLocalDateTimeInput = (value?: string | null) => {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  return new Date(date.getTime() + SGT_OFFSET_MS).toISOString().slice(0, 16);
 };
 
+// "2026-11-02T10:00" typed -> "2026-11-02T10:00:00+08:00", never the browser's zone.
+// A value that already names its zone ("…Z", "…+08:00") keeps its meaning.
 export const localDateTimeToIso = (value: string) => {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  if (!LOCAL_INPUT.test(value)) {
+    return /(Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : undefined;
+  }
+  const instant = `${value.length === 16 ? `${value}:00` : value}${SGT_OFFSET}`;
+  return Number.isNaN(Date.parse(instant)) ? undefined : instant;
 };
+
+const typedInstant = (value: string) => Date.parse(localDateTimeToIso(value) ?? "");
 
 const venuePreferencePayload = (venueId: number, time?: VenueTime): VenuePreferencePayload => {
   const requestedStart = time ? localDateTimeToIso(time.start) : undefined;

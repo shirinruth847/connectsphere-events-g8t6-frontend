@@ -97,6 +97,8 @@ export interface EventHistoryChange {
   field: string;
   before: unknown;
   after: unknown;
+  // The API's name for the change, e.g. "Technical request" (SPM-286/287).
+  label?: string;
   beforeLabel?: string;
   afterLabel?: string;
 }
