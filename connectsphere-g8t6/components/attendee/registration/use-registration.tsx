@@ -144,7 +144,6 @@ export function useRegistration({
   const closeWaitlist = () => {
     setJoinTarget(null);
     setJoinRestored(null);
-    restoreFocus();
   };
 
   const registered = (confirmation: RegistrationConfirmation) => {
@@ -174,6 +173,8 @@ export function useRegistration({
         initialValues={joinRestored}
         restored={joinRestored !== null}
         onClose={closeWaitlist}
+        onClosed={restoreFocus}
+        focusFallback={focusFallback}
         onJoined={(result) => stale(result.event.eventId)}
         onStale={stale}
       />

@@ -18,7 +18,6 @@ import {
   type RegistrationValues,
   type SubmissionAttempt,
 } from "@/components/attendee/registration/registration-form";
-import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, Skeleton, buttonClasses } from "@/components/shared/primitives";
 import type { ApiError } from "@/lib/api";
 import { getMyAttendeeProfile } from "@/lib/api/attendee-profile";
@@ -38,6 +37,10 @@ interface JoinWaitlistDialogProps {
   initialValues: RegistrationValues | null;
   restored: boolean;
   onClose: () => void;
+  // Runs after the dialog has closed, to put focus back where it belongs.
+  onClosed: () => void;
+  // Where focus goes on close when the Join Waitlist button is gone.
+  focusFallback: () => HTMLElement | null;
   // The backend has added the attendee: reload their places.
   onJoined: (result: RegistrationActionResult) => void;
   // The backend refused because the event or place changed: reload them.
@@ -49,48 +52,109 @@ interface JoinWaitlistDialogProps {
 // asks "This event is full. Join the waitlist?" with Join Waitlist and Not
 // Now, and the SPM-134 answers. The position shown afterwards is the
 // backend's; nothing is sent until the attendee confirms.
-export function JoinWaitlistDialog({ target, initialValues, restored, onClose, onJoined, onStale }: JoinWaitlistDialogProps) {
+// Uses a native <dialog> to control focus restoration through use-registration
+// instead of the shared Dialog component (which has conflicting focus logic).
+export function JoinWaitlistDialog({ target, initialValues, restored, onClose, onClosed, focusFallback, onJoined, onStale }: JoinWaitlistDialogProps) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const open = target !== null;
   const [joined, setJoined] = useState<RegistrationActionResult | null>(null);
   const result = joined && target && joined.event.eventId === target.eventId ? joined : null;
   const [pending, setPending] = useState(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const close = () => {
     if (pending) return;
     setJoined(null);
     onClose();
   };
 
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+    }
+    if (!open && dialog.open) {
+      dialog.close();
+      // Restore focus to the opener, or call onClosed with focusFallback if it's gone
+      if (returnFocusRef.current?.isConnected) {
+        returnFocusRef.current.focus();
+      } else {
+        const fallback = focusFallback();
+        if (fallback) fallback.focus();
+        onClosed();
+      }
+    }
+  }, [open, onClosed, focusFallback]);
+
+  const title = result ? "You're on the waitlist" : "This event is full. Join the waitlist?";
+
   return (
-    <Dialog open={target !== null} onClose={close} title={!target ? "Join waitlist" : result ? "You're on the waitlist" : "This event is full. Join the waitlist?"}>
-      {target && result ? (
-        <div className="flex flex-col gap-4">
-          <AlertBanner tone="success" title={placeLabel({ status: result.status, waitlistPosition: result.waitlistPosition })}>
-            You&apos;re on the waitlist for <strong>{target.title}</strong>. You&apos;ll be notified if a spot opens.
-          </AlertBanner>
-          <div className={FOOTER}>
-            <Link href={`${ROUTES.registrations}?eventId=${target.eventId}`} className={`${buttonClasses("secondary")} max-lg:min-h-11 max-sm:w-full`}>
-              View in My Events
-            </Link>
-            <Button type="button" onClick={close} className="max-lg:min-h-11 max-sm:w-full">
-              Done
-            </Button>
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
+        event.preventDefault();
+        close();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) close();
+      }}
+      className="m-auto w-[min(640px,calc(100vw-32px))] max-h-[calc(100dvh-32px)] rounded-panel border-t-4 border-t-tertiary bg-surface-container-lowest p-0 text-on-surface shadow-elevation-4 backdrop:bg-on-surface/40 backdrop:backdrop-blur-sm open:flex open:flex-col"
+    >
+      {target ? (
+        <>
+          <header className="flex items-start justify-between gap-4 border-b border-outline-variant/60 px-5 py-4">
+            <h2 id={titleId} className="text-lg font-bold leading-tight text-on-surface">{title}</h2>
+            <button
+              type="button"
+              onClick={close}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-control text-on-surface-variant transition-colors duration-150 hover:bg-surface-container-low focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <span className="sr-only">Close dialog</span>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </header>
+          <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            {result ? (
+              <div className="flex flex-col gap-4">
+                <AlertBanner tone="success" title={placeLabel({ status: result.status, waitlistPosition: result.waitlistPosition })}>
+                  You&apos;re on the waitlist for <strong>{target.title}</strong>. You&apos;ll be notified if a spot opens.
+                </AlertBanner>
+              </div>
+            ) : (
+              <JoinWaitlistContent
+                key={target.eventId}
+                target={target}
+                initialValues={initialValues}
+                restored={restored}
+                onPending={setPending}
+                onJoined={(joinedResult) => {
+                  setJoined(joinedResult);
+                  onJoined(joinedResult);
+                }}
+                onStale={onStale}
+                onClose={close}
+              />
+            )}
           </div>
-        </div>
-      ) : target ? (
-        <JoinWaitlistContent
-          key={target.eventId}
-          target={target}
-          initialValues={initialValues}
-          restored={restored}
-          onPending={setPending}
-          onJoined={(joinedResult) => {
-            setJoined(joinedResult);
-            onJoined(joinedResult);
-          }}
-          onStale={onStale}
-          onClose={close}
-        />
+          {result ? (
+            <footer className={FOOTER}>
+              <Link href={`${ROUTES.registrations}?eventId=${target.eventId}`} className={`${buttonClasses("secondary")} max-lg:min-h-11 max-sm:w-full`}>
+                View in My Events
+              </Link>
+              <Button type="button" onClick={close} className="max-lg:min-h-11 max-sm:w-full">
+                Done
+              </Button>
+            </footer>
+          ) : null}
+        </>
       ) : null}
-    </Dialog>
+    </dialog>
   );
 }
 
