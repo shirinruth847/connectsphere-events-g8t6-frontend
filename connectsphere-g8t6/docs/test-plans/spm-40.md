@@ -38,8 +38,9 @@ command. Existing explicit logout clears recovery; automatic expiry preserves it
   readiness refresh. Approval/rejection coexist in the same coordinator view.
 - Browser tests mock Auth and Express; no hosted notification, audit persistence
   or concurrency claim. Those business effects have isolated backend SQL tests.
-- A local merge commit integrates SPM-39. SPM-40 work remains uncommitted.
-  No business data writes or pushes. The explicitly authorised SPM-40 schema migration was applied.
+- SPM-39 is on `main` and merged into this branch. The SPM-40 work is committed
+  on `feature/SPM-40-reject-submitted-event-request`. No business data writes.
+  The explicitly authorised SPM-40 schema migration was applied.
 
 ## Rejection reason and history follow-up
 
@@ -82,3 +83,23 @@ and workspace rendering and needs shared-component integration review.
 Verified: lint, 170 unit tests, and 66 browser journeys across spm-40,
 lifecycle and event-workspace suites, including production build/type checks.
 Browser API/Auth responses are mocked; no hosted business writes were made.
+
+## Review fixes (31 October 2026)
+
+- Returning to a tab is handled by one shared hook, `useRefreshOnReturn`. A tab
+  return usually fires both focus and visibilitychange; a second signal is
+  ignored while the first refresh is still running, so one return sends one
+  event read and one history read.
+- Event history refreshes on return only where it opts in (`useEventHistory`);
+  Venue Staff venue and booking histories keep their previous behaviour.
+- A background history refresh adds newer entries in front of the loaded list
+  (`mergeNewestPage` in `lib/event-history.ts`) instead of replacing it, so
+  older pages loaded with "Show older changes" stay. It does not mark the
+  history as viewed, so entries that arrived while away still count as new on
+  the next visit. "Show older changes" now appends to the latest list.
+- An organisation member viewing a rejected request sees the rejection reason
+  and the member notice. The over-limit message matches the backend wording.
+- Verified: `npm run lint` clean; `npx tsc --noEmit` clean; `npm test` 193
+  passed; `npm run test:unit` 43 passed; Playwright spm-40, lifecycle,
+  event-workspace, venue-management and venue-booking-review: 120 passed
+  (production build, mocked Auth/API).
