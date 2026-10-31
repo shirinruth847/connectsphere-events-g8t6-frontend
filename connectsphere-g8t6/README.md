@@ -121,7 +121,8 @@ Validation used Node.js 24.9.0.
   `.env` (CONNECTSPHERE_BACKEND_DIR and LIVE_FRONTEND_URL/LIVE_BACKEND_URL may
   override). SPM-134 registration: `npm run test:e2e:live -- --grep SPM-134`;
   SPM-163/147 waitlist and withdrawal:
-  `npm run test:e2e:live -- spm-163-147-waitlist.live.spec.mjs`.
+  `npm run test:e2e:live -- spm-163-147-waitlist.live.spec.mjs`; SPM-141 My
+  Events: `npm run test:e2e:live -- spm-141-my-events.live.spec.mjs`.
 
 The live checker reads the backend's private environment only in its Node.js
 process; no private key is bundled into the browser. Rebuild/restart the normal
@@ -321,6 +322,27 @@ of the five latest notifications; **See more** and the attendee sidebar's
 
 Browser journeys: `npm run test:e2e -- spm-163-147.spec.mjs`; live:
 `npm run test:e2e:live -- spm-163-147-waitlist.live.spec.mjs`.
+
+## My Events (SPM-141)
+
+- `/my-registrations` reads every page of `GET /api/registrations/mine`
+  (following `next_offset`), then orders the places for display: events going
+  ahead soonest first, then held-back dates, then cancelled and completed
+  ones. The backend returns them newest registration first.
+- Each card shows the attendee's place (**Registered**, or **On the waitlist**
+  with the backend's position) and, as a separate row, the event's
+  `attendee_status` (Confirmed, Event confirmation pending, Cancelled,
+  Completed), so a cancelled event is not read as a withdrawal. Date and time
+  use the shared SGT formatter; withheld values say "to be announced", and a
+  cancelled event's withheld date and venue are left out.
+- With no places: "You are not registered for any events yet." and an
+  **Explore events** link to `/events`. A failed read shows only the error and
+  Retry, never an empty list or the last list's actions.
+- View Event Details, the offer, Leave Waitlist and Withdraw Registration are
+  the existing SPM-155/163/147 pieces, unchanged.
+
+Browser journeys: `npm run test:e2e -- spm-141.spec.mjs`; live:
+`npm run test:e2e:live -- spm-141-my-events.live.spec.mjs`.
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
