@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AlertBanner, Button, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { SafetyRoundCard } from "@/components/events/workspace/safety-review-section";
+import { TechnicalRequestCards } from "@/components/events/equipment/technical-request-cards";
 import { ApiError } from "@/lib/api";
 import { getOrganiserArrangements, type EquipmentItem, type OrganiserArrangements, type VenueImpact } from "@/lib/api/organiser-arrangements";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
@@ -96,17 +97,8 @@ function ArrangementDetails({ data }: { data: OrganiserArrangements }) {
         <h3 className="text-sm font-semibold text-on-surface">Requested equipment</h3>
         {technical.requirements.length ? <Equipment items={technical.requirements} /> : <Empty>No equipment requirements recorded.</Empty>}
         <h3 className="text-sm font-semibold text-on-surface">Arranged equipment & support</h3>
-        {!technical.requests.length ? <Empty>No technical arrangements have been recorded yet.</Empty> : <ul className="grid gap-3">
-          {technical.requests.map((request) => <li key={request.requestId} className={panelClass}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <h4 className="text-sm font-semibold text-on-surface">Technical request #{request.requestId}</h4>
-              <ArrangementStatus status={request.status} />
-            </div>
-            <Equipment items={request.equipment} />
-            <p className="text-sm text-on-surface-variant">{request.supportRequired === null ? "Technical support details have not been recorded." : request.supportRequired ? "Technical support requested" : "Technical support not requested"}</p>
-          </li>)}
-        </ul>}
-        {technical.supportStatus === "UNAVAILABLE" ? <Unavailable>Technical support arrangements are not available yet. Equipment request statuses are shown above.</Unavailable> : null}
+        {/* One card per technical request (SPM-286/287); the support-status notice is not shown. */}
+        <TechnicalRequestCards requests={technical.requests} status={(request) => <ArrangementStatus status={request.status} />} empty="No technical arrangements have been recorded yet." />
       </>}
     </ArrangementSection>
 

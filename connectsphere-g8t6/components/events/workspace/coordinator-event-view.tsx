@@ -27,6 +27,7 @@ import { RejectionPanel } from "@/components/coordinator/rejection-panel";
 import { LifecyclePanel } from "@/components/coordinator/lifecycle-panel";
 import { EventVenueSection } from "@/components/venues/event-venue-options/event-venue-section";
 import { SafetyReviewSection } from "./safety-review-section";
+import { TechnicalRequestSection } from "@/components/coordinator/technical-request-section";
 
 interface CoordinatorEventViewProps {
   event: EventView;
@@ -186,15 +187,27 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             />
           </ReviewSection>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <ReviewSection step={4} title="Accessibility" action={significantPill}>
-              <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
-            </ReviewSection>
-            <ReviewSection step={5} title="Technical & equipment" action={significantPill}>
+          <ReviewSection step={4} title="Accessibility" action={significantPill}>
+            <RequirementList items={event.accessibilityNeeds} empty="No accessibility needs were requested." />
+          </ReviewSection>
+
+          {/* Full width, like the venue section: the technical request (SPM-286) sits under the requirements. */}
+          <ReviewSection step={5} title="Technical & equipment" description="The organiser's equipment and support needs. In planning, send them to Technical Support as one technical request." action={significantPill}>
+            <div className="grid gap-4 md:grid-cols-2">
               <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Equipment requirements</h3><RequirementList items={equipmentItems(event)} empty="No equipment was requested." /></div>
               <div><h3 className="mb-2 text-sm font-semibold text-on-surface">Technical support needs</h3><p className="whitespace-pre-wrap text-sm text-on-surface [overflow-wrap:anywhere]">{event.technicalSupportNeeds || "No technical support needs were provided."}</p></div>
-            </ReviewSection>
-          </div>
+            </div>
+            <TechnicalRequestSection
+              event={event}
+              onSent={() => {
+                // Sending changes the arrangement version and history; the request is
+                // saved either way, so a failed re-fetch keeps the page as it is.
+                setHistoryKey((value) => value + 1);
+                getEventView(event.eventId).then(({ event: latest }) => onEventChange(latest)).catch(() => {});
+              }}
+              onStale={onAccessChanged}
+            />
+          </ReviewSection>
 
           <ReviewSection step={6} title="Registration" action={<PermissionPill tone="read-only">Read-only</PermissionPill>}>
             <KeyValuePanel rows={registrationRows(event)} />

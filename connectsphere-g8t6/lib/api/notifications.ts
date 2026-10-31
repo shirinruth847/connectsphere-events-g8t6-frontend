@@ -4,7 +4,8 @@ import { apiRequest } from "@/lib/api";
 // returns only the reader's own notifications and hides those whose event
 // relationship has ended (AC6). Field names match the backend response.
 
-export type NotificationTargetPage = "MY_EVENTS" | "EVENT_WORKSPACE";
+// TECHNICAL_REQUESTS: Technical Support review the request from their dashboard (SPM-287).
+export type NotificationTargetPage = "MY_EVENTS" | "EVENT_WORKSPACE" | "TECHNICAL_REQUESTS";
 
 export interface NotificationTarget {
   // Kept as string so a page the backend adds later renders without a link
