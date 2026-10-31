@@ -10,11 +10,15 @@ import {
   ACCESSIBILITY_OPTIONS,
   amendedFields,
   formValuesFromEvent,
+  localDateTimeToIso,
   validateEventStep,
   type EventFormValues,
   type EventRequest,
 } from "@/lib/events";
 import { layoutLabel } from "./event-detail-rows";
+import { EquipmentRequirementsEditor } from "@/components/events/equipment/equipment-requirements-editor";
+import { useEquipmentAvailability } from "@/components/events/equipment/use-equipment-availability";
+import { equipmentAvailabilityErrors } from "@/lib/technical-requests";
 
 // Same limits as the SPM-33 editor and the request form; the backend's answer wins.
 const TEXT_LIMITS = { title: 200, purpose: 2000, description: 5000 } as const;
@@ -23,7 +27,6 @@ type Banner = { tone: "error" | "warning"; title: string; message: string } | nu
 type RequestOptions = {
   venues: Array<{ venueId: number; name: string }>;
   layouts: string[];
-  equipment?: Array<{ equipmentId: number; name: string }>;
 };
 
 // EventView carries the same request fields as EventRequest; only the status type is wider.
@@ -107,6 +110,8 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
   const openButton = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
   const id = (field: string) => `event-${event.eventId}-amend-${field}`;
+  // SPM-286 AC3: quantities free for the amended dates, loaded while the form is open.
+  const availability = useEquipmentAvailability(localDateTimeToIso(values.startDatetime), localDateTimeToIso(values.endDatetime), open);
 
   useEffect(() => {
     if (wasOpen.current && !open) openButton.current?.focus();
@@ -118,7 +123,7 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
     let alive = true;
     apiRequest<RequestOptions>("/events/request-options")
       .then((result) => { if (alive) { setOptions(result); setOptionsError(""); } })
-      .catch(() => { if (alive) setOptionsError("Request choices could not be loaded. Your current venue and equipment choices are kept unless you change them."); });
+      .catch(() => { if (alive) setOptionsError("Venue choices could not be loaded. Your current venue choices are kept unless you change them."); });
     return () => { alive = false; };
   }, [open, options]);
 
@@ -170,6 +175,7 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
       ...validateEventStep(values, 2, true),
       ...validateEventStep(values, 3, true),
       ...validateEventStep(values, 4, true),
+      ...(availability.state.status === "ready" ? equipmentAvailabilityErrors(values.equipmentRequirements, availability.state.data) : {}),
     };
     showErrors(errors);
     if (Object.keys(errors).length) {
@@ -397,44 +403,15 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
           </Group>
 
           <Group title="Equipment">
-            <p className="text-xs text-on-surface-variant">Amend the equipment you need. These preferences do not reserve equipment.</p>
-            {optionsError ? <AlertBanner tone="warning">{optionsError}</AlertBanner> : null}
-            {values.equipmentRequirements.map((item, index) => (
-              <div key={index} className="grid items-end gap-3 rounded-control bg-surface-container-low p-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
-                <div>
-                  <FormLabel htmlFor={id(`equipment-${index}`)}>Equipment {index + 1}</FormLabel>
-                  <select
-                    id={id(`equipment-${index}`)} value={item.equipmentId} className={fieldClasses}
-                    onChange={(change) => update("equipmentRequirements", values.equipmentRequirements.map((entry, position) => position === index ? { ...entry, equipmentId: Number(change.target.value) } : entry))}
-                  >
-                    {!options?.equipment?.some((choice) => choice.equipmentId === item.equipmentId) ? <option value={item.equipmentId}>Equipment #{item.equipmentId}</option> : null}
-                    {(options?.equipment ?? []).map((choice) => (
-                      <option key={choice.equipmentId} value={choice.equipmentId} disabled={values.equipmentRequirements.some((other, position) => position !== index && other.equipmentId === choice.equipmentId)}>{choice.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <FormLabel htmlFor={id(`quantity-${index}`)}>Quantity {index + 1}</FormLabel>
-                  <input
-                    id={id(`quantity-${index}`)} type="number" min="1" max="2147483647" step="1"
-                    value={item.quantity || ""} className={fieldClasses} {...errorProps("equipmentRequirements")}
-                    onChange={(change) => update("equipmentRequirements", values.equipmentRequirements.map((entry, position) => position === index ? { ...entry, quantity: Number(change.target.value) } : entry))}
-                  />
-                </div>
-                <Button type="button" variant="quiet" aria-label={`Remove equipment ${index + 1}`} onClick={() => update("equipmentRequirements", values.equipmentRequirements.filter((_, position) => position !== index))}>Remove</Button>
-              </div>
-            ))}
-            {!values.equipmentRequirements.length ? <p className="text-sm text-on-surface-variant">No equipment requested.</p> : null}
-            <FieldError id={`${id("equipmentRequirements")}-error`} message={fieldErrors.equipmentRequirements} />
-            <div>
-              <Button type="button" variant="secondary"
-                disabled={values.equipmentRequirements.length >= 20 || !(options?.equipment ?? []).some((choice) => !values.equipmentRequirements.some((item) => item.equipmentId === choice.equipmentId))}
-                onClick={() => {
-                  const choice = options?.equipment?.find((candidate) => !values.equipmentRequirements.some((item) => item.equipmentId === candidate.equipmentId));
-                  if (choice) update("equipmentRequirements", [...values.equipmentRequirements, { equipmentId: choice.equipmentId, quantity: 1 }]);
-                }}
-              >Add equipment</Button>
-            </div>
+            <p className="text-xs text-on-surface-variant">Amend the equipment you need. Availability is for the dates above; these choices do not reserve equipment.</p>
+            <EquipmentRequirementsEditor
+              idPrefix={id("equipment")}
+              lines={values.equipmentRequirements}
+              onChange={(lines) => update("equipmentRequirements", lines)}
+              availability={availability.state}
+              onRetry={availability.retry}
+              error={fieldErrors.equipmentRequirements}
+            />
           </Group>
 
           <p className="text-xs text-on-surface-variant">Registration settings cannot be changed while responding to a clarification request.</p>

@@ -35,6 +35,17 @@ export interface EquipmentItem {
   quantity: number;
 }
 
+// One technical request with its lines (SPM-286/287). requestId is null for
+// equipment lines recorded without a request (seed and legacy data).
+export interface TechnicalArrangement {
+  requestId: number | null;
+  status: string;
+  supportRequired: boolean | null;
+  createdAt?: string | null;
+  decidedAt?: string | null;
+  equipment: EquipmentItem[];
+}
+
 export interface OrganiserArrangements {
   venues: Section<{
     holdsStatus: "READY" | "UNAVAILABLE";
@@ -46,12 +57,7 @@ export interface OrganiserArrangements {
   technical: Section<{
     supportStatus: "READY" | "UNAVAILABLE";
     requirements: EquipmentItem[];
-    requests: Array<{
-      requestId: number;
-      status: string;
-      supportRequired: boolean | null;
-      equipment: EquipmentItem[];
-    }>;
+    requests: TechnicalArrangement[];
   }>;
   safety: Section<{
     reviews: Array<{
