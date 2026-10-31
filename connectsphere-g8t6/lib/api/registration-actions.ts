@@ -31,7 +31,9 @@ const post = (eventId: number, action: string, body: object, idempotencyKey: str
   ).then(({ registration }) => registration);
 
 // 201 with the queue position. 409 ALREADY_REGISTERED, ALREADY_WAITLISTED,
-// PLACES_AVAILABLE, REGISTRATION_CLOSED, EVENT_NOT_ACTIVE.
+// PLACES_AVAILABLE, REGISTRATION_NOT_YET_OPEN, REGISTRATION_CLOSED,
+// REGISTRATION_UNAVAILABLE, EVENT_NOT_ACTIVE. Every action can also return
+// 409 IDEMPOTENCY_KEY_REUSED or IDEMPOTENCY_IN_PROGRESS.
 export const joinWaitlist = (eventId: number, answers: WaitlistAnswers, key: string) => post(eventId, "waitlist", answers, key);
 
 // 409 NOT_WAITLISTED. An open offer counts as declined.
@@ -43,5 +45,5 @@ export const acceptOffer = (eventId: number, offerId: number, key: string) => po
 // 409 OFFER_NOT_OPEN.
 export const declineOffer = (eventId: number, offerId: number, key: string) => post(eventId, "offer/decline", { offerId }, key);
 
-// 200 WITHDRAWN. 409 NOT_REGISTERED, EVENT_STARTED.
+// 200 WITHDRAWN. 409 NOT_REGISTERED, EVENT_STARTED, EVENT_NOT_ACTIVE.
 export const withdrawRegistration = (eventId: number, key: string) => post(eventId, "withdraw", {}, key);

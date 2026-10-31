@@ -43,6 +43,10 @@ export function AttendeeEventDiscovery() {
     registeringFor.current = event.eventId;
     registration.open({ eventId: event.eventId, title: event.title, startDatetime: event.startDatetime, endDatetime: event.endDatetime }, button);
   };
+  const startJoinWaitlist = (event: Pick<AttendeeEventView, "eventId" | "title" | "startDatetime" | "endDatetime">, button: HTMLButtonElement) => {
+    registeringFor.current = event.eventId;
+    registration.openWaitlist({ eventId: event.eventId, title: event.title, startDatetime: event.startDatetime, endDatetime: event.endDatetime }, button);
+  };
   // apiRequest reports a 401 to AuthGate, which sends the attendee to sign in.
   const sessionExpired = discovery.status === "error" && discovery.error?.status === 401;
 
@@ -126,7 +130,7 @@ export function AttendeeEventDiscovery() {
 
         {discovery.status === "ready" && registration.error && registration.error.status !== 401 ? (
           <AlertBanner tone="warning" title="Could not check your registrations">
-            Register Now is hidden until your registrations load, so you are not offered a place you may already hold.
+            Register Now and Join Waitlist are hidden until your registrations load, so you are not offered a place you may already hold.
             <div className="mt-3">
               <Button variant="secondary" onClick={registration.refresh} className="max-lg:min-h-11">
                 Try again
@@ -147,6 +151,7 @@ export function AttendeeEventDiscovery() {
                       place={registration.places?.get(event.eventId) ?? null}
                       placesKnown={registration.places !== null}
                       onRegister={startRegistration}
+                      onJoinWaitlist={startJoinWaitlist}
                     />
                   </li>
                 ))}
@@ -193,7 +198,7 @@ export function AttendeeEventDiscovery() {
         onNotFound={discovery.removeEvent}
         places={registration.places}
         onRegister={startRegistration}
-        onPlacesChanged={registration.refresh}
+        onJoinWaitlist={startJoinWaitlist}
         refreshKey={detailsRefresh}
       />
       {registration.dialog}

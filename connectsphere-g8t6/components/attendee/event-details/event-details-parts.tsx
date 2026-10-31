@@ -7,7 +7,6 @@ import { LOCATION_PENDING_LABEL } from "@/components/attendee/discovery/event-di
 import { formatEventDate, formatEventTime, formatTimestamp } from "@/components/attendee/discovery/format-event-time";
 import { getRegistrationState, showsRegistrationWindow } from "@/components/attendee/discovery/registration-availability";
 import { RegistrationStateControl } from "@/components/attendee/discovery/registration-state-control";
-import { JoinWaitlistAction } from "@/components/attendee/registration-actions/join-waitlist-action";
 import { placeActions, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
 import { RegistrationActions, type RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { AlertBanner } from "@/components/shared/primitives";
@@ -152,8 +151,8 @@ export function placeRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
 export interface RegistrationEntry {
   placesKnown: boolean;
   onRegister: (trigger: HTMLButtonElement) => void;
-  // Reloads the attendee's places once they have joined a waitlist (SPM-163).
-  onPlacesChanged?: () => void;
+  // Opens the Join Waitlist confirmation for a full event (SPM-163).
+  onJoinWaitlist?: (trigger: HTMLButtonElement) => void;
 }
 
 // The registration area of an event, shared by the event details dialog and
@@ -161,8 +160,8 @@ export interface RegistrationEntry {
 // (getRegistrationState). On My Events, which handles changes to a place, it
 // holds the actions on the attendee's own place: Accept Slot and Decline for
 // an open offer, Leave Waitlist (SPM-163) or Withdraw Registration (SPM-147).
-// Elsewhere a full event offers Join Waitlist instead of the disabled
-// "Registration Full" (SPM-163). Withheld details get none.
+// Elsewhere a full event offers Join Waitlist once the attendee's places
+// are known, as on the card (SPM-163). Withheld details get none.
 export function RegistrationActionBar({
   event,
   register,
@@ -176,7 +175,7 @@ export function RegistrationActionBar({
 }) {
   const footerClasses = `flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${className}`;
   if (event.myRegistration && onRegistrationChange) {
-    const place = { registration: event.myRegistration, startDatetime: event.startDatetime, attendeeStatus: event.attendeeStatus };
+    const place = { registration: event.myRegistration, attendeeStatus: event.attendeeStatus };
     if (!placeActions(place).length) return null;
     return (
       <footer className={footerClasses}>
@@ -187,13 +186,6 @@ export function RegistrationActionBar({
   if (!register || event.detailsWithheld) return null;
   const state = getRegistrationState(event.registrationAvailability, event.myRegistration ?? null, register.placesKnown);
   if (!state) return null;
-  if (state.kind === "unavailable" && event.registrationAvailability === "FULL_WAITLIST") {
-    return (
-      <footer className={footerClasses}>
-        <JoinWaitlistAction eventId={event.eventId} title={event.title} onJoined={register.onPlacesChanged} />
-      </footer>
-    );
-  }
   // When registration opens, from the backend's own start time; the state itself
   // stays the backend's NOT_YET_OPEN, never a comparison with the browser clock.
   const opensAt = state.kind === "unavailable" && event.registrationAvailability === "NOT_YET_OPEN" ? formatTimestamp(event.registrationOpenAt) : null;
@@ -204,6 +196,7 @@ export function RegistrationActionBar({
         state={state}
         eventTitle={event.title}
         onRegister={register.onRegister}
+        onJoinWaitlist={register.onJoinWaitlist}
         note={opensAt ? `Registration opens ${opensAt}.` : null}
       />
     </footer>

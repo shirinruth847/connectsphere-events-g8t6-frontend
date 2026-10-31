@@ -1,20 +1,21 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { discoveryErrorMessage } from "@/components/attendee/discovery/discovery-state";
 import { EventDetailsDialog } from "@/components/attendee/discovery/event-details-dialog";
-import { actionSuccessMessage, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
+import { formatEventDate, formatEventTime } from "@/components/attendee/discovery/format-event-time";
+import { toApiError } from "@/components/attendee/discovery/use-discovery-events";
+import { actionSuccessMessage, orderMyEvents, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
 import { RegistrationActions, type RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageContent } from "@/components/layout/page-content";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { AlertBanner, Button, SectionCard } from "@/components/shared/primitives";
-import { apiRequest } from "@/lib/api";
-import type { PlaceOffer } from "@/lib/api/my-events";
+import type { ApiError } from "@/lib/api";
+import { listMyRegistrations, toAttendeeRegistration, type MyRegistrationRow } from "@/lib/api/registrations";
 import { ROUTES } from "@/lib/auth";
-// A row of GET /api/registrations/mine; waitlistPosition and offer as on myRegistration (SPM-163).
-type Registration = { registration_id: number; registration_status: string; waitlistPosition: number | null; offer: PlaceOffer | null; event: { event_id?: number; title: string; description?: string; start_datetime?: string; attendee_status: string; venue?: { name: string; address: string } | null } };
 export function Registrations() {
-  const [items, setItems] = useState<Registration[]>([]); const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<MyRegistrationRow[]>([]); const [error, setError] = useState<ApiError | null>(null); const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
   // The last confirmed change to a place, announced politely. The list is then
   // reloaded in the background so it shows the backend's latest places.
@@ -26,17 +27,18 @@ export function Registrations() {
     // The card may be gone, so focus moves to the message instead of the page top.
     if (leftList) requestAnimationFrame(() => flashRef.current?.focus());
   };
-  useEffect(() => { let alive = true;
-    const load = async () => { const all: Registration[] = []; let offset: number | null = 0;
-      do { const page: { registrations: Registration[]; page: { next_offset: number | null } } = await apiRequest(`/registrations/mine?limit=100&offset=${offset}`); all.push(...page.registrations); offset = page.page.next_offset; } while (offset !== null);
-      if (alive) setItems(all);
-    };
-    void load().catch(e => { if (alive) setError(e.message); }).finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+  // Every page of the attendee's active places; upcoming events first.
+  useEffect(() => { const controller = new AbortController();
+    listMyRegistrations(controller.signal)
+      .then(rows => { if (!controller.signal.aborted) { setItems(orderMyEvents(rows)); setError(null); } })
+      .catch((caught: unknown) => { if (!controller.signal.aborted) setError(toApiError(caught)); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [retry]);
   return <DashboardShell><PageContent title="My Registrations" eyebrow="Attendee" action={<NotificationsBell />}>
     <div ref={flashRef} tabIndex={-1} aria-live="polite" className="mb-4 rounded-control empty:hidden focus:outline-2 focus:outline-offset-2 focus:outline-primary">{flash ? <AlertBanner tone="success" live={false}>{flash}</AlertBanner> : null}</div>
-    {error && <AlertBanner tone="error">{error}<Button type="button" onClick={() => { setError(""); setLoading(true); setRetry(v => v + 1); }}>Retry</Button></AlertBanner>}{loading ? <p>Loading registrations…</p> : <RegistrationCards items={items} onRegistrationChange={onRegistrationChange} />}</PageContent></DashboardShell>;
+    {/* The backend's wording is never shown; a 401 is handled by the shared session expiry. */}
+    {error && error.status !== 401 && <AlertBanner tone="error">{discoveryErrorMessage(error, "registrations")}<Button type="button" onClick={() => { setError(null); setLoading(true); setRetry(v => v + 1); }}>Retry</Button></AlertBanner>}{loading ? <p>Loading registrations…</p> : <RegistrationCards items={items} onRegistrationChange={onRegistrationChange} />}</PageContent></DashboardShell>;
 }
 
 // /my-registrations?eventId=<id> opens that event's details (SPM-155 AC4, AC5),
@@ -44,7 +46,7 @@ export function Registrations() {
 // Event Details on a card. The card behind the dialog is outlined and scrolled
 // into view; closing removes the parameters and returns focus. Rendered inside
 // the shell, whose Suspense boundary covers useSearchParams.
-function RegistrationCards({ items, onRegistrationChange }: { items: Registration[]; onRegistrationChange: (change: RegistrationChange, leftList: boolean) => void }) {
+function RegistrationCards({ items, onRegistrationChange }: { items: MyRegistrationRow[]; onRegistrationChange: (change: RegistrationChange, leftList: boolean) => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requested = Number(searchParams.get("eventId"));
@@ -94,10 +96,11 @@ function RegistrationCards({ items, onRegistrationChange }: { items: Registratio
     {items.length ? items.map(item => {
       const id = item.event.event_id;
       const isMatch = match === item;
+      const registration = toAttendeeRegistration(item);
       return <div key={item.registration_id} id={id ? `registration-event-${id}` : undefined} ref={isMatch ? highlighted : undefined} tabIndex={id ? -1 : undefined} aria-current={isMatch ? "true" : undefined} data-highlighted={isMatch ? "true" : undefined} className={isMatch ? "rounded-panel outline-2 outline-offset-2 outline-primary" : "rounded-panel focus:outline-2 focus:outline-offset-2 focus:outline-primary"}>
-        <SectionCard>{isMatch && fromNotification && <span className="mb-2 inline-flex rounded-pill bg-primary-fixed px-3 py-1 text-[11px] font-semibold uppercase tracking-label text-primary">Opened from your notification</span>}<h2 className="text-xl font-semibold">{item.event.title}</h2><p className="font-semibold">{placeLabel({ status: item.registration_status, waitlistPosition: item.waitlistPosition })}</p>{item.registration_status === "WAITLISTED" && <p className="text-sm text-on-surface-variant">A place is not yet confirmed.</p>}<p>{item.event.attendee_status === "PENDING_CONFIRMATION" ? "Event confirmation pending" : item.event.attendee_status.replaceAll("_", " ")}</p>{item.event.description && <p>{item.event.description}</p>}{item.event.start_datetime && <p>{new Date(item.event.start_datetime).toLocaleString()}</p>}{item.event.venue && <p>{item.event.venue.name} · {item.event.venue.address}</p>}
+        <SectionCard>{isMatch && fromNotification && <span className="mb-2 inline-flex rounded-pill bg-primary-fixed px-3 py-1 text-[11px] font-semibold uppercase tracking-label text-primary">Opened from your notification</span>}<h2 className="text-xl font-semibold [overflow-wrap:anywhere]">{item.event.title}</h2><p className="font-semibold">{placeLabel(registration)}</p>{item.registration_status === "WAITLISTED" && <p className="text-sm text-on-surface-variant">A place is not yet confirmed.</p>}<p>{item.event.attendee_status === "PENDING_CONFIRMATION" ? "Event confirmation pending" : item.event.attendee_status.replaceAll("_", " ")}</p>{item.event.description && <p>{item.event.description}</p>}{item.event.start_datetime && <p>{formatEventDate(item.event.start_datetime, item.event.end_datetime)} · {formatEventTime(item.event.start_datetime, item.event.end_datetime)}</p>}{item.event.venue && <p>{item.event.venue.name} · {item.event.venue.address}</p>}
           {id ? <div className="mt-4 flex flex-col gap-3"><Button type="button" variant="secondary" aria-label={`View Event Details: ${item.event.title}`} onClick={event => openDetails(id, event.currentTarget)} className="w-fit max-lg:min-h-11 max-sm:w-full">View Event Details</Button>
-            <RegistrationActions eventId={id} title={item.event.title} place={{ registration: { status: item.registration_status, waitlistPosition: item.waitlistPosition, offer: item.offer }, startDatetime: item.event.start_datetime, attendeeStatus: item.event.attendee_status }} onChange={handleChange} /></div> : null}
+            <RegistrationActions eventId={id} title={item.event.title} place={{ registration, attendeeStatus: item.event.attendee_status }} onChange={handleChange} /></div> : null}
         </SectionCard>
       </div>;
     }) : <p>You have no registrations or waitlist entries.</p>}

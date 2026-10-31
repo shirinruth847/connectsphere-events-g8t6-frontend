@@ -40,12 +40,18 @@ describe("[SPM-134 AC1/AC12/AC13/AC15] registration area state", () => {
 
   it.each([
     ["NOT_YET_OPEN", "Registration Not Yet Open"],
-    ["FULL_WAITLIST", "Registration Full"],
     ["CLOSED", "Registration Closed"],
     ["UNAVAILABLE", "Registration Unavailable"],
   ])("should_show_a_disabled_state_and_no_register_now_when_availability_is_%s", (availability, label) => {
     expect(getRegistrationState(availability, null, true)).toEqual({ kind: "unavailable", label });
     expect(getRegistrationState(availability, null, false)).toEqual({ kind: "unavailable", label });
+  });
+
+  // SPM-163 replaced SPM-134's disabled "Registration Full" with the real waitlist.
+  it("should_offer_join_waitlist_for_a_full_event_only_once_the_attendee_places_are_known", () => {
+    expect(getRegistrationState("FULL_WAITLIST", null, true)).toEqual({ kind: "waitlist", label: "Join Waitlist" });
+    // Unknown places (loading or failed): never an enabled join, only the disabled state.
+    expect(getRegistrationState("FULL_WAITLIST", null, false)).toEqual({ kind: "unavailable", label: "Registration Full" });
   });
 
   it("should_never_label_an_unavailable_event_as_full_or_closed", () => {

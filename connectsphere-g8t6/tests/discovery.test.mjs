@@ -18,9 +18,11 @@ test('[SPM-134] NOT_YET_OPEN shows Not Yet Open and a disabled Registration Not 
  assert.equal(showsRegistrationWindow('NOT_YET_OPEN'), true);
  assert.deepEqual(getRegistrationState('NOT_YET_OPEN', null, true), { kind: 'unavailable', label: 'Registration Not Yet Open' });
 });
-test('[SPM-34 AC3] FULL_WAITLIST shows Full - Waitlist and a disabled Registration Full, with no waitlist action', () => {
+test('[SPM-34 AC3 / SPM-163 AC1] FULL_WAITLIST shows Full - Waitlist and Join Waitlist, or a disabled Registration Full while places are unknown', () => {
  assert.equal(getAvailabilityPresentation('FULL_WAITLIST').label, 'Full - Waitlist');
- assert.deepEqual(getRegistrationState('FULL_WAITLIST', null, true), { kind: 'unavailable', label: 'Registration Full' });
+ assert.deepEqual(getRegistrationState('FULL_WAITLIST', null, true), { kind: 'waitlist', label: 'Join Waitlist' });
+ assert.deepEqual(getRegistrationState('FULL_WAITLIST', null, false), { kind: 'unavailable', label: 'Registration Full' });
+ assert.deepEqual(getRegistrationState('FULL_WAITLIST', { status: 'WAITLISTED', registeredAt: null, waitlistPosition: 2, offer: null }, true), { kind: 'place', label: 'On the waitlist' });
 });
 test('[SPM-34 AC3] CLOSED shows a disabled Registration Closed', () => {
  assert.equal(getAvailabilityPresentation('CLOSED').label, 'Registration Closed');

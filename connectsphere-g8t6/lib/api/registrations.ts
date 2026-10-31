@@ -50,24 +50,54 @@ export function registerForEvent(eventId: number, answers: RegistrationAnswers, 
   );
 }
 
+// A row of GET /api/registrations/mine. waitlistPosition and offer are as on
+// myRegistration (SPM-163); venue is the approved one, or null.
+export interface MyRegistrationRow {
+  registration_id: number;
+  registration_status: string;
+  registered_at: string | null;
+  waitlistPosition: number | null;
+  offer: AttendeeRegistration["offer"];
+  event: {
+    event_id: number;
+    title: string;
+    description: string | null;
+    start_datetime: string | null;
+    end_datetime: string | null;
+    attendee_status: string;
+    venue: { name: string; address: string } | null;
+  };
+}
+
 interface MyRegistrationsPage {
-  registrations: { registration_status: string; registered_at: string | null; waitlistPosition: number | null; offer: AttendeeRegistration["offer"]; event: { event_id: number } }[];
+  registrations: MyRegistrationRow[];
   page: { next_offset: number | null };
 }
 
-// The attendee's active places (REGISTERED or WAITLISTED; withdrawn places are
-// not returned), keyed by event ID, from every page of GET /api/registrations/mine.
-// Event Discovery carries no "you are registered" field, so this is the source
-// of the attendee's registered state.
-export async function listMyPlaces(signal?: AbortSignal): Promise<Map<number, AttendeeRegistration>> {
-  const places = new Map<number, AttendeeRegistration>();
+// Every page of the attendee's active places (REGISTERED or WAITLISTED;
+// withdrawn places are not returned), in the backend's order.
+export async function listMyRegistrations(signal?: AbortSignal): Promise<MyRegistrationRow[]> {
+  const rows: MyRegistrationRow[] = [];
   let offset: number | null = 0;
   while (offset !== null) {
     const page: MyRegistrationsPage = await apiRequest<MyRegistrationsPage>(`/registrations/mine?limit=100&offset=${offset}`, { signal });
-    for (const item of page.registrations) {
-      places.set(item.event.event_id, { status: item.registration_status, registeredAt: item.registered_at, waitlistPosition: item.waitlistPosition ?? null, offer: item.offer ?? null });
-    }
+    rows.push(...page.registrations);
     offset = page.page.next_offset;
   }
-  return places;
+  return rows;
+}
+
+export const toAttendeeRegistration = (row: MyRegistrationRow): AttendeeRegistration => ({
+  status: row.registration_status,
+  registeredAt: row.registered_at,
+  waitlistPosition: row.waitlistPosition ?? null,
+  offer: row.offer ?? null,
+});
+
+// The attendee's active places keyed by event ID. Event Discovery carries no
+// "you are registered" field, so this is the source of the attendee's
+// registered and waitlisted state.
+export async function listMyPlaces(signal?: AbortSignal): Promise<Map<number, AttendeeRegistration>> {
+  const rows = await listMyRegistrations(signal);
+  return new Map(rows.map((row) => [row.event.event_id, toAttendeeRegistration(row)]));
 }

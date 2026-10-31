@@ -181,8 +181,8 @@ test('[SPM-134 / SPM-163 AC1] full events offer Join Waitlist in the details dia
   await page.goto('/events');
   await page.getByRole('button', { name: 'View event details for Full Workshop', exact: true }).click();
   const fullDialog = page.getByRole('dialog', { name: 'Full Workshop', exact: true });
-  await expect(fullDialog.getByRole('button', { name: 'Join Waitlist', exact: true })).toBeEnabled();
-  await expect(fullDialog.getByRole('button', { name: 'Join Waitlist', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(fullDialog.getByRole('button', { name: 'Join waitlist for Full Workshop', exact: true })).toBeEnabled();
+  await expect(fullDialog.getByRole('button', { name: 'Join waitlist for Full Workshop', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
   await expect(fullDialog.getByRole('button', { name: 'Registration Full for Full Workshop', exact: true })).toHaveCount(0);
   await expect(fullDialog.getByRole('button', { name: /^register now/i })).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -498,11 +498,15 @@ test('[SPM-44] should_fit_390px_with_readable_cards_and_44px_actions_when_viewin
   // Status stays in text at this width, and every card keeps a full-width registration state.
   await expect(card(page, 'Closed Event')).toContainText('Registration Closed');
   await expect(card(page, 'Waitlist Event')).toContainText('Full - Waitlist');
-  for (const [title, label] of [['Closed Event', 'Registration Closed'], ['Unavailable Event', 'Registration Unavailable'], ['Waitlist Event', 'Registration Full']]) {
+  for (const [title, label] of [['Closed Event', 'Registration Closed'], ['Unavailable Event', 'Registration Unavailable']]) {
     const control = card(page, title).getByRole('button', { name: `${label} for ${title}`, exact: true });
     await expect(control).toHaveAttribute('aria-disabled', 'true');
     expect((await control.boundingBox()).width).toBeGreaterThan(MOBILE.width * 0.7);
   }
+  // SPM-163: the full event's card offers its waitlist, also full width.
+  const join = card(page, 'Waitlist Event').getByRole('button', { name: 'Join waitlist for Waitlist Event', exact: true });
+  await expect(join).toBeEnabled();
+  expect((await join.boundingBox()).width).toBeGreaterThan(MOBILE.width * 0.7);
   await expect(page.getByRole('button', { name: 'Load more events', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open menu', exact: true })).toBeVisible();
   await expectTouchTargets(page);

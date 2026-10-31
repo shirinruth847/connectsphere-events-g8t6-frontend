@@ -59,11 +59,12 @@ export const showsRegistrationWindow = (value: string) =>
   value !== "UNAVAILABLE" && getAvailabilityPresentation(value) !== null;
 
 // What an event surface shows in its registration area (SPM-134): Register
-// Now, the attendee's own place, or a disabled state saying why they cannot
-// register. Shared by the Event Discovery card, the event details dialog and
-// the /events/[eventId] page.
+// Now, Join Waitlist for a full event (SPM-163), the attendee's own place, or
+// a disabled state saying why they cannot register. Shared by the Event
+// Discovery card, the event details dialog and the /events/[eventId] page.
 export type RegistrationState =
   | { kind: "register"; label: "Register Now" }
+  | { kind: "waitlist"; label: "Join Waitlist" }
   | { kind: "place" | "unavailable"; label: string };
 
 const DISABLED_LABELS: Record<Exclude<RegistrationAvailability, "OPEN">, string> = {
@@ -73,11 +74,12 @@ const DISABLED_LABELS: Record<Exclude<RegistrationAvailability, "OPEN">, string>
   UNAVAILABLE: "Registration Unavailable",
 };
 
-// A held place wins over availability. Register Now needs OPEN and the
-// attendee's places loaded with none for this event; while the places are
-// unknown (loading or failed) an OPEN event shows nothing, because the
-// attendee may already hold a place. Any value the backend adds later is
-// shown as unavailable, never as open.
+// A held place wins over availability. Register Now needs OPEN, and Join
+// Waitlist FULL_WAITLIST, with the attendee's places loaded and none for this
+// event. While the places are unknown (loading or failed) the attendee may
+// already hold one, so an OPEN event shows nothing and a full event only the
+// disabled Registration Full. Any value the backend adds later is shown as
+// unavailable, never as open.
 export function getRegistrationState(
   availability: string,
   place: AttendeeRegistration | null,
@@ -85,6 +87,7 @@ export function getRegistrationState(
 ): RegistrationState | null {
   if (place) return { kind: "place", label: place.status === "WAITLISTED" ? "On the waitlist" : "Registered" };
   if (availability === "OPEN") return placesKnown ? { kind: "register", label: "Register Now" } : null;
+  if (availability === "FULL_WAITLIST" && placesKnown) return { kind: "waitlist", label: "Join Waitlist" };
   const label = Object.prototype.hasOwnProperty.call(DISABLED_LABELS, availability)
     ? DISABLED_LABELS[availability as keyof typeof DISABLED_LABELS]
     : DISABLED_LABELS.UNAVAILABLE;
