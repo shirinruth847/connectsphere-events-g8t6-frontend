@@ -7,7 +7,6 @@ type NavigationGroup = { title: string; items: NavigationItem[] };
 // An absent href renders an unavailable item, never a link to an unfinished page.
 const organiserItems: NavigationItem[] = [
   { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
-  { id: "requests", title: "My Requests", icon: "event", href: ROUTES.requests },
   { id: "registrations-unavailable", title: "Registrations", icon: "registrations" },
   // The same inbox attendees use (SPM-192); the Updates panel's See more leads here too.
   { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
@@ -46,6 +45,8 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
 };
 
 export function navigationForRole(role: UserRole): NavigationGroup[] {
+  // Organisers switch between organisation events and personal requests in the dashboard.
+  if (role === "ORGANISER") return [{ title: "Main Navigation", items: mainItems[role] }];
   return [
     { title: "Main Navigation", items: mainItems[role] },
     { title: "Support And Settings", items: [{ id: "support", title: "Contact Support", icon: "support" }] },
@@ -53,7 +54,7 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
   ];
 }
 
-export function activeNavigationId(role: UserRole, pathname: string, status: string | null, scope: string | null = null) {
+export function activeNavigationId(role: UserRole, pathname: string) {
   if (role === "COORDINATOR_LEAD") {
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
@@ -75,8 +76,5 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
-  if (role !== "ORGANISER") return inVenues ? "venues" : "home";
-  if (pathname === ROUTES.dashboard && status === "DRAFT") return "requests";
-  if (pathname === ROUTES.dashboard && scope !== "MINE") return "home";
-  return "requests";
+  return role !== "ORGANISER" && inVenues ? "venues" : "home";
 }

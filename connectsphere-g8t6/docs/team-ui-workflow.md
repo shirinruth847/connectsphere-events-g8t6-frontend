@@ -74,7 +74,7 @@ are available to other members; attaching the prompt alone does not add them.
 
 | Role value | Display label | Home | Current main navigation |
 | --- | --- | --- | --- |
-| `ORGANISER` | Event Organiser | `/dashboard` | Dashboard, My Requests |
+| `ORGANISER` | Event Organiser | `/dashboard` | Dashboard, Notifications |
 | `COORDINATOR` | Event Coordinator | `/dashboard` | Assigned Events |
 | `COORDINATOR_LEAD` | Event Coordinator Lead | `/dashboard` | Dashboard |
 | `VENUE_STAFF` | Venue Staff | `/dashboard` | Dashboard |
@@ -122,12 +122,17 @@ with a text label. Do not add global `nav`, `label`, `button`,
 Avoid another `main` element inside the shell's existing `main` element.
 
 The organiser Dashboard at `/dashboard` shows events submitted by anyone in
-their verified organisations, across all statuses, plus the organiser's own
-private drafts. The existing `/api/events/mine` endpoint provides this scope;
-the backend excludes other organisations and colleagues' drafts. Colleagues'
-events open read-only. Cards show the organisation and ownership. My Requests
-uses `/dashboard?scope=MINE` for personally created events and drafts. There is
-no separate My Drafts navigation tab; the draft status filter and existing
+their verified organisations, across all non-draft statuses. Private drafts
+appear only under My Requests. The existing `/api/events/mine` endpoint returns
+organisation events and the organiser's own drafts; the dashboard filters out
+drafts in the organisation view. The backend excludes other organisations and
+colleagues' drafts. Colleagues' events open read-only. Cards show the organisation
+and ownership. The dashboard's
+Organisation Dashboard and My Requests options switch between organisation
+events and personally created events and drafts (`/dashboard?scope=MINE`).
+My Requests is not a sidebar item; organisers also have no Settings or Contact
+Support sidebar groups. Dashboard stays active in the sidebar for both views.
+There is no separate My Drafts navigation tab; the draft status filter and existing
 `/dashboard?status=DRAFT#my-drafts` URL remain available under My Requests.
 Search also matches organisation names. Changes to these destinations touch
 `lib/auth.ts`, `lib/navigation.ts`
