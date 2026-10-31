@@ -7,7 +7,7 @@ import { LOCATION_PENDING_LABEL } from "@/components/attendee/discovery/event-di
 import { formatEventDate, formatEventTime, formatTimestamp } from "@/components/attendee/discovery/format-event-time";
 import { getRegistrationState, showsRegistrationWindow } from "@/components/attendee/discovery/registration-availability";
 import { RegistrationStateControl } from "@/components/attendee/discovery/registration-state-control";
-import { placeActions, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
+import { ATTENDEE_STATUS_LABELS, placeActions, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
 import { RegistrationActions, type RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { AlertBanner } from "@/components/shared/primitives";
 import type { AttendeeEventDetail } from "@/lib/api/discovery";
@@ -17,9 +17,9 @@ import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-event
 // Discovery and My Events.
 
 const STATUS_CHIPS: Record<string, { label: string; className: string }> = {
-  PENDING_CONFIRMATION: { label: "Event confirmation pending", className: "bg-primary-fixed text-primary" },
-  CANCELLED: { label: "Cancelled", className: "bg-error-container text-on-error-container" },
-  COMPLETED: { label: "Completed", className: "bg-success-container text-on-success-container" },
+  PENDING_CONFIRMATION: { label: ATTENDEE_STATUS_LABELS.PENDING_CONFIRMATION, className: "bg-primary-fixed text-primary" },
+  CANCELLED: { label: ATTENDEE_STATUS_LABELS.CANCELLED, className: "bg-error-container text-on-error-container" },
+  COMPLETED: { label: ATTENDEE_STATUS_LABELS.COMPLETED, className: "bg-success-container text-on-success-container" },
 };
 
 // Confirmed events carry no extra chip; the other display statuses say what changed.

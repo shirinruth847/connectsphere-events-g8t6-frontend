@@ -1,19 +1,45 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { DiscoveryDetailsPanel, type DiscoveryDetailRow } from "@/components/attendee/discovery/discovery-details-panel";
 import { discoveryErrorMessage } from "@/components/attendee/discovery/discovery-state";
 import { EventDetailsDialog } from "@/components/attendee/discovery/event-details-dialog";
+import { LOCATION_PENDING_LABEL } from "@/components/attendee/discovery/event-discovery-card";
 import { formatEventDate, formatEventTime } from "@/components/attendee/discovery/format-event-time";
 import { toApiError } from "@/components/attendee/discovery/use-discovery-events";
-import { actionSuccessMessage, orderMyEvents, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
+import { AttendeeStatusChip } from "@/components/attendee/event-details/event-details-parts";
+import { actionSuccessMessage, attendeeStatusLabel, orderMyEvents, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
 import { RegistrationActions, type RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageContent } from "@/components/layout/page-content";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
-import { AlertBanner, Button, SectionCard } from "@/components/shared/primitives";
+import { AlertBanner, Button, EmptyState, SectionCard, buttonClasses } from "@/components/shared/primitives";
 import type { ApiError } from "@/lib/api";
+import type { AttendeeRegistration } from "@/lib/api/my-events";
 import { listMyRegistrations, toAttendeeRegistration, type MyRegistrationRow } from "@/lib/api/registrations";
 import { ROUTES } from "@/lib/auth";
+
+// The attendee's place and the event's own status are separate rows, so a
+// cancelled event is never read as a withdrawal (SPM-141 AC1). Dates are the
+// backend's, in SGT; withheld ones say so rather than being guessed. A
+// cancelled event whose details are withheld shows neither.
+function myEventRows({ event }: MyRegistrationRow, registration: AttendeeRegistration): DiscoveryDetailRow[] {
+  const rows: DiscoveryDetailRow[] = [
+    { label: "Your place", icon: "registration", value: placeLabel(registration) },
+    { label: "Event status", icon: "info", value: attendeeStatusLabel(event.attendee_status) },
+  ];
+  const withheld = event.attendee_status === "CANCELLED";
+  if (event.start_datetime || !withheld) {
+    rows.push(
+      { label: "Date", icon: "calendar", value: formatEventDate(event.start_datetime, event.end_datetime) },
+      { label: "Time", icon: "schedule", value: formatEventTime(event.start_datetime, event.end_datetime) },
+    );
+  }
+  const location = event.venue ? [event.venue.name, event.venue.address].filter(Boolean).join(", ") : "";
+  if (location || !withheld) rows.push({ label: "Location", icon: "venue", value: location || LOCATION_PENDING_LABEL });
+  return rows;
+}
 export function Registrations() {
   const [items, setItems] = useState<MyRegistrationRow[]>([]); const [error, setError] = useState<ApiError | null>(null); const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
@@ -21,11 +47,11 @@ export function Registrations() {
   // reloaded in the background so it shows the backend's latest places.
   const [flash, setFlash] = useState("");
   const flashRef = useRef<HTMLDivElement>(null);
-  const onRegistrationChange = (change: RegistrationChange, leftList: boolean) => {
+  const onRegistrationChange = (change: RegistrationChange, focusMessage: boolean) => {
     setFlash(change.result ? actionSuccessMessage(change.kind, change.title) : `Your place for ${change.title} had changed. Showing its latest status.`);
     setRetry(v => v + 1);
-    // The card may be gone, so focus moves to the message instead of the page top.
-    if (leftList) requestAnimationFrame(() => flashRef.current?.focus());
+    // The card may be gone or redrawn, so focus moves to the message instead of the page top.
+    if (focusMessage) requestAnimationFrame(() => flashRef.current?.focus());
   };
   // Every page of the attendee's active places; upcoming events first.
   useEffect(() => { const controller = new AbortController();
@@ -38,7 +64,9 @@ export function Registrations() {
   return <DashboardShell><PageContent title="My Registrations" eyebrow="Attendee" action={<NotificationsBell />}>
     <div ref={flashRef} tabIndex={-1} aria-live="polite" className="mb-4 rounded-control empty:hidden focus:outline-2 focus:outline-offset-2 focus:outline-primary">{flash ? <AlertBanner tone="success" live={false}>{flash}</AlertBanner> : null}</div>
     {/* The backend's wording is never shown; a 401 is handled by the shared session expiry. */}
-    {error && error.status !== 401 && <AlertBanner tone="error">{discoveryErrorMessage(error, "registrations")}<Button type="button" onClick={() => { setError(null); setLoading(true); setRetry(v => v + 1); }}>Retry</Button></AlertBanner>}{loading ? <p>Loading registrations…</p> : <RegistrationCards items={items} onRegistrationChange={onRegistrationChange} />}</PageContent></DashboardShell>;
+    {error && error.status !== 401 && <AlertBanner tone="error">{discoveryErrorMessage(error, "registrations")}<Button type="button" onClick={() => { setError(null); setLoading(true); setRetry(v => v + 1); }}>Retry</Button></AlertBanner>}
+    {/* After a failed read neither the empty state nor the last list (with its actions) is shown, so nothing unconfirmed appears (SPM-141 TC-MYE-024). */}
+    {loading ? <p>Loading registrations…</p> : <RegistrationCards items={error ? null : items} onRegistrationChange={onRegistrationChange} />}</PageContent></DashboardShell>;
 }
 
 // /my-registrations?eventId=<id> opens that event's details (SPM-155 AC4, AC5),
@@ -46,13 +74,15 @@ export function Registrations() {
 // Event Details on a card. The card behind the dialog is outlined and scrolled
 // into view; closing removes the parameters and returns focus. Rendered inside
 // the shell, whose Suspense boundary covers useSearchParams.
-function RegistrationCards({ items, onRegistrationChange }: { items: MyRegistrationRow[]; onRegistrationChange: (change: RegistrationChange, leftList: boolean) => void }) {
+// items is null when the list could not be read; the details dialog still
+// opens from a link, because it reads its own event.
+function RegistrationCards({ items, onRegistrationChange }: { items: MyRegistrationRow[] | null; onRegistrationChange: (change: RegistrationChange, focusMessage: boolean) => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requested = Number(searchParams.get("eventId"));
   const fromNotification = searchParams.get("from") === "notification";
   const eventId = Number.isSafeInteger(requested) && requested > 0 ? requested : null;
-  const match = eventId === null ? undefined : items.find(item => item.event.event_id === eventId);
+  const match = eventId === null ? undefined : items?.find(item => item.event.event_id === eventId);
   const highlighted = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const closedEventId = useRef<number | null>(null);
@@ -79,7 +109,11 @@ function RegistrationCards({ items, onRegistrationChange }: { items: MyRegistrat
       focusHandled.current = true;
       closeDetails();
     }
-    onRegistrationChange(change, leftList);
+    // A refusal (the place had changed) closes only the confirmation, whose
+    // opener may be redrawn by the reload; on the list, focus goes to the
+    // message. In an open details dialog it stays there.
+    const refusedOnList = change.result === null && eventId !== change.eventId;
+    onRegistrationChange(change, leftList || refusedOnList);
   };
   // Back to the button that opened it, or else to the event's card.
   const restoreFocus = () => {
@@ -93,17 +127,21 @@ function RegistrationCards({ items, onRegistrationChange }: { items: MyRegistrat
     opener.current = null;
   };
   return <>
-    {items.length ? items.map(item => {
+    {items === null ? null : items.length ? <div className="flex flex-col gap-5">{items.map(item => {
       const id = item.event.event_id;
       const isMatch = match === item;
       const registration = toAttendeeRegistration(item);
       return <div key={item.registration_id} id={id ? `registration-event-${id}` : undefined} ref={isMatch ? highlighted : undefined} tabIndex={id ? -1 : undefined} aria-current={isMatch ? "true" : undefined} data-highlighted={isMatch ? "true" : undefined} className={isMatch ? "rounded-panel outline-2 outline-offset-2 outline-primary" : "rounded-panel focus:outline-2 focus:outline-offset-2 focus:outline-primary"}>
-        <SectionCard>{isMatch && fromNotification && <span className="mb-2 inline-flex rounded-pill bg-primary-fixed px-3 py-1 text-[11px] font-semibold uppercase tracking-label text-primary">Opened from your notification</span>}<h2 className="text-xl font-semibold [overflow-wrap:anywhere]">{item.event.title}</h2><p className="font-semibold">{placeLabel(registration)}</p>{item.registration_status === "WAITLISTED" && <p className="text-sm text-on-surface-variant">A place is not yet confirmed.</p>}<p>{item.event.attendee_status === "PENDING_CONFIRMATION" ? "Event confirmation pending" : item.event.attendee_status.replaceAll("_", " ")}</p>{item.event.description && <p>{item.event.description}</p>}{item.event.start_datetime && <p>{formatEventDate(item.event.start_datetime, item.event.end_datetime)} · {formatEventTime(item.event.start_datetime, item.event.end_datetime)}</p>}{item.event.venue && <p>{item.event.venue.name} · {item.event.venue.address}</p>}
+        <SectionCard>{isMatch && fromNotification && <span className="mb-2 inline-flex rounded-pill bg-primary-fixed px-3 py-1 text-[11px] font-semibold uppercase tracking-label text-primary">Opened from your notification</span>}
+          <div className="flex flex-col gap-2"><AttendeeStatusChip status={item.event.attendee_status} /><h2 className="text-xl font-semibold [overflow-wrap:anywhere]">{item.event.title}</h2></div>
+          {item.event.description && <p className="mt-1 max-w-readable text-sm text-on-surface-variant [overflow-wrap:anywhere]">{item.event.description}</p>}
+          <div className="mt-3"><DiscoveryDetailsPanel rows={myEventRows(item, registration)} /></div>
+          {item.registration_status === "WAITLISTED" && <p className="mt-2 text-sm text-on-surface-variant">A place is not yet confirmed.</p>}
           {id ? <div className="mt-4 flex flex-col gap-3"><Button type="button" variant="secondary" aria-label={`View Event Details: ${item.event.title}`} onClick={event => openDetails(id, event.currentTarget)} className="w-fit max-lg:min-h-11 max-sm:w-full">View Event Details</Button>
             <RegistrationActions eventId={id} title={item.event.title} place={{ registration, attendeeStatus: item.event.attendee_status }} onChange={handleChange} /></div> : null}
         </SectionCard>
       </div>;
-    }) : <p>You have no registrations or waitlist entries.</p>}
+    })}</div> : <EmptyState title="You are not registered for any events yet." action={<Link href={ROUTES.events} className={`${buttonClasses("primary")} max-lg:min-h-11 max-sm:w-full`}>Explore events</Link>} />}
     <EventDetailsDialog
       event={eventId === null ? null : { eventId, title: match?.event.title ?? "Event details" }}
       detailsFrom="my-events"
