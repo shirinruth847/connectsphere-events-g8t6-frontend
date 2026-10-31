@@ -43,8 +43,14 @@ export function notificationTargetHref(target: NotificationTarget | null | undef
   if (!target || !Number.isSafeInteger(target.event_id) || target.event_id < 1) return null;
   if (target.page === "MY_EVENTS") return `/my-registrations?eventId=${target.event_id}&from=notification`;
   if (target.page === "EVENT_WORKSPACE") return `/events/${target.event_id}`;
-  // Technical Support have no event workspace; the request is on their dashboard (SPM-287).
-  if (target.page === "TECHNICAL_REQUESTS") return "/dashboard";
+  // Technical Support have no event workspace: open the request the notice
+  // names (SPM-196), else their dashboard, which lists the requests (SPM-287).
+  if (target.page === "TECHNICAL_REQUESTS") {
+    const requestId = target.technical_request_id;
+    return typeof requestId === "number" && Number.isSafeInteger(requestId) && requestId > 0
+      ? `/technical-requests/${requestId}`
+      : "/dashboard";
+  }
   return null;
 }
 

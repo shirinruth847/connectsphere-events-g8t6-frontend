@@ -12,6 +12,8 @@ export interface NotificationTarget {
   // rather than breaking the inbox.
   page: NotificationTargetPage | (string & {});
   event_id: number;
+  // TECHNICAL_REQUESTS only: the request the notice is about (SPM-196).
+  technical_request_id?: number;
 }
 
 export interface NotificationItem {
