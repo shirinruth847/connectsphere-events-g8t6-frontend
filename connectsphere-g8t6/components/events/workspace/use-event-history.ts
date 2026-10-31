@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getEventHistory, markHistoryViewed, type EventHistoryEntry } from "@/lib/api/event-workspace";
-import type { HistoryBaseline } from "@/lib/event-history";
+import { mergeNewestPage, type HistoryBaseline } from "@/lib/event-history";
+import { useRefreshOnReturn } from "./use-refresh-on-return";
 
 const PAGE_SIZE = 20;
 
@@ -19,16 +20,39 @@ const messageOf = (caught: unknown) => (caught instanceof Error ? caught.message
 // First page of a history from `load`, which must be stable between renders;
 // `refreshKey` changes after a save so the new entry appears. The baseline for
 // "new since your last visit" comes from the first load and is kept for the
-// whole visit; `onLoaded` runs after each first-page load.
-export function useHistory(load: HistoryLoader, refreshKey: number, onLoaded?: () => void) {
+// whole visit; `onLoaded` runs after each first-page load. With
+// `refreshOnReturn`, returning to the tab adds newer entries without running
+// `onLoaded`, so they still count as unseen on the next visit.
+export function useHistory(
+  load: HistoryLoader,
+  refreshKey: number,
+  onLoaded?: () => void,
+  { refreshOnReturn = false }: { refreshOnReturn?: boolean } = {},
+) {
   const [state, setState] = useState<HistoryState>({ status: "loading" });
   const [baseline, setBaseline] = useState<HistoryBaseline | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState("");
+  const generation = useRef(0);
+
+  useRefreshOnReturn(async () => {
+    if (state.status === "error") {
+      setState({ status: "loading" });
+      setAttempt((value) => value + 1);
+      return;
+    }
+    if (state.status !== "ready") return;
+    const requestGeneration = generation.current;
+    // A failed background read keeps the loaded history on screen.
+    const page = await load({ limit: PAGE_SIZE });
+    if (requestGeneration !== generation.current) return;
+    setState((current) => (current.status === "ready" ? mergeNewestPage(current, page) : current));
+  }, refreshOnReturn);
 
   useEffect(() => {
     let alive = true;
+    generation.current += 1;
     load({ limit: PAGE_SIZE })
       .then((page) => {
         if (!alive) return;
@@ -59,7 +83,9 @@ export function useHistory(load: HistoryLoader, refreshKey: number, onLoaded?: (
     setMoreError("");
     try {
       const page = await load({ cursor: state.nextCursor, limit: PAGE_SIZE });
-      setState({ status: "ready", entries: [...state.entries, ...page.history], nextCursor: page.nextCursor });
+      setState((current) => current.status === "ready"
+        ? { ...current, entries: [...current.entries, ...page.history], nextCursor: page.nextCursor }
+        : current);
     } catch (caught) {
       setMoreError(messageOf(caught));
     } finally {
@@ -77,5 +103,5 @@ export function useEventHistory(eventId: number, refreshKey: number) {
   const markViewed = useCallback(() => {
     markHistoryViewed(eventId).catch(() => {});
   }, [eventId]);
-  return useHistory(load, refreshKey, markViewed);
+  return useHistory(load, refreshKey, markViewed, { refreshOnReturn: true });
 }
