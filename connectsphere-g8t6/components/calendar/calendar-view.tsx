@@ -1413,6 +1413,7 @@ export type CalendarViewProps = {
   selectedEvent?: CalendarEvent;
   onEventClick?: (event: CalendarEvent) => void;
   defaultView?: CalendarViewMode;
+  defaultCurrentDate?: Date;
   viewMode?: CalendarViewMode;
   onViewModeChange?: (mode: CalendarViewMode) => void;
   currentDate?: Date;
@@ -1433,6 +1434,7 @@ export function CalendarView({
   selectedEvent,
   onEventClick,
   defaultView = "month",
+  defaultCurrentDate,
   viewMode: controlledViewMode,
   onViewModeChange,
   currentDate: controlledDate,
@@ -1445,7 +1447,7 @@ export function CalendarView({
   const [internalViewMode, setInternalViewMode] = useState<CalendarViewMode>(
     defaultView,
   );
-  const [internalCurrentDate, setInternalCurrentDate] = useState(() => calendarDate(new Date()));
+  const [internalCurrentDate, setInternalCurrentDate] = useState(() => defaultCurrentDate ?? calendarDate(new Date()));
   const [manualVisibleIds, setManualVisibleIds] = useState<Set<number> | null>(null);
 
   const visibleIds = useMemo(() => {
