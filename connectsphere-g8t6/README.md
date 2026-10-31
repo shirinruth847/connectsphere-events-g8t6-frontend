@@ -110,6 +110,17 @@ Validation used Node.js 24.9.0.
   stock, outbox entries and the items). Run only this part with
   `LIVE_ROLES=TECH_SUPPORT npm run test:live`.
 
+- `npm run test:e2e:live` runs the maintained `@playwright/test` specs in
+  `tests/live/` (configuration `playwright.live.config.mjs`) against the
+  running applications at localhost:3000/8000, with no mocks and no server
+  started for you. Specs create their own synthetic accounts through the
+  backend's fixture modules (Auth Admin + trusted setup) and run-scoped events,
+  record them in the backend fixture manifest and remove them afterwards;
+  attendees that wrote registration history stay deactivated, as the backend
+  cleanup documents. Needs the sibling backend repository and its private
+  `.env` (CONNECTSPHERE_BACKEND_DIR and LIVE_FRONTEND_URL/LIVE_BACKEND_URL may
+  override). SPM-134 registration: `npm run test:e2e:live -- --grep SPM-134`.
+
 The live checker reads the backend's private environment only in its Node.js
 process; no private key is bundled into the browser. Rebuild/restart the normal
 frontend after mock browser tests before running live checks. NEXT_PUBLIC_BACKEND_URL
