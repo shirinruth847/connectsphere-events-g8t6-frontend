@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n -E '^\\(<<<<<<<|=======|>>>>>>>\\)' components/venue-staff/booking-requests/hold-request-list.tsx; echo \"tsx markers: $?\"; sed -n '210,270p' components/venue-staff/booking-requests/hold-request-list.tsx)",
+      "Bash(git show HEAD:./tests/e2e/repair.spec.mjs > tests/e2e/repair.spec.mjs && grep -n -E '^\\(<<<<<<<|=======|>>>>>>>\\)' tests/e2e/repair.spec.mjs; echo \"exit=$?\")",
+      "Bash(grep -rn -E '^\\(<<<<<<<|=======|>>>>>>>\\)' --include='*.tsx' --include='*.ts' --include='*.mjs' components lib tests 2>/dev/null; echo \"markers-scan-exit=$?\")",
+      "Bash(grep -rn \"useHoldRequests\\\\|HoldRequestList\" components app --include='*.tsx' --include='*.ts' | head -20)",
+      "Bash(node:*)",
+      "Bash(npx tsc --noEmit 2>&1 | head -30)",
+      "Bash(npx eslint components/venue-staff/booking-requests/hold-request-list.tsx 2>&1 | tail -20)"
+    ]
+  }
+}
