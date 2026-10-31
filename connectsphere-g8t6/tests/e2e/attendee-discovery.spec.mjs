@@ -162,19 +162,27 @@ test('[SPM-34 AC1/AC6] pagination and retry survive every loaded event becoming 
   await expect(page.getByText('You have reached the end of the list.', { exact: true })).toBeVisible();
 });
 
-test('[SPM-34 AC3] waitlist and notify actions are shown as unavailable', async ({ page }) => {
+// Join Waitlist works since SPM-163 (tests/e2e/spm-163-147.spec.mjs); the
+// notify action stays unavailable.
+test('[SPM-34 AC3 / SPM-163 AC1] Join Waitlist is offered for a full event; notify stays unavailable', async ({ page }) => {
   const waitlist = makeEvent({ eventId: 106, title: 'Full Workshop', registrationAvailability: 'FULL_WAITLIST' });
   // Opens far in the future, so the browser clock always reads it as not yet open.
   const upcoming = makeEvent({ eventId: 107, title: 'Future Gala', registrationAvailability: 'CLOSED', registrationOpenAt: '2099-01-01T00:00:00.000Z', registrationCloseAt: null });
   await installDiscoveryMocks(page, { pages: { '': { events: [waitlist, upcoming], nextCursor: null } }, details: { 106: waitlist, 107: upcoming } });
   await page.goto('/events');
-  for (const [title, label] of [['Full Workshop', 'Join Waitlist'], ['Future Gala', 'Notify when registration opens']]) {
-    await page.getByRole('button', { name: `View event details for ${title}`, exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: title, exact: true });
-    await expectUnavailableAction(dialog, label);
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden();
-  }
+  await page.getByRole('button', { name: 'View event details for Full Workshop', exact: true }).click();
+  const full = page.getByRole('dialog', { name: 'Full Workshop', exact: true });
+  await expect(full.getByRole('button', { name: 'Join Waitlist', exact: true })).toBeEnabled();
+  await expect(full.getByRole('button', { name: 'Join Waitlist', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(full).not.toContainText(UNAVAILABLE_NOTE);
+  await page.keyboard.press('Escape');
+  await expect(full).toBeHidden();
+
+  await page.getByRole('button', { name: 'View event details for Future Gala', exact: true }).click();
+  const upcomingDialog = page.getByRole('dialog', { name: 'Future Gala', exact: true });
+  await expectUnavailableAction(upcomingDialog, 'Notify when registration opens');
+  await page.keyboard.press('Escape');
+  await expect(upcomingDialog).toBeHidden();
 });
 
 test('[SPM-34 AC4] NOT_ENABLED events show no registration wording', async ({ page }) => {
