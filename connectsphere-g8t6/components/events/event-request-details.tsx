@@ -33,14 +33,28 @@ function Card({ labelledBy, children }: { labelledBy: string; children: ReactNod
   );
 }
 
+function RejectionNotice({ event }: { event: EventView }) {
+  return (
+    <AlertBanner tone="warning" title="Request rejected">
+      <p className="font-semibold">Rejection reason</p>
+      <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{event.rejectionReason || "The rejection reason is not available. Check your notifications or contact your coordinator."}</p>
+    </AlertBanner>
+  );
+}
+
 function AccessNotice({ event }: { event: EventView }) {
+  const rejected = eventStatusLabel(event) === "Rejected";
   if (event.viewerRelationship === "ORGANISATION_MEMBER") {
     return (
-      <AlertBanner tone="info" title="Viewing as a member of your organisation">
-        You can see this request because it belongs to {event.organisation?.name ?? "your organisation"}. Only its owner can ask for changes.
-      </AlertBanner>
+      <div className="grid gap-3">
+        {rejected ? <RejectionNotice event={event} /> : null}
+        <AlertBanner tone="info" title="Viewing as a member of your organisation">
+          You can see this request because it belongs to {event.organisation?.name ?? "your organisation"}. Only its owner can ask for changes.
+        </AlertBanner>
+      </div>
     );
   }
+  if (rejected) return <RejectionNotice event={event} />;
   if (isDraftEvent(event)) {
     return (
       <AlertBanner tone="info" title="Only you can see this draft">

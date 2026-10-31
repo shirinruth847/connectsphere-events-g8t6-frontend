@@ -45,6 +45,7 @@ export interface VenueSuggestion {
 }
 
 export interface EventView {
+  rejectionReason?: string | null;
   eventId: number;
   requestId: string;
   // Stored state, returned only to the assigned coordinator (SPM-173 AC6);

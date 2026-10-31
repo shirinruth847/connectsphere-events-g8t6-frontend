@@ -23,6 +23,7 @@ import {
 } from "./event-detail-rows";
 import { EventHistoryPanel } from "./event-history-panel";
 import { EventIdentityEditor } from "./event-identity-editor";
+import { RejectionPanel } from "@/components/coordinator/rejection-panel";
 import { LifecyclePanel } from "@/components/coordinator/lifecycle-panel";
 import { EventVenueSection } from "@/components/venues/event-venue-options/event-venue-section";
 import { SafetyReviewSection } from "./safety-review-section";
@@ -226,6 +227,13 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             onAccessChanged={onAccessChanged}
             refreshKey={historyKey}
           />
+          <RejectionPanel event={event} editing={identityEditing} onAccessChanged={onAccessChanged}
+            onEventChange={(updated, message) => {
+              onEventChange(updated);
+              setHistoryKey(value => value + 1);
+              setNotice(null);
+              setStatusNotice(message ?? "");
+            }} />
           {clarificationPanel}
           <SafetyReviewSection eventId={event.eventId} refreshKey={historyKey} />
           <section aria-labelledby="coordination-heading" className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
