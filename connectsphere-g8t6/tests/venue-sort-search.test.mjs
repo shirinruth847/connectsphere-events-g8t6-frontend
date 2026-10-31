@@ -14,8 +14,12 @@ import { availabilityOverlays, calendarRange, civilDate, toCalendarLanes } from 
 
 // ---------- My Requests (SPM-181 follow-up) ----------
 
-test('[TC-VENUE-181-30] the default sort (pending first) sends no sort parameters', () => {
+test('[TC-VENUE-181-30] the default sort (request status, pending first) sends no sort parameters', () => {
   assert.equal(bookingFilterQuery({ sort: 'default', order: 'asc' }), '');
+});
+
+test('[SPM-186] the request status sort sends only the descending order', () => {
+  assert.equal(bookingFilterQuery({ sort: 'default', order: 'desc' }), '?order=desc');
 });
 
 test('[TC-VENUE-181-31] search, sort and order are sent; a blank search is not', () => {
@@ -119,7 +123,7 @@ test('[TC-VENUE-181-41] each venue is a lane and each entry spans its occupied r
   assert.deepEqual(lanes.map((lane) => [lane.coordinatorId, lane.name, lane.events.length]), [[45, 'Grand Hall', 2], [46, 'Seminar Centre', 1]]);
   assert.deepEqual(lanes[0].events[0], {
     eventId: 1,
-    title: 'Confirmed booking · Booking #110',
+    title: 'Confirmed booking · REQ-000442',
     purpose: undefined,
     startDatetime: '2026-11-04T01:30:00.000Z',
     endDatetime: '2026-11-04T04:45:00.000Z',
@@ -127,11 +131,24 @@ test('[TC-VENUE-181-41] each venue is a lane and each entry spans its occupied r
     status: 'Confirmed booking',
     requestId: 'REQ-000442',
   });
-  assert.equal(lanes[0].events[1].title, 'Active hold · REQ-000002');
+  // SPM-186: the event's name replaces the label when the viewer may see it.
+  assert.equal(lanes[0].events[1].title, 'Masterclass');
   assert.equal(lanes[0].events[1].purpose, 'Masterclass');
   assert.equal(lanes[1].events[0].title, 'Operational block · Maintenance');
   assert.equal(refs.get(3).venueName, 'Seminar Centre');
   assert.equal(refs.size, 3);
+});
+
+test('[SPM-186] each entry is labelled with its event and its start and end', () => {
+  const entry = {
+    entryId: 'x', type: 'BOOKING', status: 'APPROVED', label: 'Confirmed booking', blocking: true,
+    start: '2026-11-04T02:00:00.000Z', end: '2026-11-04T04:00:00.000Z',
+    occupiedStart: '2026-11-04T01:30:00.000Z', occupiedEnd: '2026-11-04T04:45:00.000Z',
+    bookingId: 110, eventId: 442, requestId: 'REQ-000442', eventTitle: 'Planning forum',
+    holdExpiresAt: null, reason: null, reasonLabel: null, note: null, operatingHoursWarning: null,
+  };
+  const { lanes } = toCalendarLanes({ from: 'a', to: 'b', venues: [{ venueId: 45, name: 'Grand Hall', entries: [entry] }] }, (start, end) => `${start}/${end}`);
+  assert.equal(lanes[0].events[0].title, 'Planning forum · 2026-11-04T02:00:00.000Z/2026-11-04T04:00:00.000Z');
 });
 
 test('[SPM-74][SPM-72 AC6] the calendar shades the request, its overlaps and the hours every venue is closed', () => {

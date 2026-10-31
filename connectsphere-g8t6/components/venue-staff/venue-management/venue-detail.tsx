@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, EmptyState, PageHeader, ReferenceIdTag, SectionCard, Skeleton, buttonClasses, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
@@ -13,8 +13,10 @@ import {
   VENUE_STATUS_LABELS,
   changeVenueStatus,
   getManagedVenue,
+  getVenueHistory,
   updateVenue,
   updateVenueDetails,
+  type AffectedEvent,
   type DetailStatus,
   type ManagedVenue,
   type VenueDetails,
@@ -23,6 +25,8 @@ import {
 import { BufferFields, Field, VenueCoreFields, VenueStatusChip, type FieldErrors } from "./venue-fields";
 import { VenueGallery } from "./venue-gallery";
 import { VenueBlocksSection } from "./venue-blocks";
+import { HistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { useHistory, type HistoryLoader } from "@/components/events/workspace/use-event-history";
 import { EMPTY_VENUE_FORM, formatList, parseList, validateVenueForm, type VenueFormValues } from "./venue-form-rules";
 
 type Loaded = { venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus };
@@ -99,7 +103,7 @@ function StatusSection({ venue, onSaved }: { venue: ManagedVenue; onSaved: (venu
   const [reason, setReason] = useState(venue.statusReason ?? "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [confirm, setConfirm] = useState<{ upcoming: number | null; firstStart?: string | null } | null>(null);
+  const [confirm, setConfirm] = useState<{ upcoming: number | null; firstStart?: string | null; affectedEvents?: AffectedEvent[] } | null>(null);
 
   const send = async (confirmUpcomingBookings: boolean) => {
     setSaving(true);
@@ -112,10 +116,17 @@ function StatusSection({ venue, onSaved }: { venue: ManagedVenue; onSaved: (venu
         confirmUpcomingBookings,
       });
       setConfirm(null);
-      onSaved(result.venue, result.upcomingBookings ? `${result.message} ${result.upcomingBookings} upcoming booking(s) were kept.` : result.message);
+      const notified = result.affectedEvents?.length
+        ? ` The coordinators and organisers of ${result.affectedEvents.length} affected event${result.affectedEvents.length === 1 ? "" : "s"} were notified.`
+        : "";
+      onSaved(result.venue, result.upcomingBookings ? `${result.message} ${result.upcomingBookings} upcoming booking(s) were kept.${notified}` : result.message);
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "VENUE_HAS_UPCOMING_BOOKINGS") {
-        setConfirm({ upcoming: (caught.details.upcomingBookings as number) ?? null, firstStart: caught.details.firstStart as string | null });
+        setConfirm({
+          upcoming: (caught.details.upcomingBookings as number) ?? null,
+          firstStart: caught.details.firstStart as string | null,
+          affectedEvents: Array.isArray(caught.details.affectedEvents) ? (caught.details.affectedEvents as AffectedEvent[]) : [],
+        });
       } else {
         setConfirm(null);
         setError(caught instanceof ApiError && caught.fields.reason ? caught.fields.reason : caught instanceof Error ? caught.message : "The status could not be changed.");
@@ -159,15 +170,38 @@ function StatusSection({ venue, onSaved }: { venue: ManagedVenue; onSaved: (venu
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="quiet" onClick={() => setConfirm(null)}>Keep current status</Button>
-            <Button variant="danger" disabled={saving} onClick={() => void send(confirm?.upcoming !== null)}>Confirm</Button>
+            <Button variant="danger" disabled={saving} onClick={() => void send(confirm?.upcoming !== null)}>
+              {confirm?.upcoming ? "Proceed and notify" : "Confirm"}
+            </Button>
           </div>
         }
       >
         {confirm?.upcoming ? (
-          <AlertBanner tone="warning" title="This venue has upcoming bookings">
-            {confirm.upcoming} upcoming booking{confirm.upcoming === 1 ? "" : "s"}
-            {confirm.firstStart ? `, the first on ${formatTimestamp(confirm.firstStart)}` : ""}. They are kept and stay linked to the venue, but the venue cannot be selected for new bookings.
-          </AlertBanner>
+          <div className="grid gap-3">
+            <AlertBanner tone="warning" title="This venue has upcoming bookings">
+              {confirm.upcoming} upcoming booking{confirm.upcoming === 1 ? "" : "s"}
+              {confirm.firstStart ? `, the first on ${formatTimestamp(confirm.firstStart)}` : ""}. The bookings and events are kept, not cancelled, but the venue cannot be selected for new bookings.
+              If you continue, each event&apos;s coordinator and organiser are notified so the coordinator can arrange another venue with the organiser.
+            </AlertBanner>
+            {confirm.affectedEvents?.length ? (
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Affected events</h3>
+                <ul className="grid max-h-60 gap-2 overflow-y-auto">
+                  {confirm.affectedEvents.map((item) => (
+                    <li key={item.eventId} className="flex flex-wrap items-center justify-between gap-2 rounded-control bg-surface-container-low px-3 py-2 text-sm">
+                      <span className="grid min-w-0">
+                        <span className="truncate font-semibold text-on-surface">{item.title}</span>
+                        <span className="text-xs text-on-surface-variant">
+                          {formatTimestamp(item.firstStart)} · {item.bookings} booking{item.bookings === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                      <ReferenceIdTag value={item.requestId} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <p className="text-sm text-on-surface">The venue will not be available for new bookings. It stays in historical records and can be reactivated later.</p>
         )}
@@ -302,6 +336,34 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
 
 // /venues/[venueId] for Venue Staff (SPM-73): edit the record, change status
 // with confirmation, and edit the MongoDB details including setup/turnaround.
+// The venue's own change history (SPM-186): edits, status, details, photos and
+// blocks, newest first; `refreshKey` changes after each save here.
+function VenueHistory({ venueId, refreshKey }: { venueId: number; refreshKey: string }) {
+  const load = useCallback<HistoryLoader>((options) => getVenueHistory(venueId, options), [venueId]);
+  const [key, setKey] = useState(0);
+  const [lastRefresh, setLastRefresh] = useState(refreshKey);
+  // Photo changes are saved in the gallery, so the panel also reloads on focus.
+  if (lastRefresh !== refreshKey) {
+    setLastRefresh(refreshKey);
+    setKey((value) => value + 1);
+  }
+  useEffect(() => {
+    const onFocus = () => setKey((value) => value + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+  const history = useHistory(load, key);
+  return (
+    <HistoryPanel
+      id={`venue-${venueId}-history`}
+      description="Every change to this venue, its status, details and photos. Staff only."
+      emptyText="No changes have been recorded for this venue yet."
+      history={history}
+      statusLabels={VENUE_STATUS_LABELS}
+    />
+  );
+}
+
 export function VenueDetailManager({ venueId }: { venueId: number | null }) {
   const [state, setState] = useState<PageState>(venueId ? { status: "loading" } : { status: "not-found" });
   const [attempt, setAttempt] = useState(0);
@@ -367,7 +429,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
       />
       <div className="-mt-2 flex flex-wrap items-center gap-3">
         <ReferenceIdTag value={`VENUE-${venue.venueId}`} />
-        <Link href={`/venues?view=availability&venueId=${venue.venueId}`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+        <Link href={`/venues?view=availability&venueId=${venue.venueId}&from=venue`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
           <Icon name="calendar" size={16} />View availability
         </Link>
       </div>
@@ -406,8 +468,8 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
                 { icon: "history", label: "Details updated", value: details?.updatedAt ? formatTimestamp(details.updatedAt) : "Not recorded" },
               ]}
             />
-            <p className="mt-3 text-xs text-on-surface-variant">Every create, update and status change is recorded in the audit log.</p>
           </section>
+          <VenueHistory venueId={venue.venueId} refreshKey={`${venue.version}-${details?.version ?? "none"}-${revision}`} />
           <Button variant="secondary" onClick={reload}><Icon name="refresh" size={16} />Reload venue</Button>
         </aside>
       </div>
