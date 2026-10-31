@@ -31,6 +31,8 @@ export interface EventRequest {
   preferredLayoutType?: string | null;
   accessibilityNeeds?: string[] | string | null;
   venuePreferences?: number[];
+  // SPM-76: each choice's requested time; null means the whole event.
+  venuePreferenceTimes?: Array<{ venueId: number; requestedStart: string | null; requestedEnd: string | null }>;
   equipmentRequirements?: Array<{ equipmentId: number; name?: string | null; category?: string | null; quantity: number }>;
   isRegistrationEnabled?: boolean;
   registrationCapacity?: number | null;
@@ -79,8 +81,17 @@ export interface EventFormValues {
   registrationCloseAt: string;
   preferredLayoutType: string;
   venuePreferences: number[];
+  // SPM-76: requested times of chosen venues, keyed by venue ID, as
+  // datetime-local values; a venue without one is wanted for the whole event.
+  venueTimes: Record<string, VenueTime>;
   equipmentRequirements: Array<{ equipmentId: number; quantity: number }>;
 }
+
+export interface VenueTime { start: string; end: string }
+
+// A venue choice as the API takes it: an ID for the whole event, or the venue
+// with the part of the event it is wanted for.
+export type VenuePreferencePayload = number | { venueId: number; requestedStart: string; requestedEnd: string };
 
 export interface EventRequestPayload {
   title: string;
@@ -96,7 +107,7 @@ export interface EventRequestPayload {
   registrationCapacity: number | null;
   registrationOpenAt: string | null;
   registrationCloseAt: string | null;
-  venuePreferences: number[];
+  venuePreferences: VenuePreferencePayload[];
   equipmentRequirements: Array<{ equipmentId: number; quantity: number }>;
 }
 
@@ -193,6 +204,21 @@ export const eventStatusLabel = (event: { status?: string | null; statusLabel?: 
   ?? (event.status ? ORGANISER_STATUS_LABELS[event.status as EventStatus] ?? statusPresentation(event.status).label : "Unknown status");
 
 export const fieldStep = (field: string) => ({ title: 0, purpose: 0, description: 0, startDatetime: 1, endDatetime: 1, expectedAttendance: 1, venuePreferences: 2, preferredLayoutType: 2, accessibilityNeeds: 3, accessibilityNotes: 3, equipmentRequirements: 4, technicalSupportNeeds: 4, registrationCapacity: 5, isRegistrationEnabled: 5, registrationOpenAt: 5, registrationCloseAt: 5 }[field] ?? 0);
+// SPM-76: a chosen venue's requested time must be a real period inside the event.
+export const venueTimeProblem = (values: EventFormValues) => {
+  const eventStart = Date.parse(values.startDatetime);
+  const eventEnd = Date.parse(values.endDatetime);
+  for (const venueId of values.venuePreferences) {
+    const time = values.venueTimes?.[venueId];
+    if (!time) continue;
+    const start = Date.parse(time.start);
+    const end = Date.parse(time.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return "Give each venue a start and end time, with the end after the start.";
+    if (!Number.isFinite(eventStart) || !Number.isFinite(eventEnd) || start < eventStart || end > eventEnd) return "Each venue's time must be within the event's start and end.";
+  }
+  return null;
+};
+
 export function validateEventStep(values: EventFormValues, index: number, required = false, now = Date.now(), checkLeadTime = true) {
   const errors: Record<string, string> = {};
   if (index === 0) {
@@ -215,6 +241,10 @@ export function validateEventStep(values: EventFormValues, index: number, requir
     else if (values.expectedAttendance && (!Number.isInteger(Number(values.expectedAttendance)) || Number(values.expectedAttendance) < 1 || Number(values.expectedAttendance) > 2147483647)) errors.expectedAttendance = "Expected Attendance must be a positive whole number.";
   }
   if (index === 2 && required && !values.preferredLayoutType) errors.preferredLayoutType = "Preferred layout is required.";
+  if (index === 2) {
+    const problem = venueTimeProblem(values);
+    if (problem) errors.venuePreferences = problem;
+  }
   if (index === 3 && values.accessibilityNotes.split("\n").some(line => line.length > 200)) errors.accessibilityNotes = "Keep each accessibility note to 200 characters or fewer.";
   if (index === 4 && values.technicalSupportNeeds.trim().length > 2000) errors.technicalSupportNeeds = "Technical support needs must be 2,000 characters or fewer.";
   if (index === 4 && (values.equipmentRequirements.length > 20 || values.equipmentRequirements.some((item) =>
@@ -286,6 +316,7 @@ export const EMPTY_EVENT_FORM: EventFormValues = {
   registrationCloseAt: "",
   preferredLayoutType: "NO_PREFERENCE",
   venuePreferences: [],
+  venueTimes: {},
   equipmentRequirements: [],
 };
 
@@ -315,6 +346,12 @@ export const localDateTimeToIso = (value: string) => {
 
 const typedInstant = (value: string) => Date.parse(localDateTimeToIso(value) ?? "");
 
+const venuePreferencePayload = (venueId: number, time?: VenueTime): VenuePreferencePayload => {
+  const requestedStart = time ? localDateTimeToIso(time.start) : undefined;
+  const requestedEnd = time ? localDateTimeToIso(time.end) : undefined;
+  return requestedStart && requestedEnd ? { venueId, requestedStart, requestedEnd } : venueId;
+};
+
 export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   title: values.title.trim(),
   purpose: values.purpose.trim() || null,
@@ -329,7 +366,7 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   registrationCapacity: values.isRegistrationEnabled && values.registrationCapacity.trim() ? Number(values.registrationCapacity) : null,
   registrationOpenAt: values.isRegistrationEnabled ? localDateTimeToIso(values.registrationOpenAt) ?? null : null,
   registrationCloseAt: values.isRegistrationEnabled ? localDateTimeToIso(values.registrationCloseAt) ?? null : null,
-  venuePreferences: [...values.venuePreferences],
+  venuePreferences: values.venuePreferences.map((venueId) => venuePreferencePayload(venueId, values.venueTimes?.[venueId])),
   // The backend refuses display fields such as name on a line.
   equipmentRequirements: values.equipmentRequirements.map(({ equipmentId, quantity }) => ({ equipmentId, quantity })),
 });
@@ -401,6 +438,9 @@ export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
     registrationCloseAt: toLocalDateTimeInput(event.registrationCloseAt),
     preferredLayoutType: event.preferredLayoutType ?? "NO_PREFERENCE",
     venuePreferences: event.venuePreferences ?? [],
+    venueTimes: Object.fromEntries((event.venuePreferenceTimes ?? [])
+      .filter((item) => item.requestedStart && item.requestedEnd)
+      .map((item) => [String(item.venueId), { start: toLocalDateTimeInput(item.requestedStart), end: toLocalDateTimeInput(item.requestedEnd) }])),
     equipmentRequirements: (event.equipmentRequirements ?? []).map(({ equipmentId, quantity }) => ({ equipmentId, quantity })),
   };
 };

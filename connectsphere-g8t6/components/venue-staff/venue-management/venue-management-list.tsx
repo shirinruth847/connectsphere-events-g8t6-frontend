@@ -159,9 +159,15 @@ function ManagedVenueRow({ venue }: { venue: ManagedVenue }) {
           Updated {formatTimestamp(venue.updatedAt)}{venue.updatedBy?.name ? ` by ${venue.updatedBy.name}` : ""}
         </p>
       </div>
-      <Link href={`/venues/${venue.venueId}`} className={buttonClasses("secondary")}>
-        Manage<Icon name="arrow-forward" size={16} />
-      </Link>
+      <div className="flex flex-wrap gap-2">
+        <Link href={`/venues?view=availability&venueId=${venue.venueId}`} className={buttonClasses("quiet")}>Availability</Link>
+        <Link href={`/venues?view=availability&venueId=${venue.venueId}`} aria-label={`Open availability calendar for ${venue.name}`} className={buttonClasses("secondary")}>
+          <Icon name="calendar" size={16} />Calendar
+        </Link>
+        <Link href={`/venues/${venue.venueId}`} className={buttonClasses("secondary")}>
+          Manage<Icon name="arrow-forward" size={16} />
+        </Link>
+      </div>
     </li>
   );
 }

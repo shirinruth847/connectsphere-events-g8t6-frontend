@@ -24,6 +24,8 @@ export interface VenueBookingSummary {
   expectedAttendance: number | null;
   submittedAt: string;
   updatedAt?: string;
+  // Requested by confirming a tentative hold (SPM-188).
+  fromHold?: boolean;
 }
 
 export interface VenueBookingListItem extends VenueBookingSummary {

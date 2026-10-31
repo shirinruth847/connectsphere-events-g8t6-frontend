@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
 import { readHoldCommand, saveHoldCommand } from "../hold-command-recovery";
-import { useHoldExpiryRefresh } from "../use-hold-expiry-refresh";
+import Link from "next/link";
+import { useHoldExpiryRefresh, useMinuteClock } from "../use-hold-expiry-refresh";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, FormLabel, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
@@ -12,6 +13,7 @@ import { BookingStatusChip } from "@/components/venue-staff/booking-requests/boo
 import { BookingChecksPanel } from "@/components/venues/booking-checks";
 import { ApiError } from "@/lib/api";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
+import { holdCountdown } from "@/lib/hold-countdown";
 import type { EventVenueOption } from "@/lib/api/event-venues";
 import type { EventView } from "@/lib/api/event-workspace";
 import {
@@ -30,14 +32,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // The chip shows the hold's own state once placed, otherwise the request's.
 export const holdChipStatus = (request: VenueHoldRequest, now = Date.now()) => (
-  request.hold?.status === "ACTIVE" && request.hold.expiresAt && Date.parse(request.hold.expiresAt) <= now
+  request.hold?.bookingUnavailable ? "NOT_CHECKED" : request.hold?.status === "ACTIVE" && request.hold.expiresAt && Date.parse(request.hold.expiresAt) <= now
     ? "EXPIRED" : request.hold?.status ?? request.status
 );
 export const holdChipLabel = (request: VenueHoldRequest, now: number) =>
   holdChipStatus(request, now) === "EXPIRED" ? "Hold expired" : request.statusLabel;
 
-export function HoldSummary({ request, now }: { request: VenueHoldRequest; now: number }) {
+// A hold confirmed but never saved as a booking (Master T35) can be confirmed again.
+export const canConfirmAgain = (request: VenueHoldRequest) => request.status === "PLACED" && Boolean(request.hold?.bookingMissing);
+
+// bookingLink: Venue Staff open the booking a confirmed hold became.
+export function HoldSummary({ request, now, bookingLink = false, onRetry }: { request: VenueHoldRequest; now: number; bookingLink?: boolean; onRetry?: () => void }) {
   const hold = request.hold;
+  const countdown = isActiveHold(request, now) ? holdCountdown(hold?.expiresAt, now) : null;
+  const booking = hold?.convertedBooking ?? null;
   return (
     <div className="grid gap-1 text-sm text-on-surface-variant">
       <p>
@@ -46,8 +54,27 @@ export function HoldSummary({ request, now }: { request: VenueHoldRequest; now: 
       </p>
       {isActiveHold(request, now) && hold?.expiresAt ? (
         <p className="font-semibold text-[#92400E]">
-          Held until {formatTimestamp(hold.expiresAt)}{hold.extended ? " (extended once)" : ""}
+          {countdown ? `${countdown} (${formatTimestamp(hold.expiresAt)})` : `Held until ${formatTimestamp(hold.expiresAt)}`}
+          {hold.extended ? " (extended once)" : ""}
         </p>
+      ) : null}
+      {booking ? (
+        <p className="font-semibold text-on-surface">
+          Confirmed as{" "}
+          {bookingLink ? (
+            <Link className="underline" href={`/events/${request.eventId}?booking=${booking.bookingId}`}>Booking #{booking.bookingId}</Link>
+          ) : `Booking #${booking.bookingId}`}
+          {` · ${booking.statusLabel}`}
+        </p>
+      ) : null}
+      {hold?.bookingMissing ? (
+        <p className="font-semibold text-error">The booking was not saved. Confirm the hold again to send it to Venue Staff.</p>
+      ) : null}
+      {hold?.bookingUnavailable ? (
+        <div role="status" className="grid justify-items-start gap-1">
+          <p>The booking&apos;s outcome could not be checked. Reload holds to try again.</p>
+          {onRetry ? <Button type="button" variant="quiet" onClick={onRetry}>Retry booking lookup</Button> : null}
+        </div>
       ) : null}
       {request.holdUnavailable ? <p className="text-xs">The hold&apos;s current state cannot be read right now.</p> : null}
       {request.note ? <p className="text-xs"><span className="font-semibold">Note:</span> {request.note}</p> : null}
@@ -230,12 +257,20 @@ interface EventVenueHoldsProps {
   onCloseForm: () => void;
   // Called after any change, e.g. to refresh the event history.
   onChanged?: () => void;
+  // "Confirm as booking" on an active hold (SPM-188 AC9); only while the
+  // coordinator can request bookings.
+  onConfirm?: (request: VenueHoldRequest) => void;
+  // Changes when the event's bookings change, e.g. after a hold is confirmed.
+  reloadKey?: number;
+  // Venues this event already has an active booking at: a hold there cannot
+  // be confirmed as a second booking.
+  bookedVenueIds?: Set<number>;
 }
 
 // The event's tentative holds (SPM-190) for the coordinator and supervising
 // Lead: each request with its status, the placed hold's expiry, and Withdraw
 // (pending) or Release (active hold) for the coordinator.
-export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form, onOpenForm, onCloseForm, onChanged }: EventVenueHoldsProps) {
+export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form, onOpenForm, onCloseForm, onChanged, onConfirm, reloadKey = 0, bookedVenueIds }: EventVenueHoldsProps) {
   const [state, setState] = useState<{ status: "loading" } | { status: "ready"; holds: VenueHoldRequest[] } | { status: "error"; message: string }>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -249,10 +284,12 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
         if (alive) setState({ status: "error", message: caught instanceof Error ? caught.message : "Holds could not be loaded." });
       });
     return () => { alive = false; };
-  }, [event.eventId, event.status, attempt]);
+  }, [event.eventId, event.status, attempt, reloadKey]);
 
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
-  const now = useHoldExpiryRefresh(state.status === "ready" ? state.holds : [], reload);
+  const refreshedAt = useHoldExpiryRefresh(state.status === "ready" ? state.holds : [], reload);
+  const clock = useMinuteClock();
+  const now = Math.max(refreshedAt, clock);
   const act = async (request: VenueHoldRequest, action: "withdraw" | "release") => {
     setBusyId(request.holdRequestId);
     setNotice(null);
@@ -302,12 +339,25 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
                 </h4>
                 <BookingStatusChip status={holdChipStatus(request, now)} label={holdChipLabel(request, now)} />
               </div>
-              <HoldSummary request={request} now={now} />
-              {isCoordinator && (request.status === "PENDING" || isActiveHold(request, now)) ? (
-                <div>
-                  <Button type="button" variant="quiet" disabled={busyId === request.holdRequestId} onClick={() => void act(request, request.status === "PENDING" ? "withdraw" : "release")}>
-                    {request.status === "PENDING" ? "Withdraw request" : "Release hold"}
-                  </Button>
+              <HoldSummary request={request} now={now} onRetry={reload} />
+              {isCoordinator && (request.status === "PENDING" || isActiveHold(request, now) || canConfirmAgain(request)) ? (
+                <div className="flex flex-wrap gap-2">
+                  {onConfirm && (isActiveHold(request, now) || canConfirmAgain(request)) ? (
+                    <Button
+                      type="button"
+                      aria-haspopup="dialog"
+                      disabled={busyId === request.holdRequestId || Boolean(bookedVenueIds?.has(request.venueId))}
+                      title={bookedVenueIds?.has(request.venueId) ? "This event already has a booking at this venue." : undefined}
+                      onClick={() => onConfirm(request)}
+                    >
+                      <Icon name="check" size={16} />Confirm as booking
+                    </Button>
+                  ) : null}
+                  {request.status === "PENDING" || isActiveHold(request, now) ? (
+                    <Button type="button" variant="quiet" disabled={busyId === request.holdRequestId} onClick={() => void act(request, request.status === "PENDING" ? "withdraw" : "release")}>
+                      {request.status === "PENDING" ? "Withdraw request" : "Release hold"}
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </li>

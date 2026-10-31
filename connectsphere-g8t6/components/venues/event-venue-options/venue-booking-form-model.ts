@@ -3,6 +3,7 @@
 // only: the backend repeats every one of them under the venue lock and its
 // answer is final (Master 2.6, 5.4).
 import type { EventVenueBooking, EventVenueOption, VenueBookingRequestItem } from "../../../lib/api/event-venues";
+import type { VenueHoldRequest } from "../../../lib/api/venue-holds";
 
 export const MAX_BOOKING_SECTIONS = 10;
 
@@ -57,6 +58,9 @@ export interface BookingDraft {
   accessibilityNeeds: string[];
   specialRequirements: string;
   isPrimary: boolean;
+  // Set when this section confirms a tentative hold (SPM-188 AC9): its venue
+  // and times are the hold's and cannot be changed.
+  holdId: string | null;
 }
 
 export interface BookingEventContext {
@@ -71,7 +75,7 @@ export interface BookingEventContext {
 
 const SINGAPORE = "Asia/Singapore";
 const SGT_OFFSET = "+08:00";
-const INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
+const INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/;
 const inputParts = new Intl.DateTimeFormat("en-CA", {
   timeZone: SINGAPORE,
   year: "numeric",
@@ -82,19 +86,22 @@ const inputParts = new Intl.DateTimeFormat("en-CA", {
   hourCycle: "h23",
 });
 
-// An instant as the Singapore "YYYY-MM-DDTHH:mm" a datetime-local input shows.
-export function toSgtInput(value: string | null | undefined): string {
+// Minutes by default; immutable hold windows retain seconds and milliseconds.
+export function toSgtInput(value: string | null | undefined, preservePrecision = false): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   const parts = Object.fromEntries(inputParts.formatToParts(date).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+  const minute = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+  if (!preservePrecision || (!date.getUTCSeconds() && !date.getUTCMilliseconds())) return minute;
+  const fraction = date.getUTCMilliseconds() ? `.${String(date.getUTCMilliseconds()).padStart(3, "0")}` : "";
+  return `${minute}:${String(date.getUTCSeconds()).padStart(2, "0")}${fraction}`;
 }
 
 // A datetime-local value read as Singapore time, as an ISO instant; null when incomplete.
 export function sgtInputToIso(value: string): string | null {
   if (!INPUT_PATTERN.test(value)) return null;
-  const date = new Date(`${value}:00${SGT_OFFSET}`);
+  const date = new Date(`${value}${value.length === 16 ? ":00" : ""}${SGT_OFFSET}`);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
@@ -131,6 +138,27 @@ export function newDraft(key: string, event: BookingEventContext, venue: Pick<Ev
     accessibilityNeeds: [...event.accessibilityNeeds],
     specialRequirements: "",
     isPrimary: false,
+    holdId: null,
+  };
+}
+
+// SPM-188 AC9: the section that confirms a hold, with the hold's venue, times
+// and label, and its expected attendance when the coordinator gave one.
+export function holdDraft(
+  key: string,
+  event: BookingEventContext,
+  hold: Pick<VenueHoldRequest, "venueId" | "venueName" | "label" | "start" | "end" | "expectedAttendance" | "hold">,
+  venue: Pick<EventVenueOption, "venueId" | "name"> | null,
+): BookingDraft {
+  const draft = newDraft(key, event, venue ?? { venueId: hold.venueId, name: hold.venueName ?? `Venue ${hold.venueId}` });
+  return {
+    ...draft,
+    label: hold.label.slice(0, BOOKING_LIMITS.label),
+    labelEdited: true,
+    start: toSgtInput(hold.start, true),
+    end: toSgtInput(hold.end, true),
+    expectedAttendance: hold.expectedAttendance ? String(hold.expectedAttendance) : draft.expectedAttendance,
+    holdId: hold.hold?.holdId ?? null,
   };
 }
 
@@ -265,6 +293,7 @@ export function toRequestItems(drafts: BookingDraft[], eventHasPrimary: boolean)
     accessibilityNeeds: cleanList(draft.accessibilityNeeds),
     specialRequirements: draft.specialRequirements.trim() || null,
     isPrimary: needsPrimaryChoice(drafts.length, eventHasPrimary) && draft.isPrimary,
+    ...(draft.holdId ? { holdId: draft.holdId } : {}),
   }));
 }
 
@@ -308,7 +337,12 @@ export interface BookingRequestFailure {
 }
 
 const STALE_CODES = new Set(["EVENT_NOT_IN_PLANNING", "FORBIDDEN", "EVENT_NOT_FOUND"]);
-const BOOKINGS_CHANGED_CODES = new Set(["PRIMARY_VENUE_ALREADY_SET", "VENUE_ALREADY_BOOKED_FOR_EVENT"]);
+// A refused hold confirmation (SPM-188 AC9/AC10) also reloads the event's
+// bookings, and with them its holds, so the hold shows its current state.
+const BOOKINGS_CHANGED_CODES = new Set([
+  "PRIMARY_VENUE_ALREADY_SET", "VENUE_ALREADY_BOOKED_FOR_EVENT",
+  "HOLD_NOT_FOUND", "HOLD_EXPIRED", "HOLD_NOT_ACTIVE", "HOLD_ALREADY_CONVERTED",
+]);
 
 export function bookingRequestFailure(error: { code?: string; message: string; fields?: Record<string, string>; details?: Record<string, unknown> }): BookingRequestFailure {
   const fields = { ...(error.fields ?? {}) };

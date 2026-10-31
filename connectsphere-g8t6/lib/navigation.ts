@@ -28,6 +28,7 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   VENUE_STAFF: [
     { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
+    { id: "availability", title: "Availability Calendar", icon: "calendar", href: `${ROUTES.venues}?view=availability` },
     // Booking and hold requests and safety notices (SPM-286); the Updates panel's See more leads here too.
     { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
@@ -84,5 +85,6 @@ export function activeNavigationId(role: UserRole, pathname: string) {
     return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
+  if (role === "VENUE_STAFF" && pathname === ROUTES.venues && typeof window !== "undefined" && window.location.search.includes("view=availability")) return "availability";
   return role !== "ORGANISER" && inVenues ? "venues" : "home";
 }

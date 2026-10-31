@@ -1,6 +1,6 @@
-// SPM-72/74/75: choosing a venue. Field names, codes and statuses are the
-// backend's (GET /api/events/:id/venue-options, the photo routes under
-// /api/venues/options and PUT /api/events/:id/venue-suggestion);
+// SPM-72/74/75/76: choosing a venue. Field names, codes and statuses are the
+// backend's (GET /api/events/:id/venue-options, the organiser's routes and
+// photo routes under /api/venues/options and PUT /api/events/:id/venue-suggestion);
 // do not rename them here.
 import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
@@ -17,20 +17,34 @@ export type { VenueOptionsQuery };
 // that the venue fails.
 export type RequirementStatus = "MET" | "UNMET" | "NOT_CHECKED";
 
+// SPM-198: how the venue's capacity suits the expected attendance. EXACT is
+// still met, but leaves no spare space.
+export type CapacityLevel = "SUFFICIENT" | "EXACT" | "INSUFFICIENT";
+
+export interface CapacityAssessment {
+  level: CapacityLevel;
+  // e.g. "Capacity Sufficient"; the wording is the backend's.
+  title: string;
+  message: string;
+}
+
 export interface VenueRequirement {
   key: string;
   label: string;
   status: RequirementStatus;
   detail: string;
+  // The capacity requirement only.
+  assessment?: CapacityAssessment;
 }
 
 export interface VenueConflict {
   type: "BOOKING" | "HOLD" | "BLOCK";
   label: string;
-  occupiedStart: string;
-  occupiedEnd: string;
-  holdExpiresAt: string | null;
-  reasonLabel: string | null;
+  // Absent for organisers, who see only the kind of entry (SPM-76 AC3).
+  occupiedStart?: string;
+  occupiedEnd?: string;
+  holdExpiresAt?: string | null;
+  reasonLabel?: string | null;
   // SPM-185 AC2: which part of the entry the event's occupied time hits, e.g.
   // "Venue's turnaround period (12:00pm–12:45pm) overlaps with your requested
   // booking, …". Null when the backend does not explain the conflict.
@@ -63,12 +77,16 @@ export interface VenueOptionsResult {
 }
 
 // One of the organiser's ranked venue choices; option is null when the venue
-// is no longer available.
+// is no longer available. Null requested times mean the whole event (SPM-76);
+// requestedAvailability is the venue's availability over the requested time.
 export interface PreferredVenue {
   rank: number;
   venueId: number;
   name: string | null;
   option: EventVenueOption | null;
+  requestedStart?: string | null;
+  requestedEnd?: string | null;
+  requestedAvailability?: VenueOptionAvailability | null;
 }
 
 export interface EventVenueOptions extends VenueOptionsResult {
@@ -101,7 +119,76 @@ export const getEventVenueOptions = async (eventId: number, query: VenueOptionsQ
   } as EventVenueOptions;
 };
 
-// Read-only photos of an available venue, for coordinators and Leads.
+// ---------- the organiser's venue step (SPM-76) ----------
+// GET /api/venues/options and /api/venues/options/:venueId/availability: the
+// request's values so far are sent with the filters; the backend says only what
+// kind of entry makes a venue unavailable, never when or whose.
+
+export interface RequestVenueNeeds {
+  startDatetime: string | null;
+  endDatetime: string | null;
+  expectedAttendance: number | null;
+  preferredLayoutType: string | null;
+  accessibilityNeeds: string[];
+}
+
+export const requestVenueOptionsQuery = (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}) => {
+  const params = new URLSearchParams(venueOptionsQuery(query).replace(/^\?/, ""));
+  if (needs.startDatetime && needs.endDatetime) {
+    params.set("startDatetime", needs.startDatetime);
+    params.set("endDatetime", needs.endDatetime);
+  }
+  if (needs.expectedAttendance) params.set("expectedAttendance", String(needs.expectedAttendance));
+  if (needs.preferredLayoutType) params.set("preferredLayoutType", needs.preferredLayoutType);
+  for (const need of needs.accessibilityNeeds) params.append("accessibilityNeeds", need);
+  const text = params.toString();
+  return text ? `?${text}` : "";
+};
+
+export const getRequestVenueOptions = async (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}): Promise<VenueOptionsResult> => {
+  const data = await apiRequest<Partial<VenueOptionsResult>>(`/venues/options${requestVenueOptionsQuery(needs, query)}`);
+  return {
+    venues: Array.isArray(data.venues) ? data.venues : [],
+    filtersNotChecked: Array.isArray(data.filtersNotChecked) ? data.filtersNotChecked : [],
+    detailsAvailable: data.detailsAvailable === true,
+    availabilityChecked: data.availabilityChecked === true,
+  };
+};
+
+// What makes a chosen venue unavailable over the organiser's requested time:
+// only the kind of entry, never when it is or whose (SPM-76 AC3, TC-VS-003).
+export interface UnavailableKind {
+  type: "BOOKING" | "HOLD" | "BLOCK";
+  label: string;
+}
+
+export interface RequestVenueAvailability {
+  venueId: number;
+  availability: {
+    status: string;
+    label: string;
+    conflicts: UnavailableKind[];
+    operatingHoursWarning: { message: string } | null;
+  };
+}
+
+// start/end are ISO 8601 instants: the time the organiser wants this venue for.
+export const getRequestVenueAvailability = async (venueId: number, { start, end }: { start: string; end: string }): Promise<RequestVenueAvailability> => {
+  const data = await apiRequest<Partial<RequestVenueAvailability>>(`/venues/options/${venueId}/availability?${new URLSearchParams({ start, end }).toString()}`);
+  const availability = data.availability;
+  if (!availability || typeof availability.label !== "string") throw new Error("Availability could not be checked.");
+  return {
+    venueId,
+    availability: {
+      status: availability.status ?? "NOT_CHECKED",
+      label: availability.label,
+      conflicts: Array.isArray(availability.conflicts) ? availability.conflicts : [],
+      operatingHoursWarning: availability.operatingHoursWarning ?? null,
+    },
+  };
+};
+
+// Read-only photos of an available venue, for organisers, coordinators and Leads.
 export const listSelectableVenuePhotos = (venueId: number) =>
   apiRequest<{ photos: VenuePhoto[] }>(`/venues/options/${venueId}/photos`);
 
@@ -176,6 +263,9 @@ export interface VenueBookingRequestItem {
   accessibilityNeeds: string[];
   specialRequirements: string | null;
   isPrimary: boolean;
+  // SPM-188 AC9: the event's active hold this booking confirms; the booking
+  // keeps the hold's venue and times.
+  holdId?: string;
 }
 
 export interface VenueBookingRequestResult {

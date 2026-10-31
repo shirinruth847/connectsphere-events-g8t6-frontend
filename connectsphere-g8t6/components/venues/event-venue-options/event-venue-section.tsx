@@ -6,13 +6,14 @@ import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { ApiError } from "@/lib/api";
 import { calendarDate } from "@/lib/coordinator-calendar";
-import { formatTimestamp } from "@/lib/datetime";
+import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import {
   getEventVenueOptions,
   listEventVenueBookings,
   suggestEventVenue,
   type EventVenueOption,
   type EventVenueOptions,
+  type PreferredVenue,
   type VenueBookingRequestResult,
   type VenueOptionsQuery,
 } from "@/lib/api/event-venues";
@@ -26,6 +27,7 @@ import { EventVenueBookings, type BookingListState } from "./event-venue-booking
 import { VenueBookingRequestDialog } from "./venue-booking-request-dialog";
 import { bookedVenueIds } from "./venue-booking-form-model";
 import { EventVenueHolds } from "./event-venue-holds";
+import type { VenueHoldRequest } from "@/lib/api/venue-holds";
 
 type ChoicesState =
   | { status: "loading" }
@@ -49,11 +51,31 @@ interface EventVenueSectionProps {
 // where the coordinator can suggest a different venue to the organiser. In
 // planning, the coordinator requests venue bookings from here (SPM-179); the
 // event's bookings are listed above the choices for the coordinator and Lead.
+// SPM-76: when the organiser wants this venue, and whether it is free then.
+// The coordinator and the Lead both see it; it never books anything.
+function RequestedTime({ choice, eventStart, eventEnd }: { choice: PreferredVenue; eventStart: string | null; eventEnd: string | null }) {
+  const narrowed = Boolean(choice.requestedStart && choice.requestedEnd);
+  const availability = choice.requestedAvailability;
+  const unavailable = availability?.status.startsWith("UNAVAILABLE");
+  return (
+    <p className="grid gap-0.5 text-xs">
+      <span className="font-semibold text-on-surface">
+        Wanted for: {narrowed ? formatEventWindow(choice.requestedStart, choice.requestedEnd) : `the whole event${eventStart ? ` (${formatEventWindow(eventStart, eventEnd)})` : ""}`}
+      </span>
+      {narrowed && availability ? (
+        <span className={`font-semibold ${unavailable ? "text-error" : "text-success"}`}>At that time: {availability.label}</span>
+      ) : null}
+    </p>
+  );
+}
+
 export function EventVenueSection({ event, onSuggested, onStale, onBookingsRequested }: EventVenueSectionProps) {
   const [choices, setChoices] = useState<ChoicesState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [canSuggest, setCanSuggest] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // The search opened from "Find Alternative Venues" starts filtered (SPM-198).
+  const [searchAlternatives, setSearchAlternatives] = useState(false);
   const [viewId, setViewId] = useState<number | null>(null);
   // A related venue (e.g. a room of a chosen hall), opened from Related venues.
   const [relatedId, setRelatedId] = useState<number | null>(null);
@@ -67,7 +89,8 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   const [bookings, setBookings] = useState<BookingListState>({ status: "loading" });
   const [bookingsAttempt, setBookingsAttempt] = useState(0);
   // Each opening of the request form gets a new key, so it starts fresh.
-  const [request, setRequest] = useState<{ open: boolean; key: number; startVenueId: number | null } | null>(null);
+  // fromHold: the form confirms that hold (SPM-188 AC9).
+  const [request, setRequest] = useState<{ open: boolean; key: number; startVenueId: number | null; fromHold: VenueHoldRequest | null } | null>(null);
   const [requested, setRequested] = useState<VenueBookingRequestResult | null>(null);
   // The hold request form (SPM-190), keyed like the booking form.
   const [holdForm, setHoldForm] = useState<{ open: boolean; key: number; venueId: number | null } | null>(null);
@@ -99,6 +122,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   const preferred = choices.status === "ready" ? choices.data.preferredVenues ?? [] : [];
   const preferredOptions = preferred.flatMap((choice) => (choice.option ? [choice.option] : []));
   const rankOf = new Map(preferred.map((choice) => [choice.venueId, choice.rank]));
+  const requestedTimes = new Map(preferred.flatMap((choice) => (choice.requestedStart && choice.requestedEnd ? [[choice.venueId, { start: choice.requestedStart, end: choice.requestedEnd }] as const] : [])));
   // A suggested venue outside the organiser's choices gets its own card; one of
   // their choices shows the Suggested badge on its card instead.
   const suggestedElsewhere = suggestion && !rankOf.has(suggestion.venueId) ? suggestion : null;
@@ -115,11 +139,12 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   // The organiser's choices and any outside suggestion, for the form's venue list.
   const requestVenues = [...allVenues, ...preferredOptions.filter((option) => !venueById(allVenues, option.venueId))];
   const featuredVenueIds = [...new Set([...(suggestion ? [suggestion.venueId] : []), ...preferred.map((choice) => choice.venueId)])];
-  const openRequest = (startVenueId: number | null) => {
+  const openRequest = (startVenueId: number | null, fromHold: VenueHoldRequest | null = null) => {
     if (!canRequest) return;
     setRequested(null);
-    setRequest((current) => ({ open: true, key: (current?.key ?? 0) + 1, startVenueId }));
+    setRequest((current) => ({ open: true, key: (current?.key ?? 0) + 1, startVenueId, fromHold }));
   };
+  const confirmHold = (hold: VenueHoldRequest) => openRequest(hold.venueId, hold);
   const closeRequest = () => setRequest((current) => (current ? { ...current, open: false } : current));
   const bookingsRequested = (result: VenueBookingRequestResult) => {
     closeRequest();
@@ -155,11 +180,11 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
     if (!canSuggest || venue.venueId === suggestion?.venueId) return null;
     const blocker = suggestionBlocker(venue);
     if (place === "card") {
-      return <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)} title={blocker ?? undefined}>Select</Button>;
+      return <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)} title={blocker ?? undefined}>Suggest</Button>;
     }
     return (
       <div className="grid gap-1">
-        <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)}><Icon name="check" size={16} />Select this venue</Button>
+        <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)}><Icon name="check" size={16} />Suggest this venue</Button>
         {blocker ? <p className="text-xs text-on-surface-variant">{blocker}</p> : null}
       </div>
     );
@@ -215,6 +240,14 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   // A choice's card opens its details in place (developer requests of 24 and
   // 25 October 2026); one at a time.
   const toggleView = (venueId: number) => setViewId((current) => (current === venueId ? null : venueId));
+  const openSearch = (alternatives: boolean) => {
+    setRelatedId(null);
+    setSearchAlternatives(alternatives);
+    setSearchOpen(true);
+  };
+  // A venue too small for the expected attendance offers venues at least that
+  // large (SPM-198 AC4); without an expected attendance there is no assessment.
+  const findAlternatives = event.expectedAttendance ? () => openSearch(true) : undefined;
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
@@ -253,6 +286,9 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
         form={holdForm}
         onOpenForm={openHoldForm}
         onCloseForm={() => setHoldForm((current) => (current ? { ...current, open: false } : current))}
+        onConfirm={canRequest ? confirmHold : undefined}
+        bookedVenueIds={booked}
+        reloadKey={bookingsAttempt}
       />
       {suggestion ? (
         <p className="flex flex-wrap items-center gap-2 rounded-control border border-[#86EFAC] bg-[#DCFCE7] px-3 py-2 text-sm text-[#166534]">
@@ -271,7 +307,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
         <section aria-label="Suggested venue" className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <h3 className="text-sm font-semibold text-on-surface">Suggested venue</h3>
           {suggestedOption ? (
-            <VenueChoiceCard venue={suggestedOption} expanded={suggestedOption.venueId === viewId} onToggle={() => toggleView(suggestedOption.venueId)} badge={badge(suggestedOption)} onOpenVenue={setRelatedId} calendar={calendar} />
+            <VenueChoiceCard venue={suggestedOption} expanded={suggestedOption.venueId === viewId} onToggle={() => toggleView(suggestedOption.venueId)} badge={badge(suggestedOption)} onOpenVenue={setRelatedId} onFindAlternatives={findAlternatives} calendar={calendar} />
           ) : (
             <article aria-label={suggestedElsewhere.name ?? `Venue ${suggestedElsewhere.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
               <div><VenueBadge tone="success"><Icon name="check" size={16} />Suggested</VenueBadge></div>
@@ -310,12 +346,15 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
                 badge={badge(choice.option)}
                 action={action(choice.option, "card")}
                 onOpenVenue={setRelatedId}
+                onFindAlternatives={findAlternatives}
                 calendar={calendar}
+                requested={<RequestedTime choice={choice} eventStart={event.startDatetime} eventEnd={event.endDatetime} />}
               />
             ) : (
               <article key={choice.venueId} aria-label={choice.name ?? `Venue ${choice.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
                 <div><VenueBadge>Organiser&apos;s choice {choice.rank}</VenueBadge></div>
                 <h3 className="font-semibold text-on-surface [overflow-wrap:anywhere]">{choice.name ?? `Venue ${choice.venueId}`}</h3>
+                <RequestedTime choice={choice} eventStart={event.startDatetime} eventEnd={event.endDatetime} />
                 <p className="text-sm text-on-surface-variant">No longer available for new requests.</p>
               </article>
             ))}
@@ -324,7 +363,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
       </section>
 
       <div>
-        <Button type="button" variant="secondary" aria-haspopup="dialog" onClick={() => setSearchOpen(true)}>
+        <Button type="button" variant="secondary" aria-haspopup="dialog" onClick={() => openSearch(false)}>
           <Icon name="venue" size={16} />Find another venue
         </Button>
       </div>
@@ -338,13 +377,15 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
             calendar={calendar}
             badge={badge}
             action={action}
+            alternativeCapacity={event.expectedAttendance}
+            startWithAlternatives={searchAlternatives}
           />
         ) : null}
       </Dialog>
 
       <Dialog open={related !== null} onClose={() => setRelatedId(null)} title="Venue details" size="wide">
         {related ? (
-          <VenueDetails key={related.venueId} venue={related} badge={badge(related)} action={action(related, "panel")} onOpenVenue={setRelatedId} calendar={calendar} />
+          <VenueDetails key={related.venueId} venue={related} badge={badge(related)} action={action(related, "panel")} onOpenVenue={setRelatedId} onFindAlternatives={findAlternatives} calendar={calendar} />
         ) : null}
       </Dialog>
 
@@ -381,8 +422,10 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
           event={event}
           venues={requestVenues}
           featuredVenueIds={featuredVenueIds}
+          requestedTimes={requestedTimes}
           bookings={bookingList}
           startVenueId={request.startVenueId}
+          fromHold={request.fromHold}
           onClose={closeRequest}
           onSubmitted={bookingsRequested}
           onStale={() => { closeRequest(); onStale?.(); }}

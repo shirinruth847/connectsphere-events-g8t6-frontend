@@ -67,6 +67,9 @@ export interface VenueIncident {
 
 export interface VenueBlockWithIncidents extends VenueBlock {
   incidents: VenueIncident[];
+  // Overlapping bookings of finished, cancelled or rejected events: never
+  // affected, so they have no incident.
+  closedEventBookings?: number;
 }
 
 export interface VenueBlockList {
