@@ -19,6 +19,7 @@ import type {
   AttendeeEventSummary,
 } from "@/lib/api/discovery";
 import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
+import type { RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { discoveryErrorMessage } from "./discovery-state";
 import { DiscoveryIcon } from "./discovery-icon";
 import { DiscoveryDetailsPanel } from "./discovery-details-panel";
@@ -56,6 +57,11 @@ interface EventDetailsDialogProps {
   onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
   // Bumped to read the open event again (after a registration or a refusal).
   refreshKey?: number;
+  // Opens the Join Waitlist confirmation for a full event (SPM-163).
+  onJoinWaitlist?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
+  // Runs once the backend has answered an action on the attendee's place
+  // (SPM-163, SPM-147) on My Events. Without it the place is shown with no actions.
+  onRegistrationChange?: (change: RegistrationChange) => void;
 }
 
 const DISCOVERY_NOT_FOUND =
@@ -76,6 +82,8 @@ export function EventDetailsDialog({
   places = null,
   onRegister,
   refreshKey = 0,
+  onJoinWaitlist,
+  onRegistrationChange,
 }: EventDetailsDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -96,7 +104,10 @@ export function EventDetailsDialog({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
+      // React passes a nested confirmation dialog's cancel up to here, so only
+      // this dialog's own Escape closes it.
       onCancel={(cancelEvent) => {
+        if (cancelEvent.target !== cancelEvent.currentTarget) return;
         cancelEvent.preventDefault();
         onClose();
       }}
@@ -118,6 +129,8 @@ export function EventDetailsDialog({
           notFoundDescription={notFoundDescription}
           places={places}
           onRegister={onRegister}
+          onJoinWaitlist={onJoinWaitlist}
+          onRegistrationChange={onRegistrationChange}
         />
       ) : null}
     </dialog>
@@ -134,6 +147,8 @@ function EventDetailsContent({
   notFoundDescription,
   places,
   onRegister,
+  onJoinWaitlist,
+  onRegistrationChange,
 }: {
   summary: EventDetailsTarget;
   titleId: string;
@@ -144,6 +159,8 @@ function EventDetailsContent({
   notFoundDescription: string;
   places: ReadonlyMap<number, AttendeeRegistration> | null;
   onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
+  onJoinWaitlist?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
+  onRegistrationChange?: (change: RegistrationChange) => void;
 }) {
   // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
   const { state, retry } = useAttendeeEvent(summary.eventId, detailsFrom, {
@@ -151,6 +168,14 @@ function EventDetailsContent({
     onNotFound,
   });
   const event = state.status === "ready" ? state.event : null;
+  // An accepted offer, or a refusal because the place changed, reloads the
+  // details so they show the backend's latest place.
+  const handleRegistrationChange = onRegistrationChange
+    ? (change: RegistrationChange) => {
+        if (change.kind === "accept" || change.result === null) retry();
+        onRegistrationChange(change);
+      }
+    : undefined;
   const withheld = Boolean(event?.detailsWithheld);
   // My Events reads the place with the event; Event Discovery adds it from the places.
   const myRegistration = event?.myRegistration ?? (detailsFrom === "discovery" ? places?.get(summary.eventId) ?? null : null);
@@ -279,7 +304,9 @@ function EventDetailsContent({
           register={onRegister && detailsFrom === "discovery" ? {
             placesKnown: places !== null,
             onRegister: (trigger) => onRegister(event, trigger),
+            onJoinWaitlist: onJoinWaitlist ? (trigger) => onJoinWaitlist(event, trigger) : undefined,
           } : undefined}
+          onRegistrationChange={handleRegistrationChange}
         />
       ) : null}
     </>

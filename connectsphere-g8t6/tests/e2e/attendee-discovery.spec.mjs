@@ -171,19 +171,29 @@ test('[SPM-34 AC1/AC6] pagination and retry survive every loaded event becoming 
   await expect(page.getByText('You have reached the end of the list.', { exact: true })).toBeVisible();
 });
 
-test('[SPM-134] full and not-yet-open events show their disabled state in the details dialog, with no waitlist or notify action', async ({ page }) => {
+// A full event offers its waitlist in the details dialog (SPM-163,
+// tests/e2e/spm-163-147.spec.mjs) instead of SPM-134's disabled
+// "Registration Full"; a not-yet-open event stays disabled.
+test('[SPM-134 / SPM-163 AC1] full events offer Join Waitlist in the details dialog; not-yet-open events stay disabled', async ({ page }) => {
   const full = makeEvent({ eventId: 106, title: 'Full Workshop', registrationAvailability: 'FULL_WAITLIST' });
   const upcoming = makeEvent({ eventId: 107, title: 'Future Gala', registrationAvailability: 'NOT_YET_OPEN', registrationOpenAt: '2099-01-01T01:00:00.000Z', registrationCloseAt: '2099-01-05T01:00:00.000Z' });
   await installDiscoveryMocks(page, { pages: { '': { events: [full, upcoming], nextCursor: null } }, details: { 106: full, 107: upcoming } });
   await page.goto('/events');
-  for (const [title, label] of [['Full Workshop', 'Registration Full'], ['Future Gala', 'Registration Not Yet Open']]) {
-    await page.getByRole('button', { name: `View event details for ${title}`, exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: title, exact: true });
-    await expectDisabledState(dialog, label, title);
-    await expect(dialog.getByRole('button', { name: /waitlist|notify/i })).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden();
-  }
+  await page.getByRole('button', { name: 'View event details for Full Workshop', exact: true }).click();
+  const fullDialog = page.getByRole('dialog', { name: 'Full Workshop', exact: true });
+  await expect(fullDialog.getByRole('button', { name: 'Join waitlist for Full Workshop', exact: true })).toBeEnabled();
+  await expect(fullDialog.getByRole('button', { name: 'Join waitlist for Full Workshop', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(fullDialog.getByRole('button', { name: 'Registration Full for Full Workshop', exact: true })).toHaveCount(0);
+  await expect(fullDialog.getByRole('button', { name: /^register now/i })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(fullDialog).toBeHidden();
+
+  await page.getByRole('button', { name: 'View event details for Future Gala', exact: true }).click();
+  const upcomingDialog = page.getByRole('dialog', { name: 'Future Gala', exact: true });
+  await expectDisabledState(upcomingDialog, 'Registration Not Yet Open', 'Future Gala');
+  await expect(upcomingDialog.getByRole('button', { name: /waitlist|notify/i })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(upcomingDialog).toBeHidden();
 });
 
 test('[SPM-134] an UNAVAILABLE event shows a neutral disabled state and no registration window, never full or closed', async ({ page }) => {
@@ -488,11 +498,15 @@ test('[SPM-44] should_fit_390px_with_readable_cards_and_44px_actions_when_viewin
   // Status stays in text at this width, and every card keeps a full-width registration state.
   await expect(card(page, 'Closed Event')).toContainText('Registration Closed');
   await expect(card(page, 'Waitlist Event')).toContainText('Full - Waitlist');
-  for (const [title, label] of [['Closed Event', 'Registration Closed'], ['Unavailable Event', 'Registration Unavailable'], ['Waitlist Event', 'Registration Full']]) {
+  for (const [title, label] of [['Closed Event', 'Registration Closed'], ['Unavailable Event', 'Registration Unavailable']]) {
     const control = card(page, title).getByRole('button', { name: `${label} for ${title}`, exact: true });
     await expect(control).toHaveAttribute('aria-disabled', 'true');
     expect((await control.boundingBox()).width).toBeGreaterThan(MOBILE.width * 0.7);
   }
+  // SPM-163: the full event's card offers its waitlist, also full width.
+  const join = card(page, 'Waitlist Event').getByRole('button', { name: 'Join waitlist for Waitlist Event', exact: true });
+  await expect(join).toBeEnabled();
+  expect((await join.boundingBox()).width).toBeGreaterThan(MOBILE.width * 0.7);
   await expect(page.getByRole('button', { name: 'Load more events', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open menu', exact: true })).toBeVisible();
   await expectTouchTargets(page);
