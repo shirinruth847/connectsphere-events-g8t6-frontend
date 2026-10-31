@@ -277,7 +277,8 @@ export interface AmendmentChanges {
   endDatetime?: string | null;
   expectedAttendance?: number | null;
   preferredLayoutType?: string;
-  venuePreferences?: number[];
+  // A venue ID for the whole event, or the venue with its requested time (SPM-76).
+  venuePreferences?: Array<number | { venueId: number; requestedStart: string; requestedEnd: string }>;
   accessibilityNeeds?: string[];
   equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
 }

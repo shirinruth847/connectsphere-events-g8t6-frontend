@@ -1,6 +1,6 @@
-// SPM-72/74/75: choosing a venue. Field names, codes and statuses are the
-// backend's (GET /api/events/:id/venue-options, the photo routes under
-// /api/venues/options and PUT /api/events/:id/venue-suggestion);
+// SPM-72/74/75/76: choosing a venue. Field names, codes and statuses are the
+// backend's (GET /api/events/:id/venue-options, the organiser's routes and
+// photo routes under /api/venues/options and PUT /api/events/:id/venue-suggestion);
 // do not rename them here.
 import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
@@ -76,12 +76,16 @@ export interface VenueOptionsResult {
 }
 
 // One of the organiser's ranked venue choices; option is null when the venue
-// is no longer available.
+// is no longer available. Null requested times mean the whole event (SPM-76);
+// requestedAvailability is the venue's availability over the requested time.
 export interface PreferredVenue {
   rank: number;
   venueId: number;
   name: string | null;
   option: EventVenueOption | null;
+  requestedStart?: string | null;
+  requestedEnd?: string | null;
+  requestedAvailability?: VenueOptionAvailability | null;
 }
 
 export interface EventVenueOptions extends VenueOptionsResult {
@@ -114,7 +118,88 @@ export const getEventVenueOptions = async (eventId: number, query: VenueOptionsQ
   } as EventVenueOptions;
 };
 
-// Read-only photos of an available venue, for coordinators and Leads.
+// ---------- the organiser's venue step (SPM-76) ----------
+// GET /api/venues/options and /api/venues/options/:venueId/availability: the
+// request's values so far are sent with the filters; the backend says what
+// kind of entry makes a venue unavailable and when, never whose.
+
+export interface RequestVenueNeeds {
+  startDatetime: string | null;
+  endDatetime: string | null;
+  expectedAttendance: number | null;
+  preferredLayoutType: string | null;
+  accessibilityNeeds: string[];
+}
+
+export const requestVenueOptionsQuery = (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}) => {
+  const params = new URLSearchParams(venueOptionsQuery(query).replace(/^\?/, ""));
+  if (needs.startDatetime && needs.endDatetime) {
+    params.set("startDatetime", needs.startDatetime);
+    params.set("endDatetime", needs.endDatetime);
+  }
+  if (needs.expectedAttendance) params.set("expectedAttendance", String(needs.expectedAttendance));
+  if (needs.preferredLayoutType) params.set("preferredLayoutType", needs.preferredLayoutType);
+  for (const need of needs.accessibilityNeeds) params.append("accessibilityNeeds", need);
+  const text = params.toString();
+  return text ? `?${text}` : "";
+};
+
+export const getRequestVenueOptions = async (needs: RequestVenueNeeds, query: VenueOptionsQuery = {}): Promise<VenueOptionsResult> => {
+  const data = await apiRequest<Partial<VenueOptionsResult>>(`/venues/options${requestVenueOptionsQuery(needs, query)}`);
+  return {
+    venues: Array.isArray(data.venues) ? data.venues : [],
+    filtersNotChecked: Array.isArray(data.filtersNotChecked) ? data.filtersNotChecked : [],
+    detailsAvailable: data.detailsAvailable === true,
+    availabilityChecked: data.availabilityChecked === true,
+  };
+};
+
+export interface BusyPeriod {
+  type: "BOOKING" | "HOLD" | "BLOCK";
+  label: string;
+  occupiedStart: string;
+  occupiedEnd: string;
+}
+
+export interface RequestVenueAvailability {
+  from: string;
+  to: string;
+  venue: {
+    venueId: number;
+    name: string;
+    operatingHours: string | null;
+    setupMinutes: number | null;
+    turnaroundMinutes: number | null;
+    buffersRecorded: boolean;
+    busyPeriods: BusyPeriod[];
+    check: {
+      start: string;
+      end: string;
+      occupiedStart: string;
+      occupiedEnd: string;
+      availability: string;
+      availabilityLabel: string;
+      conflicts: BusyPeriod[];
+      operatingHoursWarning: { message: string } | null;
+    } | null;
+  };
+}
+
+// from/to and the checked time are ISO 8601 instants.
+export const getRequestVenueAvailability = async (
+  venueId: number,
+  { from, to, check }: { from: string; to: string; check: { start: string; end: string } | null },
+): Promise<RequestVenueAvailability> => {
+  const params = new URLSearchParams({ from, to });
+  if (check) {
+    params.set("checkStart", check.start);
+    params.set("checkEnd", check.end);
+  }
+  const data = await apiRequest<RequestVenueAvailability>(`/venues/options/${venueId}/availability?${params.toString()}`);
+  return { ...data, venue: { ...data.venue, busyPeriods: Array.isArray(data.venue?.busyPeriods) ? data.venue.busyPeriods : [] } };
+};
+
+// Read-only photos of an available venue, for organisers, coordinators and Leads.
 export const listSelectableVenuePhotos = (venueId: number) =>
   apiRequest<{ photos: VenuePhoto[] }>(`/venues/options/${venueId}/photos`);
 

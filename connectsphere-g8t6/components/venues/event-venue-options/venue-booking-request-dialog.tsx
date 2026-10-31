@@ -32,6 +32,7 @@ import {
   sectionErrors,
   shiftErrorsAfterRemoval,
   toRequestItems,
+  toSgtInput,
   validateDrafts,
   type BookingDraft,
 } from "./venue-booking-form-model";
@@ -48,6 +49,8 @@ interface VenueBookingRequestDialogProps {
   venues: EventVenueOption[];
   // The organiser's ranked choices and the coordinator's suggestion, in order.
   featuredVenueIds: number[];
+  // The time the organiser wants each chosen venue for, when narrower than the event (SPM-76).
+  requestedTimes?: Map<number, { start: string; end: string }>;
   bookings: EventVenueBookingList;
   // A venue card's "Request booking" starts the form with that venue.
   startVenueId: number | null;
@@ -74,6 +77,7 @@ export function VenueBookingRequestDialog({
   event,
   venues,
   featuredVenueIds,
+  requestedTimes,
   bookings,
   startVenueId,
   fromHold = null,
@@ -92,6 +96,12 @@ export function VenueBookingRequestDialog({
     accessibilityNeeds: event.accessibilityNeeds ?? [],
   }), [event]);
 
+  // A section's times start as the organiser's requested time for its venue,
+  // or the whole event (SPM-76).
+  const timesFor = (venueId: number | null) => {
+    const time = venueId == null ? undefined : requestedTimes?.get(venueId);
+    return { start: toSgtInput(time?.start ?? event.startDatetime), end: toSgtInput(time?.end ?? event.endDatetime) };
+  };
   const [initial] = useState<BookingDraft[]>(() => {
     if (fromHold) {
       const venue = venues.find((option) => option.venueId === fromHold.venueId) ?? null;
@@ -99,7 +109,7 @@ export function VenueBookingRequestDialog({
     }
     const venueId = firstVenueId([startVenueId, ...featuredVenueIds], venues, booked);
     const venue = venues.find((option) => option.venueId === venueId) ?? null;
-    return [newDraft(nextKey(), context, venue)];
+    return [{ ...newDraft(nextKey(), context, venue), ...timesFor(venueId) }];
   });
   const [drafts, setDrafts] = useState<BookingDraft[]>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -162,7 +172,11 @@ export function VenueBookingRequestDialog({
     if (saving) return;
     setDrafts((current) => current.map((draft, at) => {
       if (patch.isPrimary) return at === index ? { ...draft, ...patch } : { ...draft, isPrimary: false };
-      return at === index ? { ...draft, ...patch } : draft;
+      if (at !== index) return draft;
+      // Choosing another venue moves untouched times to that venue's requested time.
+      const before = timesFor(draft.venueId);
+      const untouched = draft.start === before.start && draft.end === before.end;
+      return "venueId" in patch && !draft.holdId && untouched ? { ...draft, ...patch, ...timesFor(patch.venueId ?? null) } : { ...draft, ...patch };
     }));
     // A corrected field drops its error; the rest stay until the next send.
     setErrors((current) => {

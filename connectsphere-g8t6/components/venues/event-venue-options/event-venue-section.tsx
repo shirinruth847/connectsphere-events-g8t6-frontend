@@ -6,13 +6,14 @@ import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { ApiError } from "@/lib/api";
 import { calendarDate } from "@/lib/coordinator-calendar";
-import { formatTimestamp } from "@/lib/datetime";
+import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import {
   getEventVenueOptions,
   listEventVenueBookings,
   suggestEventVenue,
   type EventVenueOption,
   type EventVenueOptions,
+  type PreferredVenue,
   type VenueBookingRequestResult,
   type VenueOptionsQuery,
 } from "@/lib/api/event-venues";
@@ -50,6 +51,24 @@ interface EventVenueSectionProps {
 // where the coordinator can suggest a different venue to the organiser. In
 // planning, the coordinator requests venue bookings from here (SPM-179); the
 // event's bookings are listed above the choices for the coordinator and Lead.
+// SPM-76: when the organiser wants this venue, and whether it is free then.
+// The coordinator and the Lead both see it; it never books anything.
+function RequestedTime({ choice, eventStart, eventEnd }: { choice: PreferredVenue; eventStart: string | null; eventEnd: string | null }) {
+  const narrowed = Boolean(choice.requestedStart && choice.requestedEnd);
+  const availability = choice.requestedAvailability;
+  const unavailable = availability?.status.startsWith("UNAVAILABLE");
+  return (
+    <p className="grid gap-0.5 text-xs">
+      <span className="font-semibold text-on-surface">
+        Wanted for: {narrowed ? formatEventWindow(choice.requestedStart, choice.requestedEnd) : `the whole event${eventStart ? ` (${formatEventWindow(eventStart, eventEnd)})` : ""}`}
+      </span>
+      {narrowed && availability ? (
+        <span className={`font-semibold ${unavailable ? "text-error" : "text-success"}`}>At that time: {availability.label}</span>
+      ) : null}
+    </p>
+  );
+}
+
 export function EventVenueSection({ event, onSuggested, onStale, onBookingsRequested }: EventVenueSectionProps) {
   const [choices, setChoices] = useState<ChoicesState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -103,6 +122,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   const preferred = choices.status === "ready" ? choices.data.preferredVenues ?? [] : [];
   const preferredOptions = preferred.flatMap((choice) => (choice.option ? [choice.option] : []));
   const rankOf = new Map(preferred.map((choice) => [choice.venueId, choice.rank]));
+  const requestedTimes = new Map(preferred.flatMap((choice) => (choice.requestedStart && choice.requestedEnd ? [[choice.venueId, { start: choice.requestedStart, end: choice.requestedEnd }] as const] : [])));
   // A suggested venue outside the organiser's choices gets its own card; one of
   // their choices shows the Suggested badge on its card instead.
   const suggestedElsewhere = suggestion && !rankOf.has(suggestion.venueId) ? suggestion : null;
@@ -328,11 +348,13 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
                 onOpenVenue={setRelatedId}
                 onFindAlternatives={findAlternatives}
                 calendar={calendar}
+                requested={<RequestedTime choice={choice} eventStart={event.startDatetime} eventEnd={event.endDatetime} />}
               />
             ) : (
               <article key={choice.venueId} aria-label={choice.name ?? `Venue ${choice.venueId}`} className="grid content-start gap-2 rounded-panel border border-outline-variant bg-surface-container-low p-4">
                 <div><VenueBadge>Organiser&apos;s choice {choice.rank}</VenueBadge></div>
                 <h3 className="font-semibold text-on-surface [overflow-wrap:anywhere]">{choice.name ?? `Venue ${choice.venueId}`}</h3>
+                <RequestedTime choice={choice} eventStart={event.startDatetime} eventEnd={event.endDatetime} />
                 <p className="text-sm text-on-surface-variant">No longer available for new requests.</p>
               </article>
             ))}
@@ -400,6 +422,7 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
           event={event}
           venues={requestVenues}
           featuredVenueIds={featuredVenueIds}
+          requestedTimes={requestedTimes}
           bookings={bookingList}
           startVenueId={request.startVenueId}
           fromHold={request.fromHold}
