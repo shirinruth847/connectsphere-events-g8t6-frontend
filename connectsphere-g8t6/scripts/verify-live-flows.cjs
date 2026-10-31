@@ -625,7 +625,7 @@ async function attendeeProfileLive() {
   }
  }
 }
-// SPM-163 as the seed attendee, on this run's own event: a fixture
+// SPM-163/147 as the seed attendee, on this run's own events: a fixture
 // organiser and venue, and a fixture attendee holding the full event's only
 // place. Every row goes through the backend fixture manifest and is removed;
 // the seed attendee's append-only activity entries stay, as in the other seed flows.
@@ -648,6 +648,7 @@ async function attendeeWaitlistLive(attendee) {
  try {
   fixtures=await createRegistrationFixtures(waitRun,[{key:'organiser',role:'ORGANISER',organisation:'A'},{key:'other',role:'ATTENDEE'}]);
   const full=await createEvent('full workshop',1);await takePlace(full,fixtures.accounts.other.userId);
+  const registered=await createEvent('withdrawal talk',10);await takePlace(registered,attendee.user_id);
   const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   try {
    await login(page,attendee);
@@ -683,6 +684,16 @@ async function attendeeWaitlistLive(attendee) {
    await myEvent(page,full).waitFor({state:'detached'});
    assert((await placeOf(full))?.registration_status==='WITHDRAWN','Leaving did not withdraw the waitlist place');
    record('SPM-163 AC4 live leave waitlist',{eventId:full.id});
+   // SPM-147 AC1-AC3: Withdraw Registration after "Are you sure?".
+   await myEvent(page,registered).getByRole('button',{name:`Withdraw Registration: ${registered.title}`,exact:true}).click();
+   const withdraw=page.getByRole('dialog',{name:'Withdraw Registration',exact:true});
+   await withdraw.getByText('Are you sure? This action cannot be undone.',{exact:true}).waitFor();
+   const withdrawing=action(page,registered,'withdraw');await withdraw.getByRole('button',{name:'Confirm Withdrawal',exact:true}).click();
+   assert((await withdrawing).status()===200,'Withdrawal failed');
+   await page.getByText(`Your registration for ${registered.title} has been withdrawn.`,{exact:true}).waitFor();
+   await myEvent(page,registered).waitFor({state:'detached'});
+   assert((await placeOf(registered))?.registration_status==='WITHDRAWN','Withdrawal was not stored');
+   record('SPM-147 AC1-AC3 live withdraw registration',{eventId:registered.id});
    assert(errors.length===0,'Browser runtime error: '+errors.join('; '));
   } finally {await context.close();}
  } finally {
@@ -690,8 +701,8 @@ async function attendeeWaitlistLive(attendee) {
    // Places the browser created join the manifest, so cleanup removes them too.
    if(eventIds.length)recordFixtureIds(waitRun,'registrationIds',check(await supabase.from('registration').select('registration_id').in('event_id',eventIds)).map(row=>row.registration_id));
    await cleanupAuthFixtures(waitRun);
-   assert(check(await supabase.from('event').select('event_id').in('event_id',eventIds)).length===0,'SPM-163 fixture events left behind');
-   record('SPM-163 fixture cleanup',{runId:waitRun,removedEvents:eventIds.length});
+   assert(check(await supabase.from('event').select('event_id').in('event_id',eventIds)).length===0,'SPM-163/147 fixture events left behind');
+   record('SPM-163/147 fixture cleanup',{runId:waitRun,removedEvents:eventIds.length});
   }
  }
 }
