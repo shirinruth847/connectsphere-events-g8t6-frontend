@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionErrorPresentation, actionSuccessMessage, openOffer, placeActions, placeLabel } from '../components/attendee/registration-actions/registration-action-rules.ts';
+import { actionErrorPresentation, actionSuccessMessage, hasStarted, openOffer, placeActions, placeLabel } from '../components/attendee/registration-actions/registration-action-rules.ts';
 
 const NOW = new Date('2026-10-30T00:00:00Z');
 const FUTURE = '2026-11-05T01:00:00.000Z';
+const PAST = '2026-10-29T01:00:00.000Z';
 const place = (registration, overrides = {}) => ({ registration, startDatetime: FUTURE, attendeeStatus: 'CONFIRMED', ...overrides });
 const offer = (expiresAt) => ({ offerId: 7, expiresAt });
 
@@ -29,19 +30,29 @@ test('[SPM-163 AC5-AC7] an open offer shows Accept Slot and Decline until its de
   assert.equal(openOffer({ status: 'REGISTERED', offer: open.offer }, NOW), null);
 });
 
-test('cancelled, completed and withdrawn places, and registrations, have no waitlist actions', () => {
+test('[SPM-147 AC1, AC5] Withdraw Registration shows before the event starts and is hidden after', () => {
+  const registered = { status: 'REGISTERED', offer: null };
+  assert.deepEqual(placeActions(place(registered), NOW), ['withdraw']);
+  assert.deepEqual(placeActions(place(registered, { startDatetime: PAST }), NOW), []);
+  assert.deepEqual(placeActions(place(registered, { startDatetime: NOW.toISOString() }), NOW), []);
+  // Date held back while it is reconfirmed: the backend decides.
+  assert.deepEqual(placeActions(place(registered, { startDatetime: null }), NOW), ['withdraw']);
+  assert.equal(hasStarted('not a date', NOW), false);
+});
+
+test('cancelled, completed and withdrawn places have no actions', () => {
   for (const attendeeStatus of ['CANCELLED', 'COMPLETED']) {
     assert.deepEqual(placeActions(place({ status: 'REGISTERED' }, { attendeeStatus }), NOW), []);
     assert.deepEqual(placeActions(place({ status: 'WAITLISTED' }, { attendeeStatus }), NOW), []);
   }
   assert.deepEqual(placeActions(place({ status: 'WITHDRAWN' }), NOW), []);
-  assert.deepEqual(placeActions(place({ status: 'REGISTERED' }), NOW), []);
 });
 
 test('each 409 has a clear message and asks the attendee to look again', () => {
   const conflict = (code) => actionErrorPresentation({ status: 409, code, message: 'backend text' });
   assert.deepEqual(conflict('OFFER_EXPIRED'), { message: 'This offer has expired.', retryable: false });
-  for (const code of ['ALREADY_REGISTERED', 'ALREADY_WAITLISTED', 'PLACES_AVAILABLE', 'REGISTRATION_CLOSED', 'NOT_WAITLISTED', 'OFFER_NOT_OPEN', 'REGISTRATION_FULL', 'EVENT_NOT_ACTIVE']) {
+  assert.equal(conflict('EVENT_STARTED').message, 'Cannot withdraw registration for past events');
+  for (const code of ['ALREADY_REGISTERED', 'ALREADY_WAITLISTED', 'PLACES_AVAILABLE', 'REGISTRATION_CLOSED', 'NOT_WAITLISTED', 'OFFER_NOT_OPEN', 'REGISTRATION_FULL', 'NOT_REGISTERED', 'EVENT_NOT_ACTIVE']) {
     assert.notEqual(conflict(code).message, 'backend text', code);
     assert.equal(conflict(code).retryable, false, code);
   }
@@ -60,4 +71,5 @@ test('success messages name the event', () => {
   assert.equal(actionSuccessMessage('accept', 'Tech Fair'), "You're registered for Tech Fair.");
   assert.equal(actionSuccessMessage('leave', 'Tech Fair'), 'You left the waitlist for Tech Fair.');
   assert.equal(actionSuccessMessage('decline', 'Tech Fair'), 'You declined the place for Tech Fair and left its waitlist.');
+  assert.equal(actionSuccessMessage('withdraw', 'Tech Fair'), 'Your registration for Tech Fair has been withdrawn.');
 });

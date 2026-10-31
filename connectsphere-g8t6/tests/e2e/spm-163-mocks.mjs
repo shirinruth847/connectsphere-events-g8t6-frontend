@@ -1,6 +1,6 @@
 import { installConnectSphereMocks } from './support.mjs';
 
-// MOCK CONTRACT (SPM-163). The waitlist and offer routes
+// MOCK CONTRACT (SPM-163, SPM-147). The waitlist, offer and withdrawal routes
 // are planned but not live: they follow the backend branch
 // feature/SPM-163-147-waitlist-and-withdrawal (controller/waitlistController.js,
 // validators/waitlistValidator.js), which is not wired into
@@ -15,7 +15,7 @@ import { installConnectSphereMocks } from './support.mjs';
 //   GET  /api/events/discovery/:id                   Event Discovery detail
 //   GET  /api/attendee-profile/mine                  saved answers
 //   POST /api/registrations/mine/:eventId/waitlist | waitlist/leave |
-//        offer/accept | offer/decline
+//        offer/accept | offer/decline | withdraw
 
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 const conflict = (route, code) => json(route, { error: `Backend says ${code}`, code }, 409);
@@ -84,7 +84,7 @@ export async function installRegistrationActions(page, { events = {}, profile = 
         myRegistration: { status: entry.place.status, registeredAt: '2026-10-01T00:00:00.000Z', waitlistPosition: entry.place.waitlistPosition ?? null, offer: entry.place.offer ?? null },
       });
     }
-    const action = path.match(/^\/api\/registrations\/mine\/(\d+)\/(waitlist|waitlist\/leave|offer\/accept|offer\/decline)$/);
+    const action = path.match(/^\/api\/registrations\/mine\/(\d+)\/(waitlist|waitlist\/leave|offer\/accept|offer\/decline|withdraw)$/);
     if (request.method() !== 'POST' || !action) return route.fallback();
     const [, id, name] = action;
     const body = request.postDataJSON();
@@ -97,7 +97,7 @@ export async function installRegistrationActions(page, { events = {}, profile = 
   return state;
 }
 
-const ALLOWED = { waitlist: ['dietaryRestrictions', 'accessibilityRequirements'], 'offer/accept': ['offerId'], 'offer/decline': ['offerId'], 'waitlist/leave': [] };
+const ALLOWED = { waitlist: ['dietaryRestrictions', 'accessibilityRequirements'], 'offer/accept': ['offerId'], 'offer/decline': ['offerId'], 'waitlist/leave': [], withdraw: [] };
 
 function answer(route, state, eventId, name, body) {
   const entry = state.events[eventId];
@@ -133,6 +133,11 @@ function answer(route, state, eventId, name, body) {
       return json(route, result('REGISTERED', { registeredAt: new Date().toISOString() }));
     case 'offer/decline':
       if (!openOffer) return conflict(route, 'OFFER_NOT_OPEN');
+      entry.place = null;
+      return json(route, result('WITHDRAWN', { withdrawnAt: new Date().toISOString() }));
+    case 'withdraw':
+      if (place?.status !== 'REGISTERED') return conflict(route, 'NOT_REGISTERED');
+      if (new Date(entry.event.startDatetime).getTime() <= Date.now()) return conflict(route, 'EVENT_STARTED');
       entry.place = null;
       return json(route, result('WITHDRAWN', { withdrawnAt: new Date().toISOString() }));
   }

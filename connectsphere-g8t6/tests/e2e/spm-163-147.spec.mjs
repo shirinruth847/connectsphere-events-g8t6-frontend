@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 import { attachScreenshot } from './support.mjs';
 import { inHours, installRegistrationActions, makeEvent } from './spm-163-mocks.mjs';
 
-// Mocked journeys for joining and leaving a waitlist and answering a place offer
-// (SPM-163). The routes are not live
+// Mocked journeys for joining and leaving a waitlist, answering a place offer
+// (SPM-163) and withdrawing a registration (SPM-147). The routes are not live
 // yet: spm-163-mocks.mjs follows the planned backend contract.
 
 const offerFor = (hours = 20) => ({ offerId: 7, expiresAt: inHours(hours) });
@@ -117,6 +117,7 @@ test('[SPM-163 AC5, AC6] an open offer shows its deadline; Accept Slot registers
 
   await expect(page.getByText("You're registered for Robotics Day.", { exact: true })).toBeVisible();
   await expect(item).toContainText('Registered');
+  await expect(item.getByRole('button', { name: 'Withdraw Registration: Robotics Day', exact: true })).toBeVisible();
   expect(state.actions).toMatchObject([{ eventId: 301, action: 'offer/accept', body: { offerId: 7 } }]);
 });
 
@@ -162,6 +163,48 @@ test('[SPM-163] an expired offer says so and the place is reloaded', async ({ pa
   await expect(page.getByText('Your place for Data Jam had changed. Showing its latest status.', { exact: true })).toBeVisible();
   await expect(card(page, 'Data Jam').getByRole('button', { name: 'Accept Slot: Data Jam' })).toHaveCount(0);
   await expect(card(page, 'Data Jam').getByRole('button', { name: 'Leave Waitlist: Data Jam', exact: true })).toBeVisible();
+});
+
+test('[SPM-147 AC1-AC3] Withdraw Registration asks "Are you sure?" and withdraws once confirmed', async ({ page }, testInfo) => {
+  const state = await installRegistrationActions(page, {
+    events: { 401: { event: makeEvent(401, 'Career Fair', { registrationAvailability: 'OPEN' }), place: { status: 'REGISTERED' } } },
+  });
+  await page.goto('/my-registrations?eventId=401');
+  const details = page.getByRole('dialog', { name: 'Career Fair', exact: true });
+  await details.getByRole('button', { name: 'Withdraw Registration: Career Fair', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: 'Withdraw Registration', exact: true });
+  await expect(confirm).toContainText('Are you sure? This action cannot be undone.');
+  await expect(confirm).toContainText("you'll join at the back of the queue");
+  await attachScreenshot(testInfo, page, 'withdraw-confirm');
+  await confirm.getByRole('button', { name: 'Keep Registration', exact: true }).click();
+  await expect(confirm).toBeHidden();
+  expect(state.actions).toEqual([]);
+
+  await details.getByRole('button', { name: 'Withdraw Registration: Career Fair', exact: true }).click();
+  await confirm.getByRole('button', { name: 'Confirm Withdrawal', exact: true }).click();
+  await expect(details).toBeHidden();
+  await expect(page.getByText('Your registration for Career Fair has been withdrawn.', { exact: true })).toBeVisible();
+  await expect(card(page, 'Career Fair')).toHaveCount(0);
+  expect(state.actions).toMatchObject([{ eventId: 401, action: 'withdraw', body: {} }]);
+});
+
+test('[SPM-147 AC1, AC5] withdrawal is hidden once the event has started, and a late refusal is explained', async ({ page }) => {
+  await installRegistrationActions(page, {
+    events: {
+      402: { event: makeEvent(402, 'Morning Run', { registrationAvailability: 'OPEN', startDatetime: inHours(-1), endDatetime: inHours(2) }), place: { status: 'REGISTERED' } },
+      403: { event: makeEvent(403, 'Evening Talk', { registrationAvailability: 'OPEN', startDatetime: inHours(3) }), place: { status: 'REGISTERED' } },
+    },
+    refuse: { withdraw: [{ status: 409, code: 'EVENT_STARTED' }] },
+  });
+  await page.goto('/my-registrations');
+  await expect(card(page, 'Morning Run')).toContainText('Registered');
+  await expect(card(page, 'Morning Run').getByRole('button', { name: /Withdraw/ })).toHaveCount(0);
+
+  // The browser clock says it has not started; the backend decides.
+  await card(page, 'Evening Talk').getByRole('button', { name: 'Withdraw Registration: Evening Talk', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: 'Withdraw Registration', exact: true });
+  await confirm.getByRole('button', { name: 'Confirm Withdrawal', exact: true }).click();
+  await expect(confirm.getByRole('alert')).toContainText('Cannot withdraw registration for past events');
 });
 
 test('[SPM-163] My Events actions stack full width at phone size', async ({ page }, testInfo) => {
