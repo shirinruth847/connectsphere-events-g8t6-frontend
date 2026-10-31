@@ -7,6 +7,8 @@ import { getAccessToken } from "@/lib/supabase";
 import { venueOptionsQuery, type VenueOptionsQuery } from "@/components/venues/venue-queries";
 import type { Venue, VenuePhoto } from "@/lib/api/venues";
 import type { VenueSuggestion } from "@/lib/api/event-workspace";
+import type { VenueIncident } from "@/lib/api/venue-blocks";
+import type { BookingChecks } from "@/lib/api/venue-bookings";
 
 export type { VenueOptionsQuery };
 
@@ -29,6 +31,10 @@ export interface VenueConflict {
   occupiedEnd: string;
   holdExpiresAt: string | null;
   reasonLabel: string | null;
+  // SPM-185 AC2: which part of the entry the event's occupied time hits, e.g.
+  // "Venue's turnaround period (12:00pm–12:45pm) overlaps with your requested
+  // booking, …". Null when the backend does not explain the conflict.
+  message?: string | null;
 }
 
 export interface VenueOptionAvailability {
@@ -119,4 +125,107 @@ export const suggestEventVenue = (eventId: number, venueId: number, version: num
     method: "PUT",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify({ venueId, version }),
+  });
+
+// ---------- venue booking requests (SPM-179) ----------
+// GET and POST /api/events/:id/venue-bookings. Field names, states and labels
+// are the backend's; the frontend never maps booking states itself.
+
+export interface EventVenueBooking {
+  bookingId: number;
+  venueId: number;
+  venueName: string | null;
+  label: string | null;
+  status: string;
+  statusLabel: string;
+  isPrimary: boolean;
+  start: string;
+  end: string;
+  occupiedStart: string | null;
+  occupiedEnd: string | null;
+  expectedAttendance: number | null;
+  layout: string | null;
+  requiredFacilities: string[];
+  accessibilityNeeds: string[];
+  specialRequirements: string | null;
+  rejectionReason: string | null;
+  requestedAt: string | null;
+  // SPM-195: the open incident, otherwise the latest resolved one.
+  incident?: VenueIncident | null;
+}
+
+export interface EventVenueBookingList {
+  eventId: number;
+  requestId: string;
+  eventType: string | null;
+  eventTypeLabel: string | null;
+  // True only for the assigned coordinator while the event is in planning.
+  canRequestVenueBookings: boolean;
+  bookings: EventVenueBooking[];
+}
+
+export interface VenueBookingRequestItem {
+  venueId: number;
+  label: string;
+  // ISO 8601 with an offset.
+  start: string;
+  end: string;
+  expectedAttendance: number;
+  layout: string;
+  requiredFacilities: string[];
+  accessibilityNeeds: string[];
+  specialRequirements: string | null;
+  isPrimary: boolean;
+}
+
+export interface VenueBookingRequestResult {
+  message: string;
+  eventId: number;
+  requestId: string;
+  arrangementVersion: number;
+  bookings: Array<Omit<EventVenueBooking, "rejectionReason" | "requestedAt"> & { index: number }>;
+  // Advisory only (Master 5.4): Venue Staff decide.
+  warnings: Array<{ index: number; venueId: number; messages: string[] }>;
+  replayed?: boolean;
+}
+
+// The booking error body's extra fields: which venue section it belongs to and,
+// for a clash, the conflicting periods.
+export interface VenueBookingErrorDetails {
+  bookingIndex?: number;
+  venueId?: number;
+  conflicts?: Array<{ index?: number; type: string; occupiedStart: string; occupiedEnd: string }>;
+}
+
+export const listEventVenueBookings = async (eventId: number): Promise<EventVenueBookingList> => {
+  const data = await apiRequest<Partial<EventVenueBookingList>>(`/events/${eventId}/venue-bookings`);
+  return {
+    eventId: data.eventId ?? eventId,
+    requestId: data.requestId ?? "",
+    eventType: data.eventType ?? null,
+    eventTypeLabel: data.eventTypeLabel ?? null,
+    canRequestVenueBookings: data.canRequestVenueBookings === true,
+    bookings: Array.isArray(data.bookings) ? data.bookings : [],
+  };
+};
+
+// A retry of the same form reuses its key, so a double click or a network
+// retry cannot create a second set of bookings (AC13).
+// POST /api/events/:id/venue-bookings/check (SPM-186): each booking's checks
+// for its own venue and window while the request is prepared. Advisory: nothing
+// is saved; sending the request checks again under the venue lock. A booking
+// whose venue or times are not valid yet comes back unchecked with its fields.
+export type VenueBookingCheckResult = BookingChecks & { index: number; checked: boolean; fields: Record<string, string> };
+
+export const checkEventVenueBookings = (eventId: number, bookings: VenueBookingRequestItem[]) =>
+  apiRequest<{ bookings: VenueBookingCheckResult[] }>(`/events/${eventId}/venue-bookings/check`, {
+    method: "POST",
+    body: JSON.stringify({ bookings }),
+  });
+
+export const requestEventVenueBookings = (eventId: number, bookings: VenueBookingRequestItem[], idempotencyKey: string) =>
+  apiRequest<VenueBookingRequestResult>(`/events/${eventId}/venue-bookings`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ bookings }),
   });

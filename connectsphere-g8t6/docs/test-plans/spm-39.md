@@ -6,9 +6,9 @@ Extends the existing assigned-coordinator event workspace at `/events/:eventId`.
 The existing DashboardWorkspace, sidebar, request details and history are reused;
 no shared auth, navigation, shell or design-token changes are needed.
 
-Jira SPM-39 was read on 27 October 2026. It has no comments or linked PRs;
-no backend PR exists for the matching local feature branch. The backend working
-tree already contains SPM-39 changes, which this frontend work preserves.
+Jira SPM-39 was initially read on 27 October 2026. At that time no backend PR
+existed for the matching feature branch. The current backend counterpart is
+[PR #33](https://github.com/shirinruth847/connectsphere-events-g8t6-backend/pull/33).
 
 The Master and existing backend test plan supersede stale Jira expectations:
 approval moves UNDER_REVIEW to PLANNING (organiser: Approved & Planning), never
@@ -19,8 +19,9 @@ POST `/api/events/:id/accept-feasibility`, body `{ version }`, header
 `Idempotency-Key`; use the existing apiRequest/session handling. Success uses
 the returned event and refreshes history. The backend owns atomic notification,
 audit and mandatory-field validation, including organiser contact information.
-The current event-detail contract exposes organiser name, not email/phone;
-this frontend does not invent contact fields or change that API contract.
+The assigned coordinator's event-detail contract exposes organiser name and
+email. Other viewers retain their existing contact-data restrictions; no phone
+field or new API contract is introduced by this approval interface.
 
 ## Acceptance coverage
 
@@ -78,3 +79,45 @@ Real localhost:3000 → :8000 journeys with namespaced synthetic fixtures verifi
 
 All final live runs completed verified fixture cleanup and had no browser
 runtime errors. Backend/API contracts and schema were not changed by these fixes.
+
+## Main integration — 31 October 2026
+
+Integrated frontend `origin/main` at `37ccd62` into the SPM-39 branch. The
+`LifecyclePanel` conflict retains both `approvalBlockedReason` and `refreshKey`:
+editing blocks approval, while arrangement changes reload readiness even when
+the event version is unchanged. The parent retains both corresponding props.
+The generated tracked Playwright report uses main's version; new execution
+evidence is retained separately from that historical report.
+
+The SPM-179 booking regression now checks that the displayed readiness blocker
+changes after requesting a booking, with the event version fixed at 3, and that
+submitting for safety review remains disabled while approval is pending. The
+SPM-39 desktop/mobile journeys assert the backend's approval success message
+instead of accepting the unrelated safety-review message from the old mock.
+
+This integration uses mocked Auth/API browser journeys and isolated local
+database fixtures. No hosted fixture tests, shared database writes, migration
+application, Jira edits or remote publication are part of this verification.
+
+Verification performed on the combined source:
+
+| Command | Result |
+| --- | --- |
+| `npm ci --ignore-scripts` | Locked frontend dependencies installed; no manifest or lockfile changes |
+| `npm run lint` | Passed, no warnings |
+| `npm test` | 176 passed |
+| `npm run test:unit` | 5 passed across 4 files |
+| `npm run test:e2e -- --workers=2` | 452 passed, none failed, skipped or flaky; includes production build/type checks and all 19 SPM-39 journeys |
+| Backend `npm test -- --runInBand`, with dummy Supabase settings | 2,196 passed across 83 suites on the clean combined main/SPM-39 backend tree `6957ae9` |
+| Backend `node --test tests/database/spm39Feasibility.test.cjs tests/database/spm173Readiness.test.cjs tests/database/spm72IdempotencyUpgrade.test.cjs` | 37 passed in isolated PGlite |
+
+The browser run covers approval, venue requests/decisions/holds/blocks,
+readiness, clarification, notifications, registration, drafts, role navigation
+and authentication recovery. Desktop/mobile approval screenshots were captured.
+The final run uses zero retries. An initial run found two incorrect exact-text
+locators in the new banner assertions; they were corrected to assert the actual
+status banner, and the complete suite was rerun successfully.
+
+Logs, the final JSON results and the browser report are retained in
+`/private/tmp/spm39-integration.PTK5Hg/`. Those are local execution artifacts,
+not a claim of hosted end-to-end or separate-client concurrency verification.

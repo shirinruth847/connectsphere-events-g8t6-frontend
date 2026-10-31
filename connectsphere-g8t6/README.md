@@ -286,3 +286,87 @@ The coordinator's embedded calendar uses
 The backend must deploy this route before the frontend: it verifies assigned
 coordinator access and excludes that event's own bookings and holds. Venue
 Staff continue to use `/api/venues/availability`. No schema migration is needed.
+
+## Venue booking requests (SPM-179)
+
+The event's venue section (`/events/[eventId]`, step 3 "Venue & layout")
+lists the event's venue bookings for the assigned coordinator and the
+supervising Lead, from `GET /api/events/:id/venue-bookings`. When the
+backend's `canRequestVenueBookings` is true (assigned coordinator, event in
+`PLANNING`), "Request venue bookings" and each venue card's "Request booking"
+open the request form in a popup:
+
+- Event details are read-only; the first venue section starts with the
+  coordinator's suggestion or the organiser's first choice (or the card's venue).
+- One section per venue (up to 10): venue, label, start and end (SGT),
+  attendance and layout are required; facilities, accessibility needs and
+  special requirements (including catering) are optional. With several venues
+  and no primary venue yet, one is marked primary; `isPrimary` is sent only
+  then (a single venue becomes primary by itself, and an event with a primary
+  keeps it). Venues already booked for the event, chosen in another section or
+  without setup/turnaround times are listed but cannot be chosen.
+- Checks before sending are instant feedback only. Each section's
+  availability and operating-hours warning come from
+  `GET /api/events/:id/venue-availability` (the SPM-74 period check); layout,
+  facility and accessibility warnings never block.
+- `POST /api/events/:id/venue-bookings` sends an `Idempotency-Key` that is
+  reused while the body is unchanged, so a retry cannot book twice. Refusals
+  are shown in their venue section and every value is kept. Closing a changed
+  form asks before discarding it. After a request the event, its readiness and
+  its history are loaded again (the request moves `arrangement_version`, not
+  the event version).
+
+The backend route needs the SPM-179 migrations and `VENUE_LOCK_DATABASE_URL`;
+until then it answers `503`, which the form shows as a retryable error.
+
+## Venue blocks and restoration (SPM-195)
+
+Venue Staff only. No new route: the screens extend existing pages.
+
+- **`/venues/[venueId]`, step 4 "Operational blocks"**
+  (`components/venue-staff/venue-management/venue-blocks.tsx`): lists the
+  venue's current and upcoming blocks from `GET /api/venues/:venueId/blocks`,
+  each with the bookings and holds it affects. "Record a block" asks for a
+  reason, start and end (SGT) and a note (`POST .../blocks`, with an
+  `Idempotency-Key` reused while the form is unchanged). Active blocks can be
+  shortened (`PUT .../blocks/:blockId` with the loaded `version`; a longer
+  block is refused in the form with "Record a new block for additional time.")
+  or lifted after a confirmation (`POST .../lift`).
+- **Restore booking** (`components/venues/booking-incident.tsx`): enabled only
+  when the backend's `canBeRestored` is `true`, then confirmed in a dialog and
+  sent to `POST /api/venues/incidents/:incidentId/restore` with its own
+  `Idempotency-Key`. A refusal (for example `INCIDENT_STILL_BLOCKED`, with the
+  blocks still in the way) keeps the dialog open. Available on the venue page
+  and on the Venue Staff event view (`/events/[eventId]?booking=`), where an
+  affected booking also shows an "Open" incident chip.
+- **Coordinator venue section:** an affected booking shows its incident card
+  (reason, period, note, whether the venue is free again) and the backend's
+  options: restore (waiting for Venue Staff), replace (not available yet,
+  SPM-172) and cancel (shown unavailable until the event cancellation workflow
+  is integrated). The supervising
+  Lead sees the card read-only, without the options. The organiser view is
+  SPM-199's and is unchanged.
+
+- **Closed incidents:** the backend closes an incident when its booking or the
+  event ends. The card then reads "Venue incident closed" with the backend's
+  resolution label (for example "Booking released") and no restore action; a
+  restored one reads "Venue available again". A long block list that the
+  backend cut short (`hasMore`) says that later blocks are not shown.
+
+Every change is shown after the backend commits it, then the list reloads. The
+backend needs migrations `20261029130000`, `20261029140000`, `20261029150000`
+and `20261029160000`.
+
+
+SPM-195 block creation cannot be dismissed while sending. An uncertain command
+retains its exact input and idempotency key in per-user, per-venue sessionStorage;
+reopening after a reload or automatic session expiry retries that command with
+its original key. Its inputs stay locked until a definitive result is received.
+Success clears recovery, and explicit logout uses the existing recovery cleanup.
+Cancellation remains an integration dependency owned by
+[SPM-176 — Cancel Event - Coordinator](https://yvery.atlassian.net/browse/SPM-176),
+which was To Do when checked on 30 October 2026. No coordinator cancellation
+endpoint exists in the inspected backend. This frontend does not add that API
+or claim cancellation is available. Jira SPM-195 AC7 still assumes an existing
+cancel action; completing or explicitly deferring that dependency requires a
+scope decision. The unavailable label alone does not complete AC7.

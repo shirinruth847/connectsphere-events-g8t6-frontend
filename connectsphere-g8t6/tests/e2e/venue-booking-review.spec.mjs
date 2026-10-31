@@ -9,7 +9,7 @@ const venue = (venueId, name) => ({
   address: `${name} Road`,
   maxCapacity: 300,
   operatingHours: "08:00-22:00",
-  setupTurnaroundMinutes: 30,
+  setupMinutes: 30, turnaroundMinutes: 45, detailsAvailable: true,
   roomId: venueId * 10,
   roomLayoutType: "Theater",
   roomCapacity: 200,
@@ -74,6 +74,9 @@ async function routeBookings(page, requests = [], items = listItems) {
     if (url.pathname === "/api/venues/bookings/events/442") {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(eventBookings) });
     }
+    if (url.pathname === "/api/venues/bookings/events/442/history") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ history: [], nextCursor: null }) });
+    }
     if (url.pathname !== "/api/venues/bookings") return route.fallback();
     requests.push(Object.fromEntries(url.searchParams));
     const status = url.searchParams.get("status");
@@ -92,7 +95,7 @@ const OPTIONS = [
   { venueId: 47, name: "Synthetic Room C", status: "UNDER_MAINTENANCE" },
 ];
 
-const card = (page, bookingId) => page.getByRole("article").filter({ hasText: `Booking #${bookingId}` });
+const card = (page, bookingId) => page.locator(`article[data-booking-id="${bookingId}"]`);
 
 test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests and can filter it", async ({ page }) => {
   const requests = [];
@@ -106,7 +109,8 @@ test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests an
   await expect(nav.getByRole("link", { name: "My Venues", exact: true })).toHaveAttribute("href", "/venues");
 
   const first = card(page, 110);
-  for (const text of ["Synthetic Hall · Plenary hall", "Synthetic planning forum", "REQ-000442", "Seminar", "120 people", "Pending"]) {
+  await expect(first.getByRole("heading", { level: 3 })).toHaveText("Synthetic planning forum");
+  for (const text of ["Synthetic Hall · Plenary hall", "REQ-000442", "120 people", "Pending"]) {
     await expect(first.getByText(text, { exact: false }).first()).toBeVisible();
   }
   await expect(page.getByRole("article")).toHaveCount(3);
@@ -114,14 +118,15 @@ test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests an
 
   await page.getByLabel("Status").selectOption("REJECTED");
   await expect(page.getByRole("article")).toHaveCount(1);
-  await expect(page.getByRole("article").getByText("Booking #112")).toBeVisible();
+  await expect(card(page, 112)).toBeVisible();
 
   await page.getByLabel("Date (SGT)").fill("2026-11-04");
   await expect.poll(() => requests.at(-1)).toEqual({ status: "REJECTED", from: "2026-11-04T00:00:00+08:00", to: "2026-11-05T00:00:00+08:00" });
 
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(page.getByRole("article")).toHaveCount(3);
-  await expect(page.getByRole("button", { name: "Clear", exact: true })).toHaveCount(0);
+  // Clear stays in place, disabled, so the bar never shifts (SPM-186).
+  await expect(page.getByRole("button", { name: "Clear", exact: true })).toBeDisabled();
 });
 
 test("[SPM-181 AC6] the list says when nothing is pending", async ({ page }) => {
@@ -137,7 +142,7 @@ test("[SPM-181 AC2][AC3][AC4] a booking opens in the coordinator layout with onl
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeBookings(page);
   await page.goto("/dashboard");
-  await card(page, 110).getByRole("link", { name: "Review booking" }).click();
+  await card(page, 110).getByRole("link", { name: "Review", exact: true }).click();
 
   await expect(page).toHaveURL(/\/events\/442\?booking=110$/);
   await expect(page.getByRole("heading", { name: "Synthetic planning forum", exact: true })).toBeVisible();
@@ -178,7 +183,7 @@ test("[SPM-181] the review page works at mobile width", async ({ page }) => {
 
 // ---------- SPM-181 follow-up: booking ID, search, sort, live venue filter ----------
 
-test("[TC-VENUE-181-50] each card shows the booking ID and only a Review booking action", async ({ page }) => {
+test("[TC-VENUE-181-50][SPM-186] each card hides the booking ID and has only a Review action", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeBookings(page);
   await page.goto("/dashboard");
@@ -186,10 +191,11 @@ test("[TC-VENUE-181-50] each card shows the booking ID and only a Review booking
   await expect(page.getByRole("article")).toHaveCount(3);
   for (const id of [110, 111, 112]) {
     await expect(card(page, id).getByRole("link")).toHaveCount(1);
-    await expect(card(page, id).getByRole("link", { name: "Review booking" })).toBeVisible();
+    await expect(card(page, id).getByRole("link", { name: "Review", exact: true })).toBeVisible();
   }
   await expect(page.getByRole("link", { name: "Event view" })).toHaveCount(0);
   await expect(page.getByText(/VB-0/)).toHaveCount(0);
+  await expect(page.getByRole("article").getByText(/Booking #/)).toHaveCount(0);
 });
 
 test("[TC-VENUE-181-51] pending requests come first by default", async ({ page }) => {
@@ -199,7 +205,7 @@ test("[TC-VENUE-181-51] pending requests come first by default", async ({ page }
   await page.goto("/dashboard");
 
   await expect(page.getByLabel("Sort by")).toHaveValue("default");
-  await expect(page.getByLabel("Sort by").locator("option:checked")).toHaveText("Pending first");
+  await expect(page.getByLabel("Sort by").locator("option:checked")).toHaveText("Request status");
   // The default sort is the backend's pending-first order: no sort parameter.
   await expect.poll(() => requests.at(-1)).toEqual({});
 });
@@ -253,19 +259,21 @@ test("[TC-VENUE-181-54] should_sort_by_last_accessed_when_opened_or_edited_most_
   });
   await page.goto("/dashboard");
 
-  await expect(page.getByLabel("Sort by").locator("option")).toHaveText(["Pending first", "Date/time", "Venue attendance", "Last accessed", "Alphabetical (event)"]);
+  await expect(page.getByLabel("Sort by").locator("option")).toHaveText(["Request status", "Date/time", "Venue attendance", "Last accessed", "Alphabetical (event)"]);
   await page.getByLabel("Sort by").selectOption({ label: "Last accessed" });
-  const order = () => page.getByRole("article").evaluateAll((cards) => cards.map((node) => node.textContent.match(/Booking #(\d+)/)[1]));
+  const order = () => page.getByRole("article").evaluateAll((cards) => cards.map((node) => node.getAttribute("data-booking-id")));
   await expect.poll(order).toEqual(["110", "112", "111"]);
   // Sorted in the browser: the backend is asked for its default order.
   expect(requests.at(-1)).toEqual({});
-  await expect(card(page, 110).getByText("25 Oct 2026", { exact: false })).toBeVisible();
+  // Only this viewer's own opening is shown, as "Opened …" (SPM-186).
+  await expect(card(page, 112).getByText(/^Opened 20 Oct 2026/)).toBeVisible();
+  await expect(card(page, 110).getByText(/^Opened/)).toHaveCount(0);
 
   await page.getByRole("button", { name: "Descending order. Switch to ascending" }).click();
   await expect.poll(order).toEqual(["111", "112", "110"]);
 
   // Opening a booking records it as the most recent access.
-  await card(page, 111).getByRole("link", { name: "Review booking" }).click();
+  await card(page, 111).getByRole("link", { name: "Review", exact: true }).click();
   await expect(page).toHaveURL(/booking=111$/);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("connectsphere:venue-bookings-opened:11")));
   expect(stored["111"]).toBeGreaterThan(Date.parse("2026-10-20T00:00:00Z"));
@@ -281,7 +289,8 @@ test("[TC-VENUE-181-56] should_offer_no_event_filter_and_a_single_row_filter_bar
 
   await expect(bar.getByLabel("Event", { exact: true })).toHaveCount(0);
   await expect(bar.getByLabel("Order", { exact: true })).toHaveCount(0);
-  for (const label of ["Search", "Status", "Venue", "Date (SGT)", "Sort by"]) await expect(bar.getByLabel(label, { exact: true })).toBeVisible();
+  for (const label of ["Search", "Status", "Date (SGT)", "Sort by"]) await expect(bar.getByLabel(label, { exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Venue: All venues" })).toBeVisible();
   await expect(bar.getByRole("button", { name: "Ascending order. Switch to descending" })).toBeVisible();
   // One row of controls: every control's top edge lines up.
   const tops = await bar.locator("input, select, button").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().bottom)));
@@ -318,8 +327,11 @@ test("[TC-VENUE-181-55] the venue filter lists every venue and follows venue cha
   await routeBookings(page);
   await page.goto("/dashboard");
 
-  const venueFilter = page.getByLabel("Venue", { exact: true });
-  await expect(venueFilter.locator("option")).toHaveText(["All venues", "Synthetic Hall", "Synthetic Room B", "Synthetic Room C"]);
+  await page.getByRole("button", { name: /^Venue: / }).click();
+  const venueFilter = page.getByRole("listbox", { name: "Venue" });
+  await expect(venueFilter.getByRole("option")).toHaveText(["All venues", "Synthetic Hall", "Synthetic Room B", "Synthetic Room C"]);
+  // Three venues: no search box inside the filter.
+  await expect(page.getByRole("searchbox", { name: "Search venue" })).toHaveCount(0);
 
   // A venue added, renamed and removed in My Venues.
   state.venueOptions = [
@@ -329,5 +341,40 @@ test("[TC-VENUE-181-55] the venue filter lists every venue and follows venue cha
   ];
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 
-  await expect(venueFilter.locator("option")).toHaveText(["All venues", "Synthetic Grand Hall", "Synthetic Room B", "New Pavilion"]);
+  await expect(venueFilter.getByRole("option")).toHaveText(["All venues", "Synthetic Grand Hall", "Synthetic Room B", "New Pavilion"]);
+});
+
+test("[SPM-186-AC12][SPM-186-AC13] the search takes at most 100 characters without resizing, and a long venue filter is searchable", async ({ page }) => {
+  const state = await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  state.venueOptions = Array.from({ length: 7 }, (_, index) => ({ venueId: 60 + index, name: `Synthetic Venue ${String.fromCharCode(65 + index)}`, status: "ACTIVE" }));
+  const requests = [];
+  await routeBookings(page, requests);
+  await page.goto("/dashboard");
+
+  const search = page.getByLabel("Search", { exact: true });
+  const widthOf = () => search.evaluate((node) => Math.round(node.getBoundingClientRect().width));
+  const emptyWidth = await widthOf();
+  await search.fill("x".repeat(120));
+  await expect(search).toHaveValue("x".repeat(100));
+  expect(await widthOf()).toBe(emptyWidth);
+
+  await page.getByRole("button", { name: /^Venue: / }).click();
+  const find = page.getByRole("searchbox", { name: "Search venue" });
+  await find.fill("venue g");
+  const options = page.getByRole("listbox", { name: "Venue" }).getByRole("option");
+  await expect(options).toHaveText(["All venues", "Synthetic Venue G"]);
+  await options.filter({ hasText: "Synthetic Venue G" }).click();
+  await expect.poll(() => requests.at(-1)?.venueId).toBe("66");
+  await expect(page.getByRole("button", { name: "Venue: Synthetic Venue G" })).toBeVisible();
+});
+
+test("[SPM-186-AC11] the request status sort runs in either direction", async ({ page }) => {
+  const requests = [];
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeBookings(page, requests);
+  await page.goto("/dashboard");
+
+  await expect(page.getByLabel("Sort by").locator("option:checked")).toHaveText("Request status");
+  await page.getByRole("button", { name: "Ascending order. Switch to descending" }).click();
+  await expect.poll(() => requests.at(-1)).toEqual({ order: "desc" });
 });

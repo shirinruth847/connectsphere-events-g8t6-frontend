@@ -77,7 +77,10 @@ async function routeLifecycle(page, { event, readiness = { ready: true, failures
       if (requests.length <= lostResponses) {
         return route.fulfill({ status: 500, json: { error: "Something went wrong.", code: "INTERNAL_ERROR" } });
       }
-      return route.fulfill({ json: { message: "Event submitted for safety review.", event: current } });
+      const message = pathname.endsWith("/accept-feasibility")
+        ? "Event request approved for planning."
+        : "Event submitted for safety review.";
+      return route.fulfill({ json: { message, event: current } });
     }
     return route.fulfill({ json: { event: current } });
   });
@@ -234,6 +237,7 @@ for (const mobile of [false, true]) {
     await page.getByRole('button', { name: 'Approve request', exact: true }).click();
     await dialog.getByRole('button', { name: 'Confirm approval' }).click();
     await expect(page.getByText('Status updated')).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Status updated' })).toContainText('Event request approved for planning.');
     await expect(page.getByRole('button', { name: 'Submit for safety review' })).toBeVisible();
     expect(requests).toEqual([{ path: '/api/events/42/accept-feasibility', body: { version: 3 }, key: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(mobile ? 390 : 1280);
