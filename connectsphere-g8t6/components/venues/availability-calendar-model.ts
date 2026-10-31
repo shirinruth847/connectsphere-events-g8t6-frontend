@@ -3,7 +3,6 @@
 // its occupied range. Pure (type-only imports), so it is unit tested.
 import type { CalendarCoordinator, CalendarEvent, CalendarOverlay, CalendarViewMode } from "../calendar/calendar-view";
 import type { CalendarEntry, VenueAvailability } from "../../lib/api/venues";
-import type { RequestVenueAvailability } from "../../lib/api/event-venues";
 
 export type CalendarEntryRef = { venueId: number; venueName: string; entry: CalendarEntry };
 
@@ -166,87 +165,4 @@ export function blockOverlays(data: VenueAvailability, formatWindow: (start: str
     }
   }
   return overlays;
-}
-
-// SPM-76: the organiser's calendar for one chosen venue. Busy periods show
-// only their kind and time (never whose). `requested` is the time as the
-// organiser has it now, drawn at once and draggable when `resize` is given;
-// the backend's check of it adds the red overlaps once it matches.
-export function requestCalendar(
-  data: RequestVenueAvailability,
-  range: { date: string; days: number },
-  { label, requested, otherChoices = [], formatWindow, formatTimes = formatWindow, resize }: {
-    label: string;
-    requested: { start: string; end: string } | null;
-    // The organiser's other chosen venues and times, in a lane of their own.
-    otherChoices?: Array<{ label: string; start: string; end: string }>;
-    formatWindow: (start: string, end: string) => string;
-    formatTimes?: (start: string, end: string) => string;
-    resize?: CalendarOverlay["resize"];
-  },
-): { lanes: CalendarCoordinator[]; overlays: CalendarOverlay[] } {
-  const { venue } = data;
-  const lanes: CalendarCoordinator[] = [{
-    coordinatorId: venue.venueId,
-    name: venue.name,
-    events: venue.busyPeriods.map((period, index) => ({
-      eventId: index + 1,
-      title: `${period.label} · ${formatWindow(period.occupiedStart, period.occupiedEnd)}`,
-      startDatetime: period.occupiedStart,
-      endDatetime: period.occupiedEnd,
-      coordinatorId: venue.venueId,
-      status: period.label,
-    })),
-  }];
-  if (otherChoices.length) {
-    // A lane ID no venue has, so its colour and events stay separate.
-    const laneId = -venue.venueId;
-    lanes.push({
-      coordinatorId: laneId,
-      name: "Your other venues",
-      events: otherChoices.map((choice, index) => ({
-        eventId: venue.busyPeriods.length + index + 1,
-        title: `${choice.label} · ${formatWindow(choice.start, choice.end)}`,
-        startDatetime: choice.start,
-        endDatetime: choice.end,
-        coordinatorId: laneId,
-        status: "Your other venue",
-      })),
-    });
-  }
-  const overlays = closedHourOverlays([venue.operatingHours], range);
-  if (!requested) return { lanes, overlays };
-  const same = (a: string, b: string) => Date.parse(a) === Date.parse(b);
-  const check = venue.check && same(venue.check.start, requested.start) && same(venue.check.end, requested.end) ? venue.check : null;
-  const detail = check
-    ? [
-        check.availabilityLabel,
-        `Occupied ${formatWindow(check.occupiedStart, check.occupiedEnd)} with setup and turnaround`,
-        ...check.conflicts.map((conflict) => `Overlaps ${conflict.label.toLowerCase()}, ${formatWindow(conflict.occupiedStart, conflict.occupiedEnd)}`),
-        ...(check.operatingHoursWarning ? [check.operatingHoursWarning.message] : []),
-      ].join("\n")
-    : "Checking this time…";
-  overlays.push({ id: "request", tone: "request", start: requested.start, end: requested.end, label: `${label} · ${formatTimes(requested.start, requested.end)}`, detail, resize });
-  check?.conflicts.forEach((conflict, index) => {
-    const from = Math.max(Date.parse(conflict.occupiedStart), Date.parse(check.occupiedStart));
-    const to = Math.min(Date.parse(conflict.occupiedEnd), Date.parse(check.occupiedEnd));
-    if (from < to) overlays.push({ id: `conflict-${index}`, tone: "conflict", start: iso(from), end: iso(to) });
-  });
-  return { lanes, overlays };
-}
-
-// The calendar's drag step (RESIZE_STEP_MS in calendar-view).
-const STEP_MS = 15 * MINUTE_MS;
-
-// Keeps a dragged edge inside the event and at least one step from the other edge.
-export function resizeWithin(
-  current: { start: string; end: string },
-  bounds: { start: string; end: string },
-  edge: "start" | "end",
-  instant: number,
-): { start: string; end: string } {
-  const [min, max] = [Date.parse(bounds.start), Date.parse(bounds.end)];
-  const [start, end] = [Date.parse(current.start), Date.parse(current.end)];
-  if (edge === "start") return { start: iso(Math.max(min, Math.min(instant, end - STEP_MS))), end: current.end };
-  return { start: current.start, end: iso(Math.min(max, Math.max(instant, start + STEP_MS))) };
 }

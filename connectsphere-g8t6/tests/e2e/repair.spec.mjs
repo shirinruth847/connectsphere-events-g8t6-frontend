@@ -63,6 +63,8 @@ for (const [role, heading] of [['ORGANISER','Organisation Events'],['COORDINATOR
  });
 }
 test('[SPM-174] Lead login opens the unassigned queue and can navigate to calendar and assignments', async ({page}) => {
+ // The mock coordinator event is on 20 October 2026 and the calendar opens on the current month.
+ await page.clock.setFixedTime(new Date('2026-10-21T02:00:00Z'));
  await installLoginMock(page,{role:'COORDINATOR_LEAD'});
  await page.goto('/login');
  await page.locator('#email').fill('user@example.com');
