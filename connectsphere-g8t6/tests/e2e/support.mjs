@@ -223,8 +223,11 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
 }
 
 export const localDateTimeInput = (date) => {
+  // Event datetime-local inputs are Singapore civil time, irrespective of the
+  // browser/CI timezone. Format the instant in SGT before filling the field.
+  const singaporeDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
   const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${singaporeDate.getUTCFullYear()}-${pad(singaporeDate.getUTCMonth() + 1)}-${pad(singaporeDate.getUTCDate())}T${pad(singaporeDate.getUTCHours())}:${pad(singaporeDate.getUTCMinutes())}`;
 };
 
 export async function enterCompleteRequestThroughSubmit(page, { startHours = 168, attendance = "150" } = {}) {
