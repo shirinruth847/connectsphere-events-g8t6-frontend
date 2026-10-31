@@ -23,8 +23,8 @@ const backLink = (
 // /events/[eventId] for attendees (SPM-44). Reads only
 // GET /api/events/discovery/:id; the staff workspace endpoint
 // GET /api/events/:id is never called for this role. A 404 means the event is
-// not attendee-visible (unknown, unpublished or not CONFIRMED) and nothing
-// about it is shown.
+// not attendee-visible (the backend decides: unknown, unpublished, ended or
+// outside CONFIRMED and PREPARATION) and nothing about it is shown.
 export function AttendeeEventDetailsPage({ eventId }: { eventId: number | null }) {
   if (eventId === null) return <EventNotAvailable />;
   return <LoadedEventDetails key={eventId} eventId={eventId} />;
