@@ -31,10 +31,11 @@ type Notice = { tone: "success" | "error"; text: string } | null;
 
 const EXTENSION_DAYS = Array.from({ length: MAX_HOLD_EXTENSION_DAYS }, (_, index) => index + 1);
 
-function HoldRequestCard({ request, now, busy, onPlace, onDecline, onExtend, onRelease }: {
+function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, onExtend, onRelease }: {
   request: VenueHoldRequest;
   now: number;
   busy: boolean;
+  recovering: boolean;
   onPlace: () => void;
   onDecline: () => void;
   onExtend: (days: number) => void;
@@ -66,8 +67,9 @@ function HoldRequestCard({ request, now, busy, onPlace, onDecline, onExtend, onR
           {preview?.expiresAt ? (
             <p className="text-sm text-on-surface">If placed now, held until <span className="font-semibold">{formatTimestamp(preview.expiresAt)}</span>.</p>
           ) : null}
+          {recovering ? <p className="text-sm text-on-surface-variant">The previous placement is unconfirmed. Retry with the saved request; availability will be checked again.</p> : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" disabled={busy || blocked} onClick={onPlace}><Icon name="check" size={16} />Place hold</Button>
+            <Button type="button" disabled={busy || (blocked && !recovering)} onClick={onPlace}><Icon name="check" size={16} />Place hold</Button>
             <Button type="button" variant="secondary" disabled={busy} onClick={onDecline} aria-haspopup="dialog">Decline</Button>
           </div>
         </>
@@ -109,16 +111,26 @@ export function HoldRequestList() {
   const [declineError, setDeclineError] = useState<string | null>(null);
   // A retry of the same placement reuses its key, so it cannot place twice.
   const placeKeys = useRef(new Map<number, string>());
+  const [recoveringIds, setRecoveringIds] = useState<number[]>([]);
+  const actorId = user?.user_id;
 
   useEffect(() => {
     let alive = true;
     listHoldRequests(view === "PENDING" ? "PENDING" : undefined)
-      .then((result) => { if (alive) setState({ status: "ready", ...result }); })
+      .then((result) => {
+        if (!alive) return;
+        setRecoveringIds(result.requests.filter((request) => {
+          const saved = readHoldCommand(`connectsphere:recovery:spm190:place:${actorId}:${request.holdRequestId}`);
+          return request.status === "PENDING" && (placeKeys.current.has(request.holdRequestId)
+            || saved?.body === String(request.holdRequestId));
+        }).map((request) => request.holdRequestId));
+        setState({ status: "ready", ...result });
+      })
       .catch((caught: unknown) => {
         if (alive) setState({ status: "error", message: caught instanceof Error ? caught.message : "Hold requests could not be loaded." });
       });
     return () => { alive = false; };
-  }, [view, attempt]);
+  }, [view, attempt, actorId]);
 
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
   const now = useHoldExpiryRefresh(state.status === "ready" ? state.requests : [], reload);
@@ -139,15 +151,19 @@ export function HoldRequestList() {
   };
   const place = (request: VenueHoldRequest) => {
     const slot = `connectsphere:recovery:spm190:place:${user?.user_id}:${request.holdRequestId}`;
-    const key = placeKeys.current.get(request.holdRequestId) ?? readHoldCommand(slot)?.key ?? crypto.randomUUID();
+    const saved = readHoldCommand(slot);
+    const key = placeKeys.current.get(request.holdRequestId) ?? (saved?.body === String(request.holdRequestId) ? saved.key : undefined) ?? crypto.randomUUID();
     saveHoldCommand(slot, { body: String(request.holdRequestId), key });
     placeKeys.current.set(request.holdRequestId, key);
+    setRecoveringIds((ids) => [...new Set([...ids, request.holdRequestId])]);
     void run(request, () => placeVenueHold(request.holdRequestId, key).then((answer) => {
+      setRecoveringIds((ids) => ids.filter((id) => id !== request.holdRequestId));
       placeKeys.current.delete(request.holdRequestId);
       saveHoldCommand(slot, null);
       return answer;
     }).catch((caught: unknown) => {
       if (!keepsIdempotencyKey(caught instanceof ApiError ? caught : null) && !(caught instanceof ApiError && caught.status === 401)) {
+        setRecoveringIds((ids) => ids.filter((id) => id !== request.holdRequestId));
         placeKeys.current.delete(request.holdRequestId);
         saveHoldCommand(slot, null);
       }
@@ -210,6 +226,7 @@ export function HoldRequestList() {
               request={request}
               now={now}
               busy={busyId === request.holdRequestId}
+              recovering={recoveringIds.includes(request.holdRequestId)}
               onPlace={() => place(request)}
               onDecline={() => { setDeclining(request); setReason(""); setDeclineError(null); }}
               onExtend={(days) => void run(request, () => extendVenueHold(request.hold?.holdId ?? "", days))}
