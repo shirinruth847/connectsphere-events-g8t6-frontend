@@ -75,7 +75,7 @@ test("[SPM-33 AC1 / Master 3.5] owner sees organiser labels in the shared shell"
   await expect(page.getByRole("heading", { name: "Workspace review event", exact: true })).toBeVisible();
   await expect(page.getByText("Approved & Planning", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Planning", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "My Requests", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
 test("[SPM-173 AC6] an owner's view without a stored status uses the organiser label", async ({ page }) => {

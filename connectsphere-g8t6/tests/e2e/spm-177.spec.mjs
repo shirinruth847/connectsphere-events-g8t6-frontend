@@ -80,7 +80,7 @@ for (const width of [1440, 390]) {
     const state = await installConnectSphereMocks(page, { role: 'COORDINATOR_LEAD' });
     await page.setViewportSize({ width, height: 900 });
     await openAssignment(page);
-    await expect(page.locator('.modal-backdrop')).toHaveCSS('position', 'fixed');
+    expect(await page.getByRole('dialog').evaluate((dialog) => dialog.matches(':modal'))).toBe(true);
     const modal = await page.getByRole('dialog').boundingBox();
     expect(modal.x).toBeGreaterThanOrEqual(0);
     expect(modal.x + modal.width).toBeLessThanOrEqual(width);
