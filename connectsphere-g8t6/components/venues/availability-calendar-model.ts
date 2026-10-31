@@ -168,65 +168,32 @@ export function blockOverlays(data: VenueAvailability, formatWindow: (start: str
   return overlays;
 }
 
-// SPM-76: the organiser's calendar for one chosen venue. Busy periods show
-// only their kind and time (never whose). `requested` is the time as the
-// organiser has it now, drawn at once and draggable when `resize` is given;
-// the backend's check of it adds the red overlaps once it matches.
+// SPM-76: the organiser's calendar for one chosen venue, drawn as coloured
+// blocks without words (developer request of 1 November 2026): grey where the
+// venue is busy (a booking, hold or block, never whose), blue behind for the
+// organiser's other chosen venues, yellow for the time being edited (draggable
+// when `resize` is given) and red where its occupied time overlaps busy time,
+// once the backend's check of that time is back.
 export function requestCalendar(
   data: RequestVenueAvailability,
   range: { date: string; days: number },
-  { label, requested, otherChoices = [], formatWindow, formatTimes = formatWindow, resize }: {
-    label: string;
+  { requested, otherChoices = [], resize }: {
     requested: { start: string; end: string } | null;
-    // The organiser's other chosen venues and times, in a lane of their own.
-    otherChoices?: Array<{ label: string; start: string; end: string }>;
-    formatWindow: (start: string, end: string) => string;
-    formatTimes?: (start: string, end: string) => string;
+    otherChoices?: Array<{ start: string; end: string }>;
     resize?: CalendarOverlay["resize"];
   },
 ): { lanes: CalendarCoordinator[]; overlays: CalendarOverlay[] } {
   const { venue } = data;
-  const lanes: CalendarCoordinator[] = [{
-    coordinatorId: venue.venueId,
-    name: venue.name,
-    events: venue.busyPeriods.map((period, index) => ({
-      eventId: index + 1,
-      title: `${period.label} · ${formatWindow(period.occupiedStart, period.occupiedEnd)}`,
-      startDatetime: period.occupiedStart,
-      endDatetime: period.occupiedEnd,
-      coordinatorId: venue.venueId,
-      status: period.label,
-    })),
-  }];
-  if (otherChoices.length) {
-    // A lane ID no venue has, so its colour and events stay separate.
-    const laneId = -venue.venueId;
-    lanes.push({
-      coordinatorId: laneId,
-      name: "Your other venues",
-      events: otherChoices.map((choice, index) => ({
-        eventId: venue.busyPeriods.length + index + 1,
-        title: `${choice.label} · ${formatWindow(choice.start, choice.end)}`,
-        startDatetime: choice.start,
-        endDatetime: choice.end,
-        coordinatorId: laneId,
-        status: "Your other venue",
-      })),
-    });
-  }
-  const overlays = closedHourOverlays([venue.operatingHours], range);
+  const lanes: CalendarCoordinator[] = [{ coordinatorId: venue.venueId, name: venue.name, events: [] }];
+  const overlays = [
+    ...closedHourOverlays([venue.operatingHours], range),
+    ...otherChoices.map((choice, index): CalendarOverlay => ({ id: `other-${index}`, tone: "other", start: choice.start, end: choice.end })),
+    ...venue.busyPeriods.map((period, index): CalendarOverlay => ({ id: `busy-${index}`, tone: "busy", start: period.occupiedStart, end: period.occupiedEnd })),
+  ];
   if (!requested) return { lanes, overlays };
   const same = (a: string, b: string) => Date.parse(a) === Date.parse(b);
   const check = venue.check && same(venue.check.start, requested.start) && same(venue.check.end, requested.end) ? venue.check : null;
-  const detail = check
-    ? [
-        check.availabilityLabel,
-        `Occupied ${formatWindow(check.occupiedStart, check.occupiedEnd)} with setup and turnaround`,
-        ...check.conflicts.map((conflict) => `Overlaps ${conflict.label.toLowerCase()}, ${formatWindow(conflict.occupiedStart, conflict.occupiedEnd)}`),
-        ...(check.operatingHoursWarning ? [check.operatingHoursWarning.message] : []),
-      ].join("\n")
-    : "Checking this time…";
-  overlays.push({ id: "request", tone: "request", start: requested.start, end: requested.end, label: `${label} · ${formatTimes(requested.start, requested.end)}`, detail, resize });
+  overlays.push({ id: "request", tone: "request", start: requested.start, end: requested.end, resize });
   check?.conflicts.forEach((conflict, index) => {
     const from = Math.max(Date.parse(conflict.occupiedStart), Date.parse(check.occupiedStart));
     const to = Math.min(Date.parse(conflict.occupiedEnd), Date.parse(check.occupiedEnd));

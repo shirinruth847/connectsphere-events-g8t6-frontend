@@ -17,8 +17,8 @@ test('[SPM-76 TC1] a narrowed choice is sent with its time; a whole-event choice
   const payload = toPayload(form({ venueTimes: { 2: { start: '2026-12-01T13:00', end: '2026-12-01T15:00' } } }));
   assert.equal(payload.venuePreferences[0], 1);
   assert.equal(payload.venuePreferences[1].venueId, 2);
-  assert.equal(payload.venuePreferences[1].requestedStart, new Date('2026-12-01T13:00').toISOString());
-  assert.equal(payload.venuePreferences[1].requestedEnd, new Date('2026-12-01T15:00').toISOString());
+  assert.equal(Date.parse(payload.venuePreferences[1].requestedStart), Date.parse('2026-12-01T13:00:00+08:00'));
+  assert.equal(Date.parse(payload.venuePreferences[1].requestedEnd), Date.parse('2026-12-01T15:00:00+08:00'));
 });
 
 test("[SPM-76 TC1] a saved draft restores each choice's time", () => {
@@ -56,7 +56,7 @@ test('[SPM-76 AC4] a dragged edge stays inside the event and at least 15 minutes
   assert.deepEqual(resizeWithin(current, bounds, 'end', Date.parse(at('14:00'))), { start: current.start, end: at('14:00') });
 });
 
-test('[SPM-76 AC3][TC3] the organiser calendar shows busy periods by kind and the requested time, red only where checked overlaps', () => {
+test('[SPM-76 AC3][TC3] the organiser calendar is coloured blocks only: busy time, the edited time, red only where checked overlaps', () => {
   const data = {
     from: at('00:00'), to: at('00:00', '2026-12-02'),
     venue: {
@@ -70,32 +70,31 @@ test('[SPM-76 AC3][TC3] the organiser calendar shows busy periods by kind and th
       },
     },
   };
-  const window = (start, end) => `${start}–${end}`;
   const range = { date: '2026-12-01', days: 1 };
-  const checked = requestCalendar(data, range, { label: 'Your requested time', requested: { start: at('11:00'), end: at('13:00') }, formatWindow: window });
-  assert.equal(checked.lanes[0].events.length, 1);
-  assert.match(checked.lanes[0].events[0].title, /^Unavailable – booking/);
+  const checked = requestCalendar(data, range, { requested: { start: at('11:00'), end: at('13:00') } });
+  assert.equal(checked.lanes[0].events.length, 0);
+  const busy = checked.overlays.find((overlay) => overlay.tone === 'busy');
+  assert.deepEqual([busy.start, busy.end], [at('09:30'), at('12:30')]);
   const conflict = checked.overlays.find((overlay) => overlay.tone === 'conflict');
   assert.deepEqual([conflict.start, conflict.end], [at('10:30'), at('12:30')]);
+  assert.ok(checked.overlays.every((overlay) => !overlay.label && !overlay.detail));
 
-  const dragged = requestCalendar(data, range, { label: 'Your requested time', requested: { start: at('14:00'), end: at('16:00') }, formatWindow: window });
+  const dragged = requestCalendar(data, range, { requested: { start: at('14:00'), end: at('16:00') } });
   const request = dragged.overlays.find((overlay) => overlay.tone === 'request');
   assert.deepEqual([request.start, request.end], [at('14:00'), at('16:00')]);
   assert.equal(dragged.overlays.some((overlay) => overlay.tone === 'conflict'), false);
 });
 
-test("[SPM-76] the organiser's other venues show in their own lane, without busy-period details", () => {
+test("[SPM-76] the organiser's other venues' times sit behind in their own colour", () => {
   const data = {
     from: at('00:00'), to: at('00:00', '2026-12-02'),
     venue: { venueId: 7, name: 'Hall', operatingHours: null, setupMinutes: 0, turnaroundMinutes: 0, buffersRecorded: true, busyPeriods: [], check: null },
   };
-  const { lanes } = requestCalendar(data, { date: '2026-12-01', days: 1 }, {
-    label: 'Your requested time',
+  const { lanes, overlays } = requestCalendar(data, { date: '2026-12-01', days: 1 }, {
     requested: { start: at('09:00'), end: at('18:00') },
-    otherChoices: [{ label: 'Your choice 2: Breakout', start: at('13:00'), end: at('15:00') }],
-    formatWindow: (start, end) => `${start}–${end}`,
+    otherChoices: [{ start: at('13:00'), end: at('15:00') }],
   });
-  assert.equal(lanes.length, 2);
-  assert.equal(lanes[1].name, 'Your other venues');
-  assert.match(lanes[1].events[0].title, /^Your choice 2: Breakout/);
+  assert.equal(lanes.length, 1);
+  const other = overlays.find((overlay) => overlay.tone === 'other');
+  assert.deepEqual([other.start, other.end], [at('13:00'), at('15:00')]);
 });

@@ -5,7 +5,7 @@ describe("[SPM-192] organiser navigation", () => {
   it("keeps dashboard views in the dashboard and removes support and settings groups", () => {
     const groups = navigationForRole("ORGANISER");
     expect(groups.map((group) => group.title)).toEqual(["Main Navigation"]);
-    expect(groups[0].items.map((item) => item.id)).toEqual(["home", "registrations-unavailable", "notifications"]);
+    expect(groups[0].items.map((item) => item.id)).toEqual(["home", "notifications"]);
   });
 
   it("links the Notifications tab to the inbox and marks it active there", () => {

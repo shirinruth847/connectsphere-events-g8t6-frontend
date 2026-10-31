@@ -222,7 +222,13 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
               </div>
             </div>
           </Card>
-          {!isDraftEvent(event) ? <EventArrangements key={`${event.eventId}:${event.version}`} eventId={event.eventId} /> : null}
+          {!isDraftEvent(event) ? (
+            <EventArrangements
+              key={`${event.eventId}:${event.version}`}
+              eventId={event.eventId}
+              venueChoices={{ choices: event.venuePreferenceTimes ?? event.venuePreferences.map((venueId) => ({ venueId, requestedStart: null, requestedEnd: null })), eventStart: event.startDatetime, eventEnd: event.endDatetime }}
+            />
+          ) : null}
         </div>
 
         <aside className="grid gap-5 xl:col-span-4" aria-label="Coordination and history">

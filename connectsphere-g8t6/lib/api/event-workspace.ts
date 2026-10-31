@@ -66,6 +66,8 @@ export interface EventView {
   preferredLayoutType: string | null;
   accessibilityNeeds: string[];
   venuePreferences: number[];
+  // SPM-76: each choice's venue and requested time; null times mean the whole event.
+  venuePreferenceTimes?: VenuePreferenceTime[];
   equipmentRequirements: Array<{ equipmentId: number; quantity: number }>;
   isRegistrationEnabled: boolean | null;
   registrationCapacity: number | null;
@@ -267,6 +269,13 @@ export interface ClarificationRound {
   // Messages from the other party since this viewer last opened the thread;
   // null for viewers whose reads are not tracked (same-organisation organisers).
   unreadCount: number | null;
+}
+
+export interface VenuePreferenceTime {
+  venueId: number;
+  venueName?: string | null;
+  requestedStart: string | null;
+  requestedEnd: string | null;
 }
 
 // The submission fields an owner may amend while a thread is open

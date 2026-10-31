@@ -5,13 +5,10 @@ import { CalendarView, type CalendarViewMode } from "@/components/calendar/calen
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { calendarDate } from "@/lib/coordinator-calendar";
-import { formatEventWindow } from "@/lib/datetime";
 import { getRequestVenueAvailability, type RequestVenueAvailability } from "@/lib/api/event-venues";
 import { calendarRange, requestCalendar, resizeWithin } from "../availability-calendar-model";
 import { useDebouncedValue } from "../use-debounced-value";
 
-const timeOfDay = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Singapore", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const formatTimes = (start: string, end: string) => `${timeOfDay.format(new Date(start))}–${timeOfDay.format(new Date(end))}`;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type Window = { start: string; end: string };
@@ -24,8 +21,8 @@ interface RequestVenueCalendarProps {
   bounds: Window;
   onChange: (next: Window) => void;
   onCollapse: () => void;
-  // The organiser's other chosen venues and their times, for reference.
-  otherChoices: Array<{ label: string } & Window>;
+  // The organiser's other chosen venues' times, drawn behind for reference.
+  otherChoices: Window[];
 }
 
 // SPM-76: one chosen venue's calendar while the organiser fills in the
@@ -64,11 +61,8 @@ export function RequestVenueCalendar({ venueId, venueName, requested, bounds, on
     // A drag keeps the handler it started with; only the dragged edge moves
     // during it, so the other edge from the drag's start is still current.
     () => (data ? requestCalendar(data, range, {
-      label: "Your requested time",
       requested,
       otherChoices,
-      formatWindow: formatEventWindow,
-      formatTimes,
       resize: (edge, instant) => onChange(resizeWithin(requested, bounds, edge, instant)),
     }) : null),
     // range is rebuilt each render; its fields are what matter.
@@ -119,10 +113,11 @@ export function RequestVenueCalendar({ venueId, venueName, requested, bounds, on
         />
       </section>
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-on-surface-variant" aria-label="Calendar key">
-        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border-2 border-[#CA8A04] bg-[#FACC15]/30" />Your requested time (drag its edges)</span>
-        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-[#DC2626]/35" />Overlaps existing time</span>
+        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border-2 border-[#CA8A04] bg-[#FACC15]/30" />Time for {venueName} (drag its top or bottom edge)</span>
+        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-[#4B5563]/40" />Venue unavailable (booked, held or blocked)</span>
+        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-[#DC2626]/35" />Clash</span>
+        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border border-dashed border-[#2563EB] bg-[#3B82F6]/20" />Your other venues&apos; times</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-outline/25" />Closed</span>
-        <span>Bookings, holds and blocks at this venue show only as unavailable; your other venues are shown for reference.</span>
       </p>
     </div>
   );

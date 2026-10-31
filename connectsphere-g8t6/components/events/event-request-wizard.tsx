@@ -141,7 +141,9 @@ export function EventRequestWizard() {
     } else setError(caught instanceof Error ? caught.message : "Could not save your request.");
   }, []);
 
-  const saveDraft = useCallback(async (auto = false) => {
+  // `stay` (the venue step's Save choices, SPM-76) saves like Save as Draft
+  // but keeps the organiser in the form instead of opening My Requests.
+  const saveDraft = useCallback(async (auto = false, { stay = false }: { stay?: boolean } = {}) => {
     if (inFlight.current) {
       await inFlight.current;
       if (auto) return;
@@ -173,10 +175,11 @@ export function EventRequestWizard() {
             savedRevision = atStart;
           }
         }
-        if (result.savedAt && auto) setSavedAt(result.savedAt);
+        if (auto || stay) setSavedAt(result.savedAt ?? new Date().toISOString());
         if (savedRevision === revision.current) {
           changedRef.current = false; setDirty(false); sessionStorage.removeItem(recoveryKey);
-          if (!auto) {
+          if (stay) setNotice("Your venue choices are saved with this draft.");
+          else if (!auto) {
             allowNavigation(); sessionStorage.setItem("connectsphere:notice", "Draft saved successfully.");
             router.push(ROUTES.requests);
           }
@@ -350,7 +353,7 @@ export function EventRequestWizard() {
                 values={values}
                 knownNames={new Map(options.venues.map((venue) => [venue.venueId, venue.name]))}
                 onChange={updateVenueChoices}
-                save={{ onSave: () => void saveDraft(false), saving, disabled: saving || submitting || uncertainSubmission || !values.title.trim(), savedAt: savedAt ? formatSavedTime(savedAt) : null }}
+                save={{ onSave: () => void saveDraft(false, { stay: true }), saving, disabled: saving || submitting || uncertainSubmission || !values.title.trim(), savedAt: savedAt ? formatSavedTime(savedAt) : null }}
               />
               {field("venuePreferences")}
               {field("preferredLayoutType")}

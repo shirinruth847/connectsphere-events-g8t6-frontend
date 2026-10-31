@@ -61,7 +61,7 @@ interface RequestVenueStepProps {
   // Names from the request options, for choices not in the current list.
   knownNames: Map<number, string>;
   onChange: (next: VenueChoices) => void;
-  // Saves the draft from the choices list; disabled until the request can be saved.
+  // Saves the choices with the draft and stays on the step; shown once a venue is chosen.
   save: { onSave: () => void; saving: boolean; disabled: boolean; savedAt: string | null };
 }
 
@@ -146,12 +146,14 @@ export function RequestVenueStep({ values, knownNames, onChange, save }: Request
       <section aria-label="Your venue choices" className="grid gap-3 rounded-panel border border-outline-variant p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-on-surface">Your venue choices <span className="font-normal text-on-surface-variant">({chosen.length} / {MAX_VENUE_CHOICES})</span></h3>
-          <span className="flex flex-wrap items-center gap-2">
-            {save.savedAt ? <span className="text-xs font-semibold text-success" aria-live="polite">Saved at {save.savedAt}</span> : null}
-            <Button type="button" variant="secondary" onClick={save.onSave} disabled={save.disabled} title={save.disabled && !save.saving ? "Enter an Event Title to save." : undefined}>
-              <Icon name="check" size={16} />{save.saving ? "Saving…" : "Save choices"}
-            </Button>
-          </span>
+          {chosen.length ? (
+            <span className="flex flex-wrap items-center gap-2">
+              {save.savedAt ? <span className="text-xs font-semibold text-success" aria-live="polite">Saved at {save.savedAt}</span> : null}
+              <Button type="button" variant="secondary" onClick={save.onSave} disabled={save.disabled} title={save.disabled && !save.saving ? "Enter an Event Title to save." : undefined}>
+                <Icon name="check" size={16} />{save.saving ? "Saving…" : "Save choices"}
+              </Button>
+            </span>
+          ) : null}
         </div>
         {chosen.length === 0 ? (
           <p className="text-sm text-on-surface-variant">No venue chosen yet. Choose your ideal venue below, or continue without one.</p>
@@ -181,7 +183,7 @@ export function RequestVenueStep({ values, knownNames, onChange, save }: Request
                       <span className={`font-semibold ${check.unavailable ? "text-error" : "text-success"}`}>{check.unavailable ? `Unavailable at this time (${check.label.replace(/^Unavailable – /, "")})` : check.label}</span>
                     ) : null}
                     {window ? (
-                      <Button type="button" variant="quiet" aria-expanded={openVenue === venueId} onClick={() => setOpenId(openVenue === venueId ? null : venueId)}>
+                      <Button type="button" variant="secondary" aria-expanded={openVenue === venueId} onClick={() => setOpenId(openVenue === venueId ? null : venueId)}>
                         <Icon name="calendar" size={16} />{openVenue === venueId ? "Hide calendar" : "Set time on calendar"}
                       </Button>
                     ) : null}
@@ -206,9 +208,9 @@ export function RequestVenueStep({ values, knownNames, onChange, save }: Request
                         bounds={eventWindow}
                         onChange={onCalendarChange}
                         onCollapse={() => setOpenId(null)}
-                        otherChoices={chosen.flatMap((otherId, otherIndex) => {
+                        otherChoices={chosen.flatMap((otherId) => {
                           const other = otherId === venueId ? null : windowOf(otherId);
-                          return other ? [{ label: `Your choice ${otherIndex + 1}: ${nameOf(otherId)}`, ...other }] : [];
+                          return other ? [other] : [];
                         })}
                       />
                     </div>

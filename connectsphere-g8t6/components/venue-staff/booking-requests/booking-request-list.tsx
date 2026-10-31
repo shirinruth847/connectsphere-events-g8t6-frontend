@@ -20,7 +20,8 @@ import {
 import { BOOKING_SORT_OPTIONS, MAX_SEARCH_LENGTH, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
 import { BOOKING_BORDERS, BookingStatusChip } from "./booking-status-chip";
 import { useOpenedBookings } from "./use-opened-bookings";
-import { useHoldRequests } from "./hold-request-list";
+import { RequestTypeTag, useHoldRequests } from "./hold-request-list";
+import type { HoldRequestStatus, VenueHoldRequest } from "@/lib/api/venue-holds";
 
 type ListState =
   | { status: "loading" }
@@ -28,10 +29,29 @@ type ListState =
   | { status: "error"; message: string; fields?: Record<string, string> };
 
 type Option = { value: string; label: string };
-type Filters = { status: string; venueId: string; date: string };
+type RequestType = "" | "BOOKING" | "HOLD";
+type Filters = { type: RequestType; status: string; venueId: string; date: string };
+type RequestItem = { kind: "BOOKING"; booking: VenueBookingListItem } | { kind: "HOLD"; request: VenueHoldRequest };
 
-const STATUS_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected", CANCELLED: "Cancelled" };
-const EMPTY_FILTERS: Filters = { status: "", venueId: "", date: "" };
+// One status filter for both kinds: a hold request's outcome reads as the
+// booking status it corresponds to.
+const STATUS_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved / hold placed", REJECTED: "Rejected / declined", CANCELLED: "Cancelled / withdrawn" };
+const HOLD_STATUS_FOR: Record<string, HoldRequestStatus> = { PENDING: "PENDING", APPROVED: "PLACED", REJECTED: "DECLINED", CANCELLED: "WITHDRAWN" };
+const TYPE_OPTIONS: Option[] = [{ value: "BOOKING", label: "Booking requests" }, { value: "HOLD", label: "Hold requests" }];
+const EMPTY_FILTERS: Filters = { type: "", status: "", venueId: "", date: "" };
+const sgtDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore", year: "numeric", month: "2-digit", day: "2-digit" });
+
+// The booking filters, applied to hold requests in the browser.
+const holdMatches = (request: VenueHoldRequest, filters: Filters, q: string) => {
+  if (filters.status && request.status !== HOLD_STATUS_FOR[filters.status]) return false;
+  if (filters.venueId && String(request.venueId) !== filters.venueId) return false;
+  if (filters.date && sgtDate.format(new Date(request.start)) !== filters.date) return false;
+  const text = q.toLowerCase();
+  return !text || [request.eventTitle, request.requestId, request.venueName, request.label]
+    .some((value) => value?.toLowerCase().includes(text));
+};
+
+const itemStart = (item: RequestItem) => Date.parse(item.kind === "BOOKING" ? item.booking.startDatetime : item.request.start);
 // The direction each sort starts in when it is chosen.
 const DEFAULT_ORDER: Record<BookingSort, SortOrder> = {
   default: "asc",
@@ -61,6 +81,7 @@ function BookingRequestCard({ booking, openedAt, onOpen }: { booking: VenueBooki
         <BookingStatusChip status={booking.status} label={booking.statusLabel} />
       </div>
       <p className="-mt-2 text-xs text-on-surface-variant">
+        <RequestTypeTag>Booking request</RequestTypeTag>
         {venue} · <span className="font-mono">{booking.event.requestId}</span>
         {booking.fromHold ? <span className="ml-2 inline-flex rounded-chip bg-[#FEF3C7] px-1.5 py-0.5 text-[11px] font-semibold text-[#92400E]">From hold</span> : null}
       </p>
@@ -111,10 +132,11 @@ function FilterSelect({ id, label, value, options, allLabel, width, onChange }: 
   );
 }
 
-// The Venue Staff dashboard and "My Requests" tab (SPM-181): every venue
-// booking request, pending first by default, searchable as you type (booking
+// The Venue Staff dashboard and "My Requests" tab (SPM-181): every booking
+// request and hold request (SPM-190) in one list (developer request of 1
+// November 2026), pending first by default, searchable as you type (booking
 // ID, request ID, event title, venue or label), sortable and filterable by
-// status, venue and date.
+// type, status, venue and date.
 export function BookingRequestList() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [search, setSearch] = useState("");
@@ -126,10 +148,13 @@ export function BookingRequestList() {
   const [attempt, setAttempt] = useState(0);
   const venueOptions = useVenueOptions();
   const { opened, markOpened } = useOpenedBookings();
-  const holdRequests = useHoldRequests();
-  const filtered = Boolean(filters.status || filters.venueId || filters.date || q);
+  const holds = useHoldRequests();
+  const filtered = Boolean(filters.type || filters.status || filters.venueId || filters.date || q);
 
-  const request: VenueBookingFilters = useMemo(() => ({ ...filters, q, sort, order }), [filters, q, sort, order]);
+  const request: VenueBookingFilters = useMemo(
+    () => ({ status: filters.status, venueId: filters.venueId, date: filters.date, q, sort, order }),
+    [filters.status, filters.venueId, filters.date, q, sort, order],
+  );
 
   // `alive` drops a slower response for a search or filter that has since changed.
   useEffect(() => {
@@ -168,43 +193,41 @@ export function BookingRequestList() {
     () => (venueOptions.venues ?? []).map((venue) => ({ value: String(venue.venueId), label: venue.name })),
     [venueOptions.venues],
   );
-  const update = (key: keyof Filters) => (value: string) => setFilters((current) => ({ ...current, [key]: value }));
-  const visibleBookings = state.status === "ready"
+  const update = (key: Exclude<keyof Filters, "type">) => (value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const visibleBookings = state.status === "ready" && filters.type !== "HOLD"
     ? (sort === "lastAccessed" ? sortByLastAccessed(state.bookings, opened, order) : state.bookings)
     : [];
+  const holdRequests = holds.state.status === "ready" ? holds.state.requests : [];
+  const visibleHolds = filters.type !== "BOOKING" ? holdRequests.filter((item) => holdMatches(item, filters, q)) : [];
+  // Pending hold requests lead, as pending bookings do; by date, everything
+  // is ordered by its start.
+  const items: RequestItem[] = (() => {
+    const bookingItems = visibleBookings.map((booking): RequestItem => ({ kind: "BOOKING", booking }));
+    const holdItems = visibleHolds.map((hold): RequestItem => ({ kind: "HOLD", request: hold }));
+    if (sort === "date") return [...bookingItems, ...holdItems].sort((a, b) => (itemStart(a) - itemStart(b)) * (order === "desc" ? -1 : 1));
+    const pendingHolds = holdItems.filter((item) => item.kind === "HOLD" && item.request.status === "PENDING");
+    return [...pendingHolds, ...bookingItems, ...holdItems.filter((item) => !pendingHolds.includes(item))];
+  })();
+  // Both kinds count: a placed hold counts as approved.
+  const pendingCount = (state.status === "ready" ? state.pendingCount : 0) + holdRequests.filter((item) => item.status === "PENDING").length;
+  const approvedCount = (state.status === "ready" ? state.approvedCount : 0) + holdRequests.filter((item) => item.status === "PLACED").length;
 
   return (
     <PageContent
       title="My Requests"
       eyebrow={ROLE_LABELS.VENUE_STAFF}
-      description="Review hold and booking requests from event coordinators in one place. Holds temporarily protect a venue; bookings are the requests you approve or reject."
+      description="Booking and hold requests from event coordinators. A hold keeps a venue for a few days while the coordinator confirms with the organiser; a booking request asks you to approve the venue for the event."
       action={
         state.status === "ready" ? (
           <div className="flex flex-wrap gap-2">
-            <CountTile count={state.pendingCount + (holdRequests.state.status === "ready" ? holdRequests.state.pendingCount : 0)} label="Pending" />
-            <CountTile count={state.approvedCount} label="Approved" />
+            <CountTile count={pendingCount} label="Pending" />
+            <CountTile count={approvedCount} label="Approved" />
           </div>
         ) : null
       }
     >
-      <section aria-labelledby="venue-requests-heading" className="mb-6 grid gap-3">
-        <div>
-          <h2 id="venue-requests-heading" className="text-lg font-semibold text-on-surface">Hold and booking requests</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Process pending holds when a coordinator needs time to obtain organiser confirmation, then review booking requests for final venue approval.</p>
-        </div>
-        {holdRequests.notice ? <AlertBanner tone={holdRequests.notice.tone} live={false}>{holdRequests.notice.text}</AlertBanner> : null}
-        {holdRequests.state.status === "loading" ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-48 w-full" /></div> : null}
-        {holdRequests.state.status === "error" ? <AlertBanner tone="error" title="Could not load hold requests">{holdRequests.state.message}<div className="mt-3"><Button variant="secondary" onClick={holdRequests.reload}><Icon name="refresh" size={16} />Try again</Button></div></AlertBanner> : null}
-        {holdRequests.state.status === "ready" && holdRequests.state.requests.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-label="Hold requests">
-            {holdRequests.state.requests.map(holdRequests.card)}
-          </div>
-        ) : null}
-        {holdRequests.state.status === "ready" && holdRequests.state.requests.length === 0 ? <p className="text-sm text-on-surface-variant">No hold requests.</p> : null}
-        {holdRequests.dialog}
-      </section>
-      <h2 className="mb-3 text-lg font-semibold text-on-surface">Booking requests</h2>
-      <section aria-label="Search, sort and filter booking requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
+      <h2 className="mb-3 text-lg font-semibold text-on-surface">Requests</h2>
+      <section aria-label="Search, sort and filter requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
         {/* Clear is always present (disabled when empty), so typing never resizes the box. */}
         <div className="grid min-w-[14rem] flex-1 gap-1">
           <label htmlFor="booking-search" className="text-xs font-semibold text-on-surface-variant">Search</label>
@@ -220,8 +243,10 @@ export function BookingRequestList() {
           />
           <span id="booking-search-hint" className="sr-only">Results update as you type.</span>
         </div>
-        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[9.5rem]"
-          options={VENUE_BOOKING_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))} onChange={update("status")} />
+        <FilterSelect id="request-type" label="Type" value={filters.type} allLabel="All requests" width="w-[10.5rem]"
+          options={TYPE_OPTIONS} onChange={(value) => setFilters((current) => ({ ...current, type: value as RequestType }))} />
+        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[12rem]"
+          options={VENUE_BOOKING_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] ?? value }))} onChange={update("status")} />
         <div className="grid gap-1">
           <label htmlFor="booking-venue" className="text-xs font-semibold text-on-surface-variant">Venue</label>
           <OptionDropdown id="booking-venue" label="Venue" allLabel="All venues" className="w-[13rem]" value={filters.venueId} options={venueChoices} onChange={update("venueId")} />
@@ -240,19 +265,29 @@ export function BookingRequestList() {
       </section>
 
       <div aria-live="polite">
-        {state.status === "ready" && state.pendingCount === 0 ? (
-          <div className="mb-5"><AlertBanner tone="info" live={false}>No pending booking requests.</AlertBanner></div>
+        {holds.notice ? <div className="mb-4"><AlertBanner tone={holds.notice.tone} live={false}>{holds.notice.text}</AlertBanner></div> : null}
+        {state.status === "ready" && pendingCount === 0 ? (
+          <div className="mb-5"><AlertBanner tone="info" live={false}>No pending requests.</AlertBanner></div>
         ) : null}
-        {state.status === "ready" && state.pendingCount > 0 ? (
+        {state.status === "ready" && pendingCount > 0 ? (
           <p className="mb-4 text-sm font-semibold text-on-surface">
-            {state.pendingCount} pending {state.pendingCount === 1 ? "request" : "requests"} awaiting review
+            {pendingCount} pending {pendingCount === 1 ? "request" : "requests"} awaiting review
           </p>
         ) : null}
         {busy && state.status === "ready" ? <p className="mb-2 text-xs text-on-surface-variant">Updating…</p> : null}
       </div>
 
+      {holds.state.status === "error" ? (
+        <div className="mb-4">
+          <AlertBanner tone="error" title="Could not load hold requests">
+            {holds.state.message}
+            <div className="mt-3"><Button variant="secondary" onClick={holds.reload}><Icon name="refresh" size={16} />Try again</Button></div>
+          </AlertBanner>
+        </div>
+      ) : null}
+
       {state.status === "loading" ? (
-        <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading booking requests">
+        <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading requests">
           {[0, 1, 2].map((key) => <Skeleton key={key} className="h-48 w-full" />)}
         </div>
       ) : null}
@@ -264,31 +299,32 @@ export function BookingRequestList() {
         </AlertBanner>
       ) : null}
 
-      {state.status === "ready" && visibleBookings.length === 0 ? (
+      {state.status === "ready" && items.length === 0 ? (
         <EmptyState
-          title={filtered ? "No matching booking requests" : "No booking requests yet"}
-          description={filtered ? "No venue booking matches this search or these filters. Clear them to see more." : "Booking requests from event coordinators appear here."}
+          title={filtered ? "No matching requests" : "No requests yet"}
+          description={filtered ? "No booking or hold request matches this search or these filters. Clear them to see more." : "Booking and hold requests from event coordinators appear here."}
           action={filtered ? <Button variant="secondary" onClick={clearAll}>Clear search and filters</Button> : undefined}
         />
       ) : null}
 
-      {state.status === "ready" && visibleBookings.length > 0 ? (
+      {state.status === "ready" && items.length > 0 ? (
         <>
           <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy={busy}>
-            {visibleBookings.map((booking) => (
+            {items.map((item) => (item.kind === "HOLD" ? holds.card(item.request) : (
               <BookingRequestCard
-                key={booking.bookingId}
-                booking={booking}
-                openedAt={opened[String(booking.bookingId)] ?? null}
-                onOpen={() => markOpened(booking.bookingId)}
+                key={`booking-${item.booking.bookingId}`}
+                booking={item.booking}
+                openedAt={opened[String(item.booking.bookingId)] ?? null}
+                onOpen={() => markOpened(item.booking.bookingId)}
               />
-            ))}
+            )))}
           </div>
           {state.hasMore ? (
-            <p className="mt-4 text-sm text-on-surface-variant">Showing the first {visibleBookings.length} requests. Narrow the search or filters to see the rest.</p>
+            <p className="mt-4 text-sm text-on-surface-variant">Showing the first {visibleBookings.length} booking requests. Narrow the search or filters to see the rest.</p>
           ) : null}
         </>
       ) : null}
+      {holds.dialog}
     </PageContent>
   );
 }

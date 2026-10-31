@@ -37,8 +37,11 @@ export const layoutLabel = (layout: string | null) =>
 
 // The event API returns venue and equipment IDs only; names need the venue and
 // equipment catalogues, which are not in SPM-33's scope.
-export const venuePreferenceLabel = (venueIds: number[]) =>
-  venueIds.length ? venueIds.map((id, index) => `${index + 1}. Venue #${id}`).join(", ") : "No preference";
+// Names come with the choices (SPM-76); an ID only where a name is missing.
+export const venuePreferenceLabel = (venueIds: number[], choices: EventView["venuePreferenceTimes"] = []) => {
+  const names = new Map((choices ?? []).map((choice) => [choice.venueId, choice.venueName]));
+  return venueIds.length ? venueIds.map((id, index) => `${index + 1}. ${names.get(id) ?? `Venue #${id}`}`).join(", ") : "No preference";
+};
 
 export function scheduleRows(event: EventView): KeyValueRow[] {
   const duration = formatDuration(event.startDatetime, event.endDatetime);
@@ -59,7 +62,7 @@ export function layoutRows(event: EventView): KeyValueRow[] {
 
 export function venueRows(event: EventView): KeyValueRow[] {
   return [
-    { icon: "venue", label: "Venue preferences", value: venuePreferenceLabel(event.venuePreferences) },
+    { icon: "venue", label: "Venue preferences", value: venuePreferenceLabel(event.venuePreferences, event.venuePreferenceTimes) },
     ...layoutRows(event),
   ];
 }
