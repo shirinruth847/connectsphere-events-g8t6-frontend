@@ -17,7 +17,7 @@ const eventView = (overrides = {}) => ({
   expectedAttendance: 120,
   preferredLayoutType: "THEATRE",
   accessibilityNeeds: [],
-  venuePreferences: [],
+  venuePreferences: [1],
   equipmentRequirements: [],
   isRegistrationEnabled: false,
   registrationCapacity: null,
@@ -490,3 +490,19 @@ test('[SPM-39] reauthentication after approval expiry reuses the retained key an
   expect(requests[1]).toEqual(requests[0]);
   expect(await page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('connectsphere:recovery:spm39:')))).toEqual([]);
 });
+
+
+for (const mobile of [false, true]) {
+  test(`[SPM-39] missing venue preference blocks approval ${mobile ? 'mobile' : 'desktop'}`, async ({ page }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const requests = [];
+    await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+    await routeLifecycle(page, { event: eventView({ status: 'UNDER_REVIEW', venuePreferences: [] }), requests });
+    await page.goto('/events/42');
+    await expect(page.getByRole('button', { name: 'Approve request', exact: true })).toBeDisabled();
+    await expect(page.getByText('A venue preference is required before approving this request.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Approve event request?' })).toHaveCount(0);
+    expect(requests).toHaveLength(0);
+    await attachScreenshot(testInfo, page, `spm39-missing-venue-${mobile ? 'mobile' : 'desktop'}`);
+  });
+}

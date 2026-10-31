@@ -121,3 +121,37 @@ status banner, and the complete suite was rerun successfully.
 Logs, the final JSON results and the browser report are retained in
 `/private/tmp/spm39-integration.PTK5Hg/`. Those are local execution artifacts,
 not a claim of hosted end-to-end or separate-client concurrency verification.
+
+
+## Missing venue preference guard — 31 October 2026
+
+Confirmed a frontend defect: an UNDER_REVIEW request with an empty
+venuePreferences array could open approval confirmation. The deployed
+accept_event_feasibility function already refuses this case with
+FEASIBILITY_REQUIREMENTS_MISSING and leaves the event unchanged; inspection
+found the expected migration deployed. A confirmed booking is not required
+at this stage: SPM-39 requires a venue preference, and bookings follow in planning.
+
+LifecyclePanel now disables both Approve request and Confirm approval when
+there is no venue preference and displays the missing requirement. Its action
+handler also refuses the command. Existing unsaved-edit blocking retains priority.
+The backend remains authoritative for stale data and direct API requests.
+
+Corrected lifecycle happy-path mocks to contain a venue preference. Added
+explicit desktop/mobile empty-preference regressions: both failed before the
+fix and pass afterwards; no POST or confirmation dialog is produced.
+
+Checks performed for this fix:
+
+- npm run lint: passed.
+- npm test: 176 passed.
+- npm run test:e2e -- tests/e2e/lifecycle.spec.mjs: 30 passed, including
+  production build/type checks and desktop/mobile screenshots.
+- Backend node --test tests/database/spm39Feasibility.test.cjs: 23 passed,
+  including missing venue preference refusal without business/audit/notice/key effects.
+- git diff --check: passed.
+
+Browser tests use mocked API/Auth; database tests use isolated PGlite. Hosted
+function inspection was read-only. No shared database writes or migration
+changes were performed for this fix. Logs: /tmp/spm39-missing-venue-before.log,
+/tmp/spm39-missing-venue-after.log and /tmp/spm39-approval-sql.log.
