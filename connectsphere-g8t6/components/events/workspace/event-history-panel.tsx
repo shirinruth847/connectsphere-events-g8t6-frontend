@@ -8,6 +8,7 @@ import { SectionHeading } from "@/components/shared/section-heading";
 import type { EventHistoryEntry, EventView } from "@/lib/api/event-workspace";
 import { formatTimestamp } from "@/lib/datetime";
 import { isNewHistoryEntry } from "@/lib/event-history";
+import { visibleHistoryChanges } from "@/lib/technical-requests";
 import { fieldLabel } from "./event-detail-rows";
 import { useEventHistory, type useHistory } from "./use-event-history";
 
@@ -48,6 +49,10 @@ const ACTION_LABELS: Record<string, string> = {
   VENUE_PHOTO_UPDATED: "Photo edited",
   VENUE_PHOTO_REPLACED: "Photo replaced",
   VENUE_PHOTO_DELETED: "Photo deleted",
+  // SPM-286/287 technical requests.
+  TECHNICAL_REQUEST_SENT: "Technical request sent",
+  TECHNICAL_REQUEST_APPROVED: "Technical request approved",
+  TECHNICAL_REQUEST_REJECTED: "Technical request rejected",
 };
 
 // Fields only venue records carry; event fields, including SPM-195's block
@@ -144,6 +149,15 @@ function ChangeValue({ change, organiserView, statusLabels }: { change: EventHis
       </dd>
     );
   }
+  // Labelled values from the API or readableHistoryChange, e.g. a technical request's Pending → Approved.
+  if (change.field !== "status" && (change.beforeLabel || change.afterLabel)) {
+    return (
+      <dd className="mt-1 grid gap-0.5 text-on-surface">
+        <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {change.beforeLabel ?? "—"}</span>
+        <span className="line-clamp-3"><span className="font-semibold">To:</span> {change.afterLabel ?? "—"}</span>
+      </dd>
+    );
+  }
   return (
     <dd className="mt-1 grid gap-0.5 text-on-surface">
       <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {change.field === "status" ? historyStatus(change, "before", organiserView, statusLabels) : formatValue(change.field, change.before)}</span>
@@ -154,6 +168,8 @@ function ChangeValue({ change, organiserView, statusLabels }: { change: EventHis
 
 function HistoryItem({ entry, isNew, organiserView, statusLabels }: { entry: EventHistoryEntry; isNew: boolean; organiserView: boolean; statusLabels?: StatusLabels }) {
   const statusChange = entry.changes.find((change) => change.field === "status");
+  // Empty diffs are hidden; technical request fields read as "Technical request".
+  const changes = visibleHistoryChanges(entry.changes);
   return (
     <li className={`relative pl-7 ${isNew ? UNSEEN_LINE : ""}`} data-unseen={isNew ? "true" : undefined}>
       <span aria-hidden="true" className="absolute left-0 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-primary-fixed text-primary">
@@ -176,11 +192,11 @@ function HistoryItem({ entry, isNew, organiserView, statusLabels }: { entry: Eve
       ) : entry.action === "EVENT_SUBMITTED" ? (
         <p className="mt-1 text-xs text-on-surface-variant">Request status: Submitted</p>
       ) : null}
-      {entry.changes.length ? (
+      {changes.length ? (
         <dl className="mt-2 grid gap-2 rounded-control bg-surface-container-low p-3">
-          {entry.changes.map((change) => (
+          {changes.map((change) => (
             <div key={change.field} className="text-xs">
-              <dt className="font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{historyFieldLabel(change.field)}</dt>
+              <dt className="font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{change.label ?? historyFieldLabel(change.field)}</dt>
               <ChangeValue change={change} organiserView={organiserView} statusLabels={statusLabels} />
             </div>
           ))}

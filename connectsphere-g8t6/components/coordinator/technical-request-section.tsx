@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
-import { BookingStatusChip, BOOKING_BORDERS } from "@/components/venue-staff/booking-requests/booking-status-chip";
+import { BookingStatusChip } from "@/components/venue-staff/booking-requests/booking-status-chip";
+import { TechnicalRequestCards } from "@/components/events/equipment/technical-request-cards";
 import { EquipmentRequirementsEditor } from "@/components/events/equipment/equipment-requirements-editor";
 import { useEquipmentAvailability } from "@/components/events/equipment/use-equipment-availability";
 import { ApiError } from "@/lib/api";
@@ -71,7 +72,8 @@ export function TechnicalRequestSection({ event, onSent, onStale }: TechnicalReq
   }, [event.eventId, event.arrangementVersion, attempt]);
 
   const sent = requests.status === "ready" ? requests.data.requests : [];
-  const active = sent.find((request) => ACTIVE.has(request.status));
+  // Lines without a request (seed data) do not block a new request; the backend checks headers only.
+  const active = sent.find((request) => request.requestId !== null && ACTIVE.has(request.status));
   const hasDates = Boolean(event.startDatetime && event.endDatetime);
   const canSend = isCoordinator && event.status === "PLANNING" && hasDates && requests.status !== "loading" && !active;
   const blocker = !isCoordinator
@@ -174,20 +176,12 @@ export function TechnicalRequestSection({ event, onSent, onStale }: TechnicalReq
           {requests.message}
           <div className="mt-3"><Button type="button" variant="secondary" onClick={reload}><Icon name="refresh" size={16} />Retry</Button></div>
         </AlertBanner>
-      ) : sent.length === 0 ? (
-        <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">No technical request has been sent yet.</p>
       ) : (
-        <ul className="grid gap-3">
-          {sent.map((request) => (
-            <li key={request.requestId} className={`grid min-w-0 gap-1 rounded-panel border-t-4 bg-surface-container-low p-4 ${BOOKING_BORDERS[request.status] ?? "border-t-outline-variant"}`}>
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <h4 className="font-mono text-xs text-on-surface-variant">Technical request #{request.requestId}</h4>
-                <BookingStatusChip status={request.status} label={technicalStatusLabel(request.status)} />
-              </div>
-              <p className="text-sm text-on-surface [overflow-wrap:anywhere]">{itemsSummary(request.equipment)}</p>
-            </li>
-          ))}
-        </ul>
+        <TechnicalRequestCards
+          requests={sent}
+          status={(request) => <BookingStatusChip status={request.status} label={technicalStatusLabel(request.status)} />}
+          empty="No technical request has been sent yet."
+        />
       )}
 
       {blocker && requests.status !== "loading" ? (
