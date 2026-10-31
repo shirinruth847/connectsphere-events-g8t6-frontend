@@ -695,8 +695,8 @@ async function main() {
    assert(errors.length===0,'Browser runtime error: '+errors.join('; '));record('real logout and token revocation',{role});
   } finally {await Promise.allSettled(tracked);await context.close();}
  }
- if(!process.env.LIVE_ROLES||process.env.LIVE_ROLES.split(',').includes('ATTENDEE'))await attendeeProfileLive();
  const attendee=users.find(user=>user.role==='ATTENDEE');
+ if(!process.env.LIVE_ROLES||process.env.LIVE_ROLES.split(',').includes('ATTENDEE'))await attendeeProfileLive(); // SPM-163/147 journeys: tests/live/spm-163-147-waitlist.live.spec.mjs
  if(attendee)await verifySignedOutRedirectBack(attendee);
 }
 (async()=>{try{await main();}catch(e){record('failure',{message:e.message});process.exitCode=1;}finally{try{await cleanup();}catch(e){record('cleanup failure',{message:e.message});process.exitCode=1;}if(browser)await browser.close();fs.writeFileSync(output,JSON.stringify({runId,createdEventIds:[...ids],checks},null,2));}})();

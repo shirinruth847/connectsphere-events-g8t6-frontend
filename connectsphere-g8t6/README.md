@@ -119,7 +119,9 @@ Validation used Node.js 24.9.0.
   attendees that wrote registration history stay deactivated, as the backend
   cleanup documents. Needs the sibling backend repository and its private
   `.env` (CONNECTSPHERE_BACKEND_DIR and LIVE_FRONTEND_URL/LIVE_BACKEND_URL may
-  override). SPM-134 registration: `npm run test:e2e:live -- --grep SPM-134`.
+  override). SPM-134 registration: `npm run test:e2e:live -- --grep SPM-134`;
+  SPM-163/147 waitlist and withdrawal:
+  `npm run test:e2e:live -- spm-163-147-waitlist.live.spec.mjs`.
 
 The live checker reads the backend's private environment only in its Node.js
 process; no private key is bundled into the browser. Rebuild/restart the normal
@@ -202,9 +204,10 @@ Published `CONFIRMED` and `PREPARATION` events are eligible under Master §5.3;
 ended events are excluded by the current backend query.
 
 Cards retain the labels **Registration Open**, **Full - Waitlist** and
-**Registration Closed**. Events without registration show no registration
-wording or actions. Register/waitlist/notify buttons remain unavailable with
-an explanatory note; SPM-44 does not implement registration writes. A detail
+**Registration Closed**, with **Not Yet Open** and **Unavailable** from
+SPM-134. Each card, the details dialog and `/events/[eventId]` show one
+registration state: Register Now (SPM-134), Join Waitlist for a full event
+(SPM-163), the attendee's own place, or a disabled state. A detail
 404 removes the discovery card and replaces the dialog's stale title with
 **Event unavailable**. Session expiry, denied access and retryable failures
 have distinct states.
@@ -268,15 +271,40 @@ of the five latest notifications; **See more** and the attendee sidebar's
   confirmed (`LastConfirmedNotice`). Without such a confirmation, or when not
   published, it shows only its title, status and a short notice. Both notices
   state only what is known ("This event has been cancelled" or "This event's
-  details are being confirmed"), without promising a notification
-  (`TODO(SPM-163)` marks the offer follow-up). The attendee's own place reads
+  details are being confirmed"), without promising a notification. The attendee's own place reads
   "On the waitlist"; Event Discovery uses "Full - Waitlist" for an event
   at capacity. My Events and notification links continue to open this dialog using
   the registration endpoint. SPM-44 also supports direct `/events/<id>` URLs
   through the attendee discovery endpoint; those URLs remain the role-specific
   workspace for staff.
-- Accept Slot and Decline for waitlist offers belong to SPM-163; the
-  notification shows the offer expiry, and the dialog keeps a footer slot.
+- Opened from My Events, the dialog's footer holds the actions on the
+  attendee's own place (SPM-163, SPM-147; see below).
+
+## Waitlist and withdrawal (SPM-163 / SPM-147)
+
+- A full event (`FULL_WAITLIST`) offers **Join Waitlist** on its discovery
+  card, in the details dialog and on `/events/[eventId]`, once the attendee's
+  places (`GET /api/registrations/mine`) have loaded with none for the event;
+  until then it shows the disabled **Registration Full**. The confirmation
+  ("This event is full. Join the waitlist?", **Join Waitlist** / **Not Now**)
+  carries SPM-134's two answers; they survive a session expiry and are
+  restored for the attendee to confirm, never sent automatically.
+- My Events (`/my-registrations`) and its details dialog hold the actions on
+  the attendee's own place: **Accept Slot** / **Decline** for an open offer,
+  with its deadline in SGT; **Leave Waitlist**; **Withdraw Registration**.
+  Each asks first and sends one request with an `Idempotency-Key`
+  (`lib/api/registration-actions.ts`).
+- The backend decides queue positions, offers, deadlines and every refusal.
+  The browser clock never hides an offer or Withdraw; a late answer is refused
+  (`OFFER_EXPIRED`, `EVENT_STARTED`) and the place is read again.
+- Each confirmed change sends `connectsphere:notifications-changed`, so the
+  Updates badge is read again at once.
+- Withdrawn places are not returned by the backend, so a withdrawn or left
+  event leaves My Events; there is no history list. My Events orders events
+  going ahead soonest first, then cancelled and completed ones.
+
+Browser journeys: `npm run test:e2e -- spm-163-147.spec.mjs`; live:
+`npm run test:e2e:live -- spm-163-147-waitlist.live.spec.mjs`.
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.

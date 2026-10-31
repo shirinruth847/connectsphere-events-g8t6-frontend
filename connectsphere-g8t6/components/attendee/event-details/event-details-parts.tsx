@@ -7,6 +7,8 @@ import { LOCATION_PENDING_LABEL } from "@/components/attendee/discovery/event-di
 import { formatEventDate, formatEventTime, formatTimestamp } from "@/components/attendee/discovery/format-event-time";
 import { getRegistrationState, showsRegistrationWindow } from "@/components/attendee/discovery/registration-availability";
 import { RegistrationStateControl } from "@/components/attendee/discovery/registration-state-control";
+import { placeActions, placeLabel } from "@/components/attendee/registration-actions/registration-action-rules";
+import { RegistrationActions, type RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { AlertBanner } from "@/components/shared/primitives";
 import type { AttendeeEventDetail } from "@/lib/api/discovery";
 import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
@@ -106,9 +108,8 @@ export function MyPlaceCard({ registration }: { registration: AttendeeRegistrati
   return (
     <section aria-labelledby={headingId} className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
       <SectionLabel id={headingId}>Your place</SectionLabel>
-      <p className="mt-2 text-sm font-semibold text-on-surface">
-        {waitlisted ? "On the waitlist · a place is not yet confirmed" : "Registered"}
-      </p>
+      <p className="mt-2 text-sm font-semibold text-on-surface">{placeLabel(registration)}</p>
+      {waitlisted ? <p className="mt-1 text-xs text-on-surface-variant">A place is not yet confirmed.</p> : null}
       {registration.registeredAt ? (
         <p className="mt-1 text-xs text-on-surface-variant">Since {formatTimestamp(registration.registeredAt)}</p>
       ) : null}
@@ -150,13 +151,38 @@ export function placeRows(event: AttendeeEventDetail): DiscoveryDetailRow[] {
 export interface RegistrationEntry {
   placesKnown: boolean;
   onRegister: (trigger: HTMLButtonElement) => void;
+  // Opens the Join Waitlist confirmation for a full event (SPM-163).
+  onJoinWaitlist?: (trigger: HTMLButtonElement) => void;
 }
 
 // The registration area of an event, shared by the event details dialog and
 // the /events/[eventId] page, with the same states as the Event Discovery card
-// (getRegistrationState). Surfaces without an entry point (My Events) and
-// withheld details get none.
-export function RegistrationActionBar({ event, register, className }: { event: AttendeeEventView; register?: RegistrationEntry; className: string }) {
+// (getRegistrationState). On My Events, which handles changes to a place, it
+// holds the actions on the attendee's own place: Accept Slot and Decline for
+// an open offer, Leave Waitlist (SPM-163) or Withdraw Registration (SPM-147).
+// Elsewhere a full event offers Join Waitlist once the attendee's places
+// are known, as on the card (SPM-163). Withheld details get none.
+export function RegistrationActionBar({
+  event,
+  register,
+  onRegistrationChange,
+  className,
+}: {
+  event: AttendeeEventView;
+  register?: RegistrationEntry;
+  onRegistrationChange?: (change: RegistrationChange) => void;
+  className: string;
+}) {
+  const footerClasses = `flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${className}`;
+  if (event.myRegistration && onRegistrationChange) {
+    const place = { registration: event.myRegistration, attendeeStatus: event.attendeeStatus };
+    if (!placeActions(place).length) return null;
+    return (
+      <footer className={footerClasses}>
+        <RegistrationActions eventId={event.eventId} title={event.title} place={place} onChange={onRegistrationChange} className="w-full sm:items-end" />
+      </footer>
+    );
+  }
   if (!register || event.detailsWithheld) return null;
   const state = getRegistrationState(event.registrationAvailability, event.myRegistration ?? null, register.placesKnown);
   if (!state) return null;
@@ -165,26 +191,33 @@ export function RegistrationActionBar({ event, register, className }: { event: A
   const opensAt = state.kind === "unavailable" && event.registrationAvailability === "NOT_YET_OPEN" ? formatTimestamp(event.registrationOpenAt) : null;
 
   return (
-    <footer className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3 ${className}`}>
+    <footer className={footerClasses}>
       <RegistrationStateControl
         state={state}
         eventTitle={event.title}
         onRegister={register.onRegister}
+        onJoinWaitlist={register.onJoinWaitlist}
         note={opensAt ? `Registration opens ${opensAt}.` : null}
       />
-      {/* TODO(SPM-163): Accept Slot and Decline for a waitlist offer go in this
-          footer (tertiary Accept, secondary Decline) with the offer expiry,
-          driven by myRegistration.offer. */}
     </footer>
   );
 }
 
 // The dialog's footer from the frame (282:1271).
-export function EventDetailsFooter({ event, register }: { event: AttendeeEventView; register?: RegistrationEntry }) {
+export function EventDetailsFooter({
+  event,
+  register,
+  onRegistrationChange,
+}: {
+  event: AttendeeEventView;
+  register?: RegistrationEntry;
+  onRegistrationChange?: (change: RegistrationChange) => void;
+}) {
   return (
     <RegistrationActionBar
       event={event}
       register={register}
+      onRegistrationChange={onRegistrationChange}
       className="border-t border-outline-variant/60 bg-surface-container-lowest px-5 py-4"
     />
   );

@@ -20,11 +20,13 @@ interface EventDiscoveryCardProps {
   // Whether the attendee's places have loaded; Register Now waits for them.
   placesKnown?: boolean;
   onRegister?: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
+  // Opens the waitlist confirmation for a full event (SPM-163).
+  onJoinWaitlist?: (event: AttendeeEventSummary, trigger: HTMLButtonElement) => void;
 }
 
 // List-row card from the "Event Discovery" Figma frame (282:346), limited to
 // fields the backend returns: no photos, tracks, speakers or capacity numbers.
-export function EventDiscoveryCard({ event, onViewDetails, place = null, placesKnown = false, onRegister }: EventDiscoveryCardProps) {
+export function EventDiscoveryCard({ event, onViewDetails, place = null, placesKnown = false, onRegister, onJoinWaitlist }: EventDiscoveryCardProps) {
   const availability = getAvailabilityPresentation(event.registrationAvailability);
   const registrationState = onRegister ? getRegistrationState(event.registrationAvailability, place, placesKnown) : null;
   const tile = formatDateTile(event.startDatetime);
@@ -106,6 +108,7 @@ export function EventDiscoveryCard({ event, onViewDetails, place = null, placesK
             state={registrationState}
             eventTitle={event.title}
             onRegister={(trigger) => onRegister(event, trigger)}
+            onJoinWaitlist={onJoinWaitlist ? (trigger) => onJoinWaitlist(event, trigger) : undefined}
           />
         ) : null}
       </div>
