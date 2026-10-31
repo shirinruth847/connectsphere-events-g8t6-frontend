@@ -7,12 +7,15 @@ export type BookingSort = "default" | "date" | "attendance" | "lastAccessed" | "
 export type SortOrder = "asc" | "desc";
 
 export const BOOKING_SORT_OPTIONS: { value: BookingSort; label: string }[] = [
-  { value: "default", label: "Pending first" },
+  { value: "default", label: "Request status" },
   { value: "date", label: "Date/time" },
   { value: "attendance", label: "Venue attendance" },
   { value: "lastAccessed", label: "Last accessed" },
   { value: "alphabetical", label: "Alphabetical (event)" },
 ];
+
+// The backend refuses a longer search (GET /api/venues/bookings `q`).
+export const MAX_SEARCH_LENGTH = 100;
 
 export interface VenueBookingFilters {
   status?: string;

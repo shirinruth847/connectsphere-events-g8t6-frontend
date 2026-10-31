@@ -412,6 +412,9 @@ test('[SPM-134 TC-REG-022 AC17] should_keep_answers_and_replay_the_original_regi
   });
   await submit(dialog).click();
   await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByText("We couldn't confirm your registration", { exact: true })).toBeVisible();
+  await expect(dialog).not.toContainText('Your registration was not submitted');
+  expect(await registrationsOn(event)).toHaveLength(1);
   await expect(registered(dialog)).toHaveCount(0);
   await expect(dietary(dialog)).toHaveValue('Halal');
   await page.waitForTimeout(1500);

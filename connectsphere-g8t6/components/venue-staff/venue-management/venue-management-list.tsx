@@ -140,21 +140,24 @@ function CreateVenueDialog({ open, onClose, onCreated }: {
 
 const formatMinutes = (minutes: number | null | undefined) => (minutes == null ? "Not recorded" : `${minutes} min`);
 
+// One information column and the action (SPM-186): no gap between them.
 function ManagedVenueRow({ venue }: { venue: ManagedVenue }) {
   return (
-    <li className="grid gap-3 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] sm:items-center">
-      <div className="min-w-0">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-panel bg-surface-container-lowest px-4 py-3 shadow-elevation-1">
+      <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-base font-semibold text-on-surface">{venue.name}</h3>
           <VenueStatusChip status={venue.status} />
         </div>
-        <p className="mt-1 text-sm text-on-surface-variant">{venue.address}</p>
-        {venue.statusReason ? <p className="mt-1 text-xs text-on-surface-variant">Reason: {venue.statusReason}</p> : null}
-      </div>
-      <div className="text-sm text-on-surface-variant">
-        <p><span className="font-semibold text-on-surface">{venue.maxCapacity.toLocaleString()}</span> capacity</p>
-        <p>Setup {formatMinutes(venue.setupMinutes)} · Turnaround {formatMinutes(venue.turnaroundMinutes)}</p>
-        <p>Updated {formatTimestamp(venue.updatedAt)}{venue.updatedBy?.name ? ` by ${venue.updatedBy.name}` : ""}</p>
+        <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-on-surface-variant">
+          <span className="min-w-0 truncate">{venue.address}</span>
+          <span><span className="font-semibold text-on-surface">{venue.maxCapacity.toLocaleString()}</span> capacity</span>
+          <span>Setup {formatMinutes(venue.setupMinutes)} · Turnaround {formatMinutes(venue.turnaroundMinutes)}</span>
+        </p>
+        {venue.statusReason ? <p className="mt-0.5 text-xs text-on-surface-variant">Reason: {venue.statusReason}</p> : null}
+        <p className="mt-0.5 text-xs italic text-slate-400">
+          Updated {formatTimestamp(venue.updatedAt)}{venue.updatedBy?.name ? ` by ${venue.updatedBy.name}` : ""}
+        </p>
       </div>
       <Link href={`/venues/${venue.venueId}`} className={buttonClasses("secondary")}>
         Manage<Icon name="arrow-forward" size={16} />
@@ -225,16 +228,15 @@ const readView = (): ViewMode => {
 // shown as a list or as large icons, with create and manage actions.
 export function VenueManagementList() {
   const [search, setSearch] = useState("");
-  const [location, setLocation] = useState("");
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState<ManagedVenueSort>("name");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [view, setView] = useState<ViewMode>("list");
   const debouncedSearch = useDebouncedValue(search.trim());
-  const debouncedLocation = useDebouncedValue(location.trim());
+  // One box searches name and location (SPM-186); the backend matches either.
   const filters: ManagedVenueFilters = useMemo(
-    () => ({ search: debouncedSearch, location: debouncedLocation, status, sort, order }),
-    [debouncedSearch, debouncedLocation, status, sort, order],
+    () => ({ search: debouncedSearch, status, sort, order }),
+    [debouncedSearch, status, sort, order],
   );
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [busy, setBusy] = useState(false);
@@ -244,7 +246,7 @@ export function VenueManagementList() {
   const [loadingMore, setLoadingMore] = useState(false);
   const listRequestId = useRef(0);
   const loadingMoreRef = useRef(false);
-  const filtered = Boolean(filters.search || filters.location || filters.status);
+  const filtered = Boolean(filters.search || filters.status);
 
   useEffect(() => {
     // The saved view is only readable in the browser.
@@ -279,7 +281,6 @@ export function VenueManagementList() {
   };
   const clear = () => {
     setSearch("");
-    setLocation("");
     setStatus("");
   };
   const reload = () => {
@@ -323,15 +324,11 @@ export function VenueManagementList() {
 
       <section
         aria-label="Search, sort and filter venues"
-        className="grid gap-3 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:grid-cols-2 xl:grid-cols-[2fr_2fr_1fr_1fr_0.5fr] xl:items-end"
+        className="grid gap-3 rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:grid-cols-2 xl:grid-cols-[3fr_1fr_1.5fr] xl:items-end"
       >
-        <div>
-          <FormLabel htmlFor="manage-search">Venue name</FormLabel>
-          <input id="manage-search" type="search" className={fieldClasses} placeholder="Search by name" value={search} onChange={(event) => setSearch(event.target.value)} />
-        </div>
-        <div>
-          <FormLabel htmlFor="manage-location">Location</FormLabel>
-          <input id="manage-location" type="search" className={fieldClasses} placeholder="Search by address" value={location} onChange={(event) => setLocation(event.target.value)} />
+        <div className="sm:col-span-2 xl:col-span-1">
+          <FormLabel htmlFor="manage-search">Search</FormLabel>
+          <input id="manage-search" type="search" className={fieldClasses} placeholder="Venue name or location" maxLength={150} value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         <div>
           <FormLabel htmlFor="manage-status">Status</FormLabel>
@@ -340,7 +337,7 @@ export function VenueManagementList() {
             {Object.entries(VENUE_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
-        <div className="xl:col-span-2">
+        <div>
           <FormLabel htmlFor="manage-sort">Sort by</FormLabel>
           <div className="flex gap-1">
             <select id="manage-sort" className={fieldClasses} value={sort} onChange={(event) => setSort(event.target.value as ManagedVenueSort)}>
@@ -349,7 +346,7 @@ export function VenueManagementList() {
             <SortOrderToggle order={order} onChange={setOrder} />
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2 xl:col-span-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2 xl:col-span-3">
           <p className="text-xs text-on-surface-variant">Results update as you type.</p>
           <div className="flex flex-wrap items-center gap-2">
             <div role="group" aria-label="Layout" className="flex gap-1">
@@ -359,7 +356,7 @@ export function VenueManagementList() {
                 </Button>
               ))}
             </div>
-            <Button type="button" variant="quiet" disabled={!filtered && !search && !location} onClick={clear}>Clear</Button>
+            <Button type="button" variant="quiet" disabled={!filtered && !search} onClick={clear}>Clear</Button>
           </div>
         </div>
       </section>

@@ -1,5 +1,6 @@
 import { ApiError, apiRequest, getBackendBaseUrl } from "@/lib/api";
 import { getAccessToken } from "@/lib/supabase";
+import type { EventHistoryEntry } from "@/lib/api/event-workspace";
 import {
   availabilityQuery,
   managedVenueQuery,
@@ -120,6 +121,17 @@ export type VenueOption = { venueId: number; name: string; status: VenueStatus }
 
 export const listVenueOptions = () => apiRequest<{ venues: VenueOption[] }>("/venues/manage/options");
 
+
+const historyQuery = ({ limit, cursor }: { limit: number; cursor?: string }) => {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return query.toString();
+};
+
+// A venue's own change history, staff-only (SPM-186).
+export const getVenueHistory = (venueId: number, options: { limit: number; cursor?: string }) =>
+  apiRequest<{ history: EventHistoryEntry[]; nextCursor: string | null }>(`/venues/${venueId}/history?${historyQuery(options)}`);
+
 export const getManagedVenue = (venueId: number) =>
   apiRequest<{ venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus }>(`/venues/${venueId}`);
 
@@ -129,11 +141,21 @@ export const createVenue = (input: VenueInput & { status: VenueStatus; statusRea
 export const updateVenue = (venueId: number, input: Partial<VenueInput> & { version: number }) =>
   apiRequest<{ message: string; venue: ManagedVenue; changed: boolean }>(`/venues/${venueId}`, { method: "PUT", body: JSON.stringify(input) });
 
+// An event with bookings ahead at a venue being taken out of service (T32).
+export type AffectedEvent = {
+  eventId: number;
+  requestId: string;
+  title: string;
+  status: string;
+  firstStart: string;
+  bookings: number;
+};
+
 export const changeVenueStatus = (
   venueId: number,
   input: { version: number; status: VenueStatus; reason?: string; confirmUpcomingBookings?: boolean },
 ) =>
-  apiRequest<{ message: string; venue: ManagedVenue; changed: boolean; upcomingBookings: number }>(
+  apiRequest<{ message: string; venue: ManagedVenue; changed: boolean; upcomingBookings: number; affectedEvents?: AffectedEvent[] }>(
     `/venues/${venueId}/status`,
     { method: "PUT", body: JSON.stringify(input) },
   );
@@ -248,6 +270,8 @@ export type VenueCalendar = {
   name: string;
   address: string;
   status: VenueStatus;
+  // Why the venue is out of service (maintenance etc.), or null.
+  statusReason?: string | null;
   operatingHours: string | null;
   setupMinutes: number | null;
   turnaroundMinutes: number | null;
@@ -262,5 +286,9 @@ export type VenueCalendar = {
 
 export type VenueAvailability = { from: string; to: string; generatedAt?: string; venues: VenueCalendar[] };
 
-export const getVenueAvailability = (params: AvailabilityParams) =>
-  apiRequest<VenueAvailability>(`${params.eventId ? `/events/${params.eventId}/venue-availability` : "/venues/availability"}${availabilityQuery(params)}`);
+export const getVenueAvailability = (params: AvailabilityParams) => {
+  if (params.bookingId) {
+    return apiRequest<VenueAvailability>(`/venues/bookings/${params.bookingId}/availability${availabilityQuery({ ...params, venueIds: [], check: null })}`);
+  }
+  return apiRequest<VenueAvailability>(`${params.eventId ? `/events/${params.eventId}/venue-availability` : "/venues/availability"}${availabilityQuery(params)}`);
+};
