@@ -33,6 +33,10 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
     // Equipment catalogue (SPM-52).
     { id: "equipment", title: "Equipment", icon: "equipment", href: ROUTES.equipment },
+    // Dates with events and their equipment, by month.
+    { id: "schedule", title: "Schedule", icon: "calendar", href: ROUTES.equipmentSchedule },
+    // New and decided technical requests (SPM-287); the Updates panel's See more leads here too.
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
   // SPM-243 AC1: the only tab; a review opens on the event's /events/[eventId] page.
   SAFETY_OFFICER: [{ id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard }],
@@ -73,6 +77,8 @@ export function activeNavigationId(role: UserRole, pathname: string) {
   // Only roles with an inbox reach /notifications; the others are refused before the shell renders.
   if (pathname === ROUTES.notifications) return "notifications";
   if (role === "TECH_SUPPORT") {
+    // A technical request opens from the dashboard (SPM-287), so Dashboard stays current.
+    if (pathname === ROUTES.equipmentSchedule) return "schedule";
     return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
