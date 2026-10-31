@@ -51,6 +51,14 @@ export function notificationTargetHref(target: NotificationTarget | null | undef
       ? `/technical-requests/${requestId}`
       : "/dashboard";
   }
+  // Venue Staff review bookings on the event page: the named booking, else
+  // the event's booking requests (holds and safety notices name none) (SPM-286).
+  if (target.page === "VENUE_BOOKING_REQUESTS") {
+    const bookingId = target.booking_id;
+    return typeof bookingId === "number" && Number.isSafeInteger(bookingId) && bookingId > 0
+      ? `/events/${target.event_id}?booking=${bookingId}`
+      : `/events/${target.event_id}`;
+  }
   return null;
 }
 
@@ -63,6 +71,7 @@ export function notificationGoneText(role: UserRole | null | undefined) {
   // A coordinator's notices hide once the event is reassigned (SPM-193 AC10).
   if (role === "COORDINATOR") return "This event is no longer assigned to you.";
   if (role === "TECH_SUPPORT") return `${base} The technical request may have been withdrawn.`;
+  if (role === "VENUE_STAFF") return `${base} The booking request may have been withdrawn.`;
   return base;
 }
 
@@ -72,6 +81,7 @@ export function emptyInboxText(role: UserRole | null | undefined) {
   if (role === "ORGANISER") return "Updates about your event requests, such as submission, clarification requests, review outcomes, coordinator assignment, confirmation and cancellation, will appear here.";
   if (role === "COORDINATOR") return "Updates about events assigned to you, such as new assignments and reassignments, clarification replies, venue booking decisions, technical request decisions and safety review outcomes, will appear here.";
   if (role === "TECH_SUPPORT") return "New technical requests from event coordinators will appear here.";
+  if (role === "VENUE_STAFF") return "New venue booking and hold requests from event coordinators, and safety review notices for your venues, will appear here.";
   return "Updates about your events will appear here.";
 }
 
