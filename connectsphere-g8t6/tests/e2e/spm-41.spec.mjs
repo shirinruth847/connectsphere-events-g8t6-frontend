@@ -671,10 +671,12 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await installConnectSphereMocks(page, { role: "ORGANISER" });
     const state = await routeClarifications(page, {
-      event: returnedForOwner(returnedOwnerPermissions, { equipmentRequirements: [{ equipmentId: 1, quantity: 2 }] }),
+      event: returnedForOwner(returnedOwnerPermissions, { equipmentRequirements: [{ equipmentId: 1, name: "Projector", category: "Visual", quantity: 2 }] }),
       rounds: [openRound],
       onAmend: (route, sent, current) => {
-        current.event = { ...current.event, ...sent.body.changes, version: current.event.version + 1 };
+        // Like the backend, the amendment response leaves equipment names null.
+        const equipmentRequirements = sent.body.changes.equipmentRequirements?.map((line) => ({ ...line, name: null, category: null }));
+        current.event = { ...current.event, ...sent.body.changes, ...(equipmentRequirements ? { equipmentRequirements } : {}), version: current.event.version + 1 };
         return route.fulfill({ json: { message: "Amendments saved.", event: current.event } });
       },
     });
@@ -696,7 +698,9 @@ for (const width of [1280, 390]) {
     await region.getByRole("button", { name: "Save amendments", exact: true }).click();
     await expect.poll(() => state.amendments.length).toBe(1);
     expect(state.amendments[0].body.changes).toEqual({ equipmentRequirements: [{ equipmentId: 2, quantity: 3 }] });
-    await expect(page.getByRole("region", { name: "Requirements", exact: true }).getByText("Equipment #2 × 3")).toBeVisible();
+    const requirements = page.getByRole("region", { name: "Requirements", exact: true });
+    await expect(requirements.getByText("Microphone × 3")).toBeVisible();
+    await expect(requirements.getByText(/Equipment #/)).toHaveCount(0);
   });
 }
 

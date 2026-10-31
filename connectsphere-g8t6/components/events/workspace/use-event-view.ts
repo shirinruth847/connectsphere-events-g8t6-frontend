@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getEventView, type EventView } from "@/lib/api/event-workspace";
+import { withEquipmentNames } from "@/lib/technical-requests";
 import { useRefreshOnReturn } from "./use-refresh-on-return";
 
 export type EventViewState =
@@ -58,11 +59,18 @@ export function useEventView(eventId: number) {
   // Re-read in the background (e.g. after a save was refused because permissions changed).
   const refresh = useCallback(() => setAttempt((value) => value + 1), []);
 
-  // Use the event a save returned instead of fetching it again.
+  const shown = useRef<EventView | null>(null);
+  useEffect(() => { shown.current = state.status === "ready" ? state.event : null; }, [state]);
+
+  // Use the event a save returned instead of fetching it again. Save responses
+  // leave equipment names null: keep the names already shown, and re-read the
+  // event when a line is still unnamed (newly chosen equipment).
   const replaceEvent = useCallback((event: EventView) => {
     // A read started before this committed mutation must not restore old state.
     generation.current += 1;
-    setState({ status: "ready", event });
+    const equipmentRequirements = withEquipmentNames(event.equipmentRequirements ?? [], shown.current?.equipmentRequirements ?? []);
+    setState({ status: "ready", event: { ...event, equipmentRequirements } });
+    if (equipmentRequirements.some((item) => !item.name)) setAttempt((value) => value + 1);
   }, []);
 
   return { state, reload, refresh, replaceEvent };

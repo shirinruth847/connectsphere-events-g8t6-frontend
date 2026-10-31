@@ -7,6 +7,7 @@
 // access token and the ApiError normalisation.
 
 import { apiRequest } from "@/lib/api";
+import type { EquipmentRequirement } from "@/lib/technical-requests";
 
 export type ViewerRelationship = "OWNER" | "ORGANISATION_MEMBER" | "ASSIGNED_COORDINATOR" | "SAFETY_OFFICER" | "SUPERVISING_LEAD";
 
@@ -66,7 +67,7 @@ export interface EventView {
   preferredLayoutType: string | null;
   accessibilityNeeds: string[];
   venuePreferences: number[];
-  equipmentRequirements: Array<{ equipmentId: number; quantity: number }>;
+  equipmentRequirements: EquipmentRequirement[];
   isRegistrationEnabled: boolean | null;
   registrationCapacity: number | null;
   createdAt: string;
