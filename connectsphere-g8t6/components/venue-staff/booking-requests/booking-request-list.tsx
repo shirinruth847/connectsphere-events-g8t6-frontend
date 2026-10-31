@@ -62,6 +62,7 @@ function BookingRequestCard({ booking, openedAt, onOpen }: { booking: VenueBooki
       </div>
       <p className="-mt-2 text-xs text-on-surface-variant">
         {venue} · <span className="font-mono">{booking.event.requestId}</span>
+        {booking.fromHold ? <span className="ml-2 inline-flex rounded-chip bg-[#FEF3C7] px-1.5 py-0.5 text-[11px] font-semibold text-[#92400E]">From hold</span> : null}
       </p>
       <ul className="grid gap-1 text-sm text-on-surface">
         <li className="flex items-center gap-2"><Icon name="calendar" size={16} />{formatEventWindow(booking.startDatetime, booking.endDatetime)}</li>

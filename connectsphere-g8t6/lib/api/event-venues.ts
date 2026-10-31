@@ -17,11 +17,24 @@ export type { VenueOptionsQuery };
 // that the venue fails.
 export type RequirementStatus = "MET" | "UNMET" | "NOT_CHECKED";
 
+// SPM-198: how the venue's capacity suits the expected attendance. EXACT is
+// still met, but leaves no spare space.
+export type CapacityLevel = "SUFFICIENT" | "EXACT" | "INSUFFICIENT";
+
+export interface CapacityAssessment {
+  level: CapacityLevel;
+  // e.g. "Capacity Sufficient"; the wording is the backend's.
+  title: string;
+  message: string;
+}
+
 export interface VenueRequirement {
   key: string;
   label: string;
   status: RequirementStatus;
   detail: string;
+  // The capacity requirement only.
+  assessment?: CapacityAssessment;
 }
 
 export interface VenueConflict {
@@ -176,6 +189,9 @@ export interface VenueBookingRequestItem {
   accessibilityNeeds: string[];
   specialRequirements: string | null;
   isPrimary: boolean;
+  // SPM-188 AC9: the event's active hold this booking confirms; the booking
+  // keeps the hold's venue and times.
+  holdId?: string;
 }
 
 export interface VenueBookingRequestResult {
