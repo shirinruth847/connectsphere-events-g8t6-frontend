@@ -20,6 +20,7 @@ const BUTTONS: Record<RegistrationActionKind, { label: string; variant: "tertiar
   accept: { label: "Accept Slot", variant: "tertiary" },
   decline: { label: "Decline", variant: "secondary" },
   leave: { label: "Leave Waitlist", variant: "secondary" },
+  withdraw: { label: "Withdraw Registration", variant: "danger" },
 };
 
 // The open offer's deadline, above its Accept Slot and Decline (SPM-163 AC5).
@@ -35,7 +36,7 @@ export function OfferCallout({ expiresAt }: { expiresAt: string }) {
 }
 
 // The actions on the attendee's own place: Accept Slot and Decline for an open
-// offer, or Leave Waitlist.
+// offer, Leave Waitlist, or Withdraw Registration before the event starts.
 // Each opens a confirmation; onChange runs once the backend has answered.
 export function RegistrationActions({
   eventId,

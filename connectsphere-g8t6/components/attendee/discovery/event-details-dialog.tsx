@@ -53,7 +53,7 @@ interface EventDetailsDialogProps {
   // Explains a 404 in the opener's terms.
   notFoundDescription?: string;
   // Runs once the backend has answered an action on the attendee's place
-  // (SPM-163). Without it the place is shown with no actions.
+  // (SPM-163, SPM-147). Without it the place is shown with no actions.
   onRegistrationChange?: (change: RegistrationChange) => void;
 }
 

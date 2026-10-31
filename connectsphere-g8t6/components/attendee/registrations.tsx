@@ -69,7 +69,7 @@ function RegistrationCards({ items, onRegistrationChange }: { items: Registratio
     closedEventId.current = eventId;
     router.replace(ROUTES.registrations, { scroll: false });
   };
-  // Leaving or declining removes the event from My Events, so its
+  // Leaving, declining or withdrawing removes the event from My Events, so its
   // open details close; an accepted offer stays open and reloads.
   const handleChange = (change: RegistrationChange) => {
     const leftList = change.result !== null && change.kind !== "accept";

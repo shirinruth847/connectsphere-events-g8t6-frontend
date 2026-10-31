@@ -1,8 +1,8 @@
 import { apiRequest } from "@/lib/api";
 
-// The attendee's own waitlist and place-offer actions (SPM-163). The attendee
-// comes from the session; the backend decides the queue position, offers,
-// deadlines and every refusal.
+// The attendee's own waitlist, place-offer and withdrawal actions (SPM-163,
+// SPM-147). The attendee comes from the session; the backend decides the
+// queue position, offers, deadlines and every refusal.
 //
 // MOCK CONTRACT: these routes are planned (backend branch
 // feature/SPM-163-147-waitlist-and-withdrawal) but not wired into
@@ -11,7 +11,7 @@ import { apiRequest } from "@/lib/api";
 
 export interface RegistrationActionResult {
   registrationId: number;
-  status: "REGISTERED" | "WAITLISTED" | (string & {});
+  status: "REGISTERED" | "WAITLISTED" | "WITHDRAWN" | (string & {});
   waitlistPosition: number | null;
   registeredAt: string | null;
   withdrawnAt: string | null;
@@ -26,7 +26,7 @@ export interface WaitlistAnswers {
 }
 
 // One key per confirmed intent, reused when the attendee retries it, so a
-// lost response never joins or accepts twice.
+// lost response never joins, accepts or withdraws twice.
 export const newIdempotencyKey = () => crypto.randomUUID();
 
 const post = (eventId: number, action: string, body: object, idempotencyKey: string) =>
@@ -47,3 +47,6 @@ export const acceptOffer = (eventId: number, offerId: number, key: string) => po
 
 // 409 OFFER_NOT_OPEN.
 export const declineOffer = (eventId: number, offerId: number, key: string) => post(eventId, "offer/decline", { offerId }, key);
+
+// 200 WITHDRAWN. 409 NOT_REGISTERED, EVENT_STARTED.
+export const withdrawRegistration = (eventId: number, key: string) => post(eventId, "withdraw", {}, key);

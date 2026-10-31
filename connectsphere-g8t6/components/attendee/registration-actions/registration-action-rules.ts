@@ -1,11 +1,12 @@
 import type { ApiError } from "@/lib/api";
 import type { AttendeeRegistration, PlaceOffer } from "@/lib/api/my-events";
 
-// Which waitlist and offer actions to offer the attendee (SPM-163), and what to say when the backend refuses one. Pure, so
+// Which waitlist, offer and withdrawal actions to offer the attendee
+// (SPM-163, SPM-147), and what to say when the backend refuses one. Pure, so
 // the unit tests can load it. These only decide which controls to render; the
 // backend enforces every rule.
 
-export type RegistrationActionKind = "accept" | "decline" | "leave";
+export type RegistrationActionKind = "accept" | "decline" | "leave" | "withdraw";
 
 // The parts of an event that decide its actions, from either the My Events
 // list or the details dialog.
@@ -26,9 +27,18 @@ export function openOffer(registration: PlaceContext["registration"], now: Date 
   return new Date(offer.expiresAt).getTime() > now.getTime() ? offer : null;
 }
 
+// Withdrawal is hidden once the event has started (SPM-147 AC1). With the
+// date held back (detailsWithheld) the backend decides, so it stays offered.
+export function hasStarted(startDatetime: string | null | undefined, now: Date = new Date()) {
+  if (!startDatetime) return false;
+  const start = new Date(startDatetime).getTime();
+  return Number.isFinite(start) && start <= now.getTime();
+}
+
 // The actions for this place, in the order the buttons appear.
-export function placeActions({ registration, attendeeStatus }: PlaceContext, now: Date = new Date()): RegistrationActionKind[] {
+export function placeActions({ registration, startDatetime, attendeeStatus }: PlaceContext, now: Date = new Date()): RegistrationActionKind[] {
   if (attendeeStatus && CLOSED_STATUSES.has(attendeeStatus)) return [];
+  if (registration.status === "REGISTERED") return hasStarted(startDatetime, now) ? [] : ["withdraw"];
   if (registration.status === "WAITLISTED") return openOffer(registration, now) ? ["accept", "decline"] : ["leave"];
   return [];
 }
@@ -55,6 +65,8 @@ const CONFLICT_MESSAGES: Record<string, string> = {
   OFFER_EXPIRED: "This offer has expired.",
   OFFER_NOT_OPEN: "This offer has already been answered.",
   REGISTRATION_FULL: "This event is full, so the offered place is no longer available.",
+  NOT_REGISTERED: "You're not registered for this event.",
+  EVENT_STARTED: "Cannot withdraw registration for past events",
   EVENT_NOT_ACTIVE: "This event is no longer going ahead.",
   IDEMPOTENCY_IN_PROGRESS: "Your request is still being processed. Try again in a moment.",
 };
@@ -94,5 +106,7 @@ export function actionSuccessMessage(kind: RegistrationActionKind, title: string
       return `You declined the place for ${title} and left its waitlist.`;
     case "leave":
       return `You left the waitlist for ${title}.`;
+    case "withdraw":
+      return `Your registration for ${title} has been withdrawn.`;
   }
 }

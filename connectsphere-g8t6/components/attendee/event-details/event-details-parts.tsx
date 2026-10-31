@@ -147,7 +147,7 @@ const footerClasses =
   "flex flex-col gap-2 border-t border-outline-variant/60 bg-surface-container-lowest px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3";
 
 // The footer from the frame. Someone who holds a place gets the actions on it
-// (SPM-163 offers and Leave Waitlist) when the opener
+// (SPM-163 offers and Leave Waitlist, SPM-147 withdrawal) when the opener
 // handles changes. Otherwise it offers the one sign-up action: Join Waitlist
 // for a full event (SPM-163); Register Now and the notify action stay
 // unavailable until SPM-134, with the note on the left. Those use

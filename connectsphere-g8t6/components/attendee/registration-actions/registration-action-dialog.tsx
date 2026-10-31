@@ -11,17 +11,19 @@ import {
   declineOffer,
   leaveWaitlist,
   newIdempotencyKey,
+  withdrawRegistration,
   type RegistrationActionResult,
 } from "@/lib/api/registration-actions";
 import { actionErrorPresentation, type ActionErrorPresentation, type RegistrationActionKind } from "./registration-action-rules";
 
 const BACK_OF_QUEUE = "If you join the waitlist again later, you'll go to the back of the queue.";
 
-// Wording for each confirmation (SPM-163 AC4, AC6, AC7).
+// Wording for each confirmation (SPM-163 AC4, AC6, AC7; SPM-147 AC2, AC3).
 const COPY: Record<RegistrationActionKind, { title: string; confirm: string; keep: string; variant: "tertiary" | "danger" }> = {
   accept: { title: "Accept this place?", confirm: "Accept Slot", keep: "Not now", variant: "tertiary" },
   decline: { title: "Decline this place?", confirm: "Decline Place", keep: "Keep Offer", variant: "danger" },
   leave: { title: "Leave the waitlist?", confirm: "Leave Waitlist", keep: "Stay on Waitlist", variant: "danger" },
+  withdraw: { title: "Withdraw Registration", confirm: "Confirm Withdrawal", keep: "Keep Registration", variant: "danger" },
 };
 
 export interface ActionTarget {
@@ -40,6 +42,8 @@ const send = ({ kind, eventId, offer }: ActionTarget, key: string) => {
       return declineOffer(eventId, offer!.offerId, key);
     case "leave":
       return leaveWaitlist(eventId, key);
+    case "withdraw":
+      return withdrawRegistration(eventId, key);
   }
 };
 
@@ -69,6 +73,16 @@ function Explanation({ target }: { target: ActionTarget }) {
             <strong>{target.title}</strong>.
           </p>
           <p>{BACK_OF_QUEUE}</p>
+        </>
+      );
+    case "withdraw":
+      return (
+        <>
+          <p className="font-semibold text-on-surface">Are you sure? This action cannot be undone.</p>
+          <p>
+            Your place at <strong>{target.title}</strong> will be released. If you want to attend later, you&apos;ll join at the back
+            of the queue.
+          </p>
         </>
       );
   }
