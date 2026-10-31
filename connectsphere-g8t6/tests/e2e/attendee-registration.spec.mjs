@@ -407,7 +407,7 @@ test('[SPM-134 TC-REG-022 AC17] should_keep_answers_and_retry_with_the_same_key_
   await dietary(dialog).fill('Halal');
   await accessibility(dialog).fill('Seat near the exit');
   await submit(dialog).click();
-  await expect(dialog.getByText('Your registration was not submitted', { exact: true })).toBeVisible();
+  await expect(dialog.getByText("We couldn't confirm your registration", { exact: true })).toBeVisible();
   await expect(dialog).not.toContainText('Internal Server Error');
   await expect(dialog.getByText("You're registered", { exact: true })).toHaveCount(0);
   await expect(dietary(dialog)).toHaveValue('Halal');
@@ -424,7 +424,7 @@ test('[SPM-134] should_use_a_new_key_when_the_answers_change_after_a_failure', a
   await page.goto('/events');
   const dialog = await openFromCard(page);
   await submit(dialog).click();
-  await expect(dialog.getByText('Your registration was not submitted', { exact: true })).toBeVisible();
+  await expect(dialog.getByText("We couldn't confirm your registration", { exact: true })).toBeVisible();
   await dietary(dialog).fill('Changed after the failure');
   await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(dialog.getByText("You're registered", { exact: true })).toBeVisible();
@@ -597,3 +597,38 @@ for (const role of ['ORGANISER', 'COORDINATOR', 'COORDINATOR_LEAD', 'VENUE_STAFF
     expect(calls.posts).toEqual([]);
   });
 }
+
+
+test('[SPM-134 AC17] a committed registration with a lost response stays uncertain until the same-key replay confirms it', async ({ page }, testInfo) => {
+  const { current } = await installRegistrationMocks(page);
+  const keys = [];
+  let saved = null;
+  await page.route('**/api/registrations/mine/101', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    keys.push(route.request().headers()['idempotency-key']);
+    if (!saved) {
+      saved = confirmationFor(makeEvent(), route.request().postDataJSON());
+      current.places[101] = 'REGISTERED';
+      return route.abort('failed');
+    }
+    expect(keys[1]).toBe(keys[0]);
+    return route.fulfill({ status: 201, json: saved });
+  });
+  await page.goto('/events');
+  const dialog = await openFromCard(page);
+  await dietary(dialog).fill('Halal');
+  await submit(dialog).click();
+  await expect(dialog.getByText("We couldn't confirm your registration", { exact: true })).toBeVisible();
+  await expect(dialog).not.toContainText('Your registration was not submitted');
+  await expect(dialog.getByText("You're registered", { exact: true })).toHaveCount(0);
+  await expect(dietary(dialog)).toHaveValue('Halal');
+  expect(current.places[101]).toBe('REGISTERED');
+  await testInfo.attach('uncertain-registration-desktop', { body: await dialog.screenshot(), contentType: 'image/png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await testInfo.attach('uncertain-registration-mobile', { body: await dialog.screenshot(), contentType: 'image/png' });
+  await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(dialog.getByText("You're registered", { exact: true })).toBeVisible();
+  await expect(dialog).toContainText('REG-000042');
+  expect(keys).toHaveLength(2);
+  expect(Object.keys(current.places)).toHaveLength(1);
+});

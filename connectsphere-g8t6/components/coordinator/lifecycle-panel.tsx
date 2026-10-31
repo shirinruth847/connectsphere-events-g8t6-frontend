@@ -53,6 +53,13 @@ function FailureList({ failures }: { failures: ReadinessFailure[] }) {
 export function LifecyclePanel({ event, onEventChange, onAccessChanged, approvalBlockedReason = null, refreshKey = 0 }: LifecyclePanelProps) {
   // The stored status, never one inferred from a label: without it no action is offered.
   const status = event.status ?? "";
+  // SPM-39 requires a location preference before approval for planning.
+  // The backend repeats this check under the event lock; bookings come later.
+  const approvalBlock = approvalBlockedReason ?? (
+    event.venuePreferences.length === 0
+      ? "A venue preference is required before approving this request."
+      : null
+  );
   const wantsReadiness = showsReadiness(status);
   const [readiness, setReadiness] = useState<ReadinessState>({ status: "loading" });
   const [readinessAttempt, setReadinessAttempt] = useState(0);
@@ -91,14 +98,14 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged, approval
 
   const ready = wantsReadiness && readiness.status === "ready" ? readiness.readiness.ready : null;
   const options = lifecycleActionsFor(status, event.endDatetime, ready).map((option) =>
-    option.action === "acceptFeasibility" && approvalBlockedReason
-      ? { ...option, disabledReason: option.disabledReason ?? approvalBlockedReason }
+    option.action === "acceptFeasibility" && approvalBlock
+      ? { ...option, disabledReason: option.disabledReason ?? approvalBlock }
       : option,
   );
   if (!options.length) return null;
 
   const run = async (action: LifecycleAction) => {
-    if (action === "acceptFeasibility" && approvalBlockedReason) return;
+    if (action === "acceptFeasibility" && approvalBlock) return;
     if (inFlight.current) return;
     inFlight.current = true;
     setConfirmApproval(false);
@@ -175,7 +182,7 @@ export function LifecyclePanel({ event, onEventChange, onAccessChanged, approval
       ) : null}
       <Dialog open={confirmApproval} onClose={() => setConfirmApproval(false)} title="Approve event request?" footer={<>
         <Button variant="secondary" onClick={() => setConfirmApproval(false)}>Keep reviewing</Button>
-        <Button onClick={() => void run("acceptFeasibility")} disabled={running !== null || Boolean(approvalBlockedReason)}>Confirm approval</Button>
+        <Button onClick={() => void run("acceptFeasibility")} disabled={running !== null || Boolean(approvalBlock)}>Confirm approval</Button>
       </>}>
         <p>Approve “{event.title}” for planning? The backend will check the mandatory requirements. This moves the request to Planning and notifies the organiser; it does not confirm the event or book resources.</p>
       </Dialog>
