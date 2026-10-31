@@ -7,6 +7,7 @@ import {
   type TechnicalRequestFilters,
   type TechnicalRequestStatus,
 } from "@/lib/technical-requests";
+import { scheduleQuery } from "@/lib/equipment-schedule";
 
 // Equipment selection and technical requests (SPM-286, SPM-287). Shapes follow
 // the backend routes; the backend re-checks every quantity and decision.
@@ -105,3 +106,22 @@ export const decideTechnicalRequest = (requestId: number, decision: "APPROVE" | 
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify({ decision, reason }),
   });
+
+export type EquipmentScheduleItem = { equipmentId: number; name: string; quantity: number; status: string; technicalRequestId: number | null };
+
+export type EquipmentScheduleEvent = {
+  eventId: number;
+  requestId: string;
+  title: string;
+  status: string;
+  start: string | null;
+  end: string | null;
+  venue: { venueId: number; name: string } | null;
+  equipment: EquipmentScheduleItem[];
+};
+
+export type EquipmentSchedule = { from: string; to: string; days: Array<{ date: string; events: EquipmentScheduleEvent[] }> };
+
+// GET /api/equipment/schedule — Technical Support; Singapore dates, at most 62 days.
+export const getEquipmentSchedule = (month: string) =>
+  apiRequest<EquipmentSchedule>(`/equipment/schedule${scheduleQuery(month)}`);

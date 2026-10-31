@@ -95,7 +95,7 @@ export function TechnicalRequestDetailView({ requestId }: { requestId: number | 
             <SectionCard className="grid gap-4" status={request.status === "APPROVED" ? "CONFIRMED" : request.status === "REJECTED" ? "REJECTED" : "SUBMITTED"}>
               <SectionHeading
                 title="Requested equipment"
-                description="Available is what is free for the event's time now, without this request. Approval reserves every line or none."
+                description={decided ? "The equipment in this request." : "Available now is what is free for the event's time, without this request. Approval reserves every line or none."}
               />
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[28rem] text-left text-sm">
@@ -105,7 +105,7 @@ export function TechnicalRequestDetailView({ requestId }: { requestId: number | 
                       <th scope="col" className="py-2 pr-3">Equipment</th>
                       <th scope="col" className="py-2 pr-3">Category</th>
                       <th scope="col" className="py-2 pr-3 text-right">Requested</th>
-                      <th scope="col" className="py-2 text-right">Available</th>
+                      {decided ? null : <th scope="col" className="py-2 text-right">Available now</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -116,10 +116,12 @@ export function TechnicalRequestDetailView({ requestId }: { requestId: number | 
                           <th scope="row" className="py-2 pr-3 font-semibold text-on-surface [overflow-wrap:anywhere]">{item.name}</th>
                           <td className="py-2 pr-3 text-on-surface-variant">{item.category ?? "—"}</td>
                           <td className="py-2 pr-3 text-right tabular-nums">{item.quantity}</td>
-                          <td className={`py-2 text-right tabular-nums ${short ? "font-semibold text-error" : ""}`}>
-                            {decided ? "—" : item.availableQuantity}
-                            {short ? <span className="sr-only"> (not enough)</span> : null}
-                          </td>
+                          {decided ? null : (
+                            <td className={`py-2 text-right tabular-nums ${short ? "font-semibold text-error" : ""}`}>
+                              {item.availableQuantity}
+                              {short ? <span className="sr-only"> (not enough)</span> : null}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

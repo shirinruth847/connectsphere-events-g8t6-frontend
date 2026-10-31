@@ -44,13 +44,18 @@ const instant = (value?: string | null) => {
   return Number.isFinite(time) ? time : null;
 };
 
-// The event's window when both ends are valid and in order; the backend wants
-// both or neither.
+const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+// An instant written in Singapore time, e.g. "2030-03-10T10:00:00+08:00".
+export const toSingaporeOffset = (time: number) => `${new Date(time + SGT_OFFSET_MS).toISOString().slice(0, 19)}+08:00`;
+
+// The event's window when both ends are valid and in order, in Singapore time;
+// the backend wants both or neither.
 export function availabilityWindow(start?: string | null, end?: string | null) {
   const from = instant(start);
   const to = instant(end);
   if (from === null || to === null || from >= to) return null;
-  return { start: new Date(from).toISOString(), end: new Date(to).toISOString() };
+  return { start: toSingaporeOffset(from), end: toSingaporeOffset(to) };
 }
 
 export function availabilityQuery(start?: string | null, end?: string | null) {
@@ -133,3 +138,34 @@ export const HISTORY_ACTION_LABELS: Record<string, string> = {
 
 export const historyActionLabel = (action: string) =>
   HISTORY_ACTION_LABELS[action] ?? action.charAt(0) + action.slice(1).toLowerCase().replaceAll("_", " ");
+
+// ---------- event history (SPM-286/287) ----------
+
+type HistoryChange = { field: string; before: unknown; after: unknown; label?: string; beforeLabel?: string; afterLabel?: string };
+
+const blank = (value: unknown) => value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
+
+// A change with nothing on either side ("technicalRequestId —→—") says nothing.
+export const isEmptyChange = (change: HistoryChange) => blank(change.before) && blank(change.after);
+
+// The technical request status in history, readable in the API's shape
+// (technicalRequestStatus, labelled) and the earlier one (technicalRequest
+// { before, after }, technicalRequestId). Other fields are returned unchanged.
+export function readableHistoryChange<T extends HistoryChange>(change: T): T {
+  if (change.field === "technicalRequestStatus" || change.field === "technicalRequest") {
+    const label = (value: unknown) => (typeof value === "string" ? technicalStatusLabel(value) : undefined);
+    return {
+      ...change,
+      label: change.label ?? "Technical request",
+      beforeLabel: change.beforeLabel ?? label(change.before),
+      afterLabel: change.afterLabel ?? label(change.after),
+    };
+  }
+  if (change.field === "technicalRequestId") {
+    const number = (value: unknown) => (blank(value) ? undefined : `Request #${value}`);
+    return { ...change, label: change.label ?? "Technical request", beforeLabel: number(change.before), afterLabel: number(change.after) };
+  }
+  return change;
+}
+
+export const visibleHistoryChanges = <T extends HistoryChange>(changes: T[]) => changes.map(readableHistoryChange).filter((change) => !isEmptyChange(change));

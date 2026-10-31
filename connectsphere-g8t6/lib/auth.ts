@@ -16,6 +16,7 @@ export const ROUTES = {
   notifications: "/notifications",
   venues: "/venues",
   equipment: "/equipment",
+  equipmentSchedule: "/equipment/schedule",
   technicalRequests: "/technical-requests",
   attendeeProfile: "/attendee-profile",
 } as const;
@@ -71,6 +72,8 @@ export function canViewPath(role: UserRole, path: string) {
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
   // Equipment catalogue (SPM-52).
   if (pathname === ROUTES.equipment || /^\/equipment\/\d+$/.test(pathname)) return role === "TECH_SUPPORT";
+  // The equipment schedule (SPM-287 follow-up).
+  if (pathname === ROUTES.equipmentSchedule) return role === "TECH_SUPPORT";
   // One technical request (SPM-287), opened from the Technical Support dashboard.
   if (/^\/technical-requests\/\d+$/.test(pathname)) return role === "TECH_SUPPORT";
   return false;
