@@ -5,6 +5,7 @@ import {
   type CalendarCoordinator,
   type CalendarEvent,
 } from "@/components/calendar/calendar-view";
+import { calendarDate } from "@/lib/coordinator-calendar";
 import styles from "@/components/calendar/calendar-view.module.css";
 
 type CoordinatorAvailabilityCalendarProps = {
@@ -21,6 +22,11 @@ export function CoordinatorAvailabilityCalendar({
   selectedCoordinatorId,
   onSelectCoordinator,
 }: CoordinatorAvailabilityCalendarProps) {
+  // An assignment is assessed against the event's own week, not the week the
+  // Lead happened to be viewing when opening the assignment dialog.
+  const eventStart = selectedEvent ? new Date(selectedEvent.startDatetime) : null;
+  const eventDate = eventStart && !Number.isNaN(eventStart.getTime()) ? calendarDate(eventStart) : undefined;
+
   return (
     <div className={styles.scope}>
       <section className="calendar-panel" aria-label="Coordinator availability calendar">
@@ -30,7 +36,9 @@ export function CoordinatorAvailabilityCalendar({
         </div>
         <CalendarView
           coordinators={coordinators}
-          defaultView="month"
+          key={`${selectedEvent?.eventId ?? "availability"}:${selectedEvent?.startDatetime ?? ""}`}
+          defaultView={selectedEvent ? "week" : "month"}
+          defaultCurrentDate={eventDate}
           selectedEvent={selectedEvent}
           selectedCoordinatorId={selectedCoordinatorId}
           onSelectCoordinator={onSelectCoordinator}

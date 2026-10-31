@@ -10,7 +10,7 @@ const forum = { eventId: 442, requestId: "REQ-000442", title: "Synthetic plannin
 const dashboards = {
   ORGANISER: {
     cards: "main article",
-    setup: (state) => { state.events = Array.from({ length: 4 }, (_, index) => makeDraft({ eventId: 50 + index, requestId: `REQ-00005${index}`, title: `Synthetic draft ${index}` })); },
+    setup: (state) => { state.events = Array.from({ length: 4 }, (_, index) => makeDraft({ eventId: 50 + index, requestId: `REQ-00005${index}`, title: `Synthetic submitted event ${index}`, status: "SUBMITTED", statusLabel: "Submitted" })); },
   },
   COORDINATOR: {
     cards: "main li article",

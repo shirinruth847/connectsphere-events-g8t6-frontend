@@ -5,27 +5,36 @@
   --shadow-modal: var(--shadow-elevation-4);
 }
 
-.queue :global(.modal-backdrop) {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: var(--scrim);
-  overflow: auto;
-}
-
+/* Native modal <dialog>: the browser centres it in the top layer. */
 .queue :global(.modal) {
   display: flex;
   flex-direction: column;
   width: min(980px, calc(100vw - 40px));
+  max-width: none;
   max-height: calc(100dvh - 40px);
+  margin: auto;
+  padding: 0;
+  border: 0;
   border-radius: 12px;
+  color: var(--on-surface);
   background: var(--surface-container);
   box-shadow: var(--shadow-modal);
   overflow: hidden;
+}
+.queue :global(.modal:not([open])) {
+  display: none;
+}
+.queue :global(.modal)::backdrop {
+  background: var(--scrim);
+}
+.queue :global(.assignment-view-toggle) {
+  width: fit-content;
+  margin-bottom: 16px;
+}
+.queue :global(.assignment-week-hint) {
+  margin: 0 0 12px;
+  color: var(--on-surface-variant);
+  font-size: 14px;
 }
 
 .queue :global(.modal-header),
