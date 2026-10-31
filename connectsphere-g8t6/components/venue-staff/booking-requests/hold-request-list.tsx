@@ -5,9 +5,9 @@ import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
 import { readHoldCommand, saveHoldCommand } from "@/components/venues/hold-command-recovery";
 import { useHoldExpiryRefresh, useMinuteClock } from "@/components/venues/use-hold-expiry-refresh";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "@/components/shared/dialog";
-import { AlertBanner, Button, FormLabel, Skeleton, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { BookingChecksPanel, hasBlockingProblem } from "@/components/venues/booking-checks";
 import { HoldSummary, holdChipStatus, holdChipLabel } from "@/components/venues/event-venue-options/event-venue-holds";
@@ -26,10 +26,15 @@ import {
 } from "@/lib/api/venue-holds";
 import { BookingStatusChip } from "./booking-status-chip";
 
-type View = "PENDING" | "ALL";
 type Notice = { tone: "success" | "error"; text: string } | null;
 
 const EXTENSION_DAYS = Array.from({ length: MAX_HOLD_EXTENSION_DAYS }, (_, index) => index + 1);
+
+// Which kind of request a card on My Requests is (developer request of 31
+// October 2026: one list for booking and hold requests).
+export function RequestTypeTag({ children }: { children: ReactNode }) {
+  return <span className="mr-2 inline-flex rounded-chip bg-surface-container-high px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-label text-on-surface">{children}</span>;
+}
 
 function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, onExtend, onRelease }: {
   request: VenueHoldRequest;
@@ -52,6 +57,7 @@ function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, o
         <BookingStatusChip status={holdChipStatus(request, now)} label={holdChipLabel(request, now)} />
       </div>
       <p className="-mt-2 text-xs text-on-surface-variant">
+        <RequestTypeTag>Hold request</RequestTypeTag>
         {request.venueName ?? `Venue ${request.venueId}`}{request.label ? ` · ${request.label}` : ""} ·{" "}
         <Link className="font-mono underline" href={`/events/${request.eventId}`}>{request.requestId}</Link>
       </p>
@@ -95,13 +101,24 @@ function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, o
   );
 }
 
-// Venue Staff's hold requests on My Requests (SPM-190): pending first, each
-// with the same per-window checks as a booking and when the hold would expire.
-// Place hold or Decline (with a reason); a placed hold can be extended once by
-// 1–7 days or released.
-export function HoldRequestList() {
+export type HoldRequestsState =
+  | { status: "loading" }
+  | { status: "ready"; requests: VenueHoldRequest[]; pendingCount: number }
+  | { status: "error"; message: string };
+
+// Venue Staff's hold requests (SPM-190), shown with the booking requests in
+// one list on My Requests: every hold request, each with the same per-window
+// checks as a booking and when the hold would expire. Place hold or Decline
+// (with a reason); a placed hold can be extended once by 1–7 days or released.
+// The caller places each card and the decline dialog.
+export function useHoldRequests(): {
+  state: HoldRequestsState;
+  notice: Notice;
+  reload: () => void;
+  card: (request: VenueHoldRequest) => ReactNode;
+  dialog: ReactNode;
+} {
   const user = useSessionUser();
-  const [view, setView] = useState<View>("PENDING");
   const [state, setState] = useState<{ status: "loading" } | { status: "ready"; requests: VenueHoldRequest[]; pendingCount: number } | { status: "error"; message: string }>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
@@ -116,7 +133,7 @@ export function HoldRequestList() {
 
   useEffect(() => {
     let alive = true;
-    listHoldRequests(view === "PENDING" ? "PENDING" : undefined)
+    listHoldRequests()
       .then((result) => {
         if (!alive) return;
         setRecoveringIds(result.requests.filter((request) => {
@@ -130,7 +147,7 @@ export function HoldRequestList() {
         if (alive) setState({ status: "error", message: caught instanceof Error ? caught.message : "Hold requests could not be loaded." });
       });
     return () => { alive = false; };
-  }, [view, attempt, actorId]);
+  }, [attempt, actorId]);
 
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
   const refreshedAt = useHoldExpiryRefresh(state.status === "ready" ? state.requests : [], reload);
@@ -193,74 +210,42 @@ export function HoldRequestList() {
     }
   };
 
-  return (
-    <section aria-labelledby="hold-requests-heading" className="mb-6 grid gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="hold-requests-heading" className="text-lg font-semibold text-on-surface">
-          Hold requests{state.status === "ready" && state.pendingCount ? ` (${state.pendingCount} pending)` : ""}
-        </h2>
-        <div role="group" aria-label="Show hold requests" className="flex gap-1">
-          {(["PENDING", "ALL"] as View[]).map((value) => (
-            <Button key={value} type="button" variant={view === value ? "primary" : "quiet"} aria-pressed={view === value} onClick={() => setView(value)}>
-              {value === "PENDING" ? "Pending" : "All"}
-            </Button>
-          ))}
-        </div>
-      </div>
-      <div aria-live="polite" role="status">
-        {notice ? <AlertBanner tone={notice.tone} live={false}>{notice.text}</AlertBanner> : null}
-      </div>
-      {state.status === "loading" ? (
-        <Skeleton className="h-32 w-full" />
-      ) : state.status === "error" ? (
-        <AlertBanner tone="error" title="Could not load hold requests">
-          {state.message}
-          <div className="mt-3"><Button variant="secondary" onClick={reload}><Icon name="refresh" size={16} />Try again</Button></div>
-        </AlertBanner>
-      ) : state.requests.length === 0 ? (
-        <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">
-          {view === "PENDING" ? "No pending hold requests." : "No hold requests yet."}
-        </p>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">
-          {state.requests.map((request) => (
-            <HoldRequestCard
-              key={request.holdRequestId}
-              request={request}
-              now={now}
-              busy={busyId === request.holdRequestId}
-              recovering={recoveringIds.includes(request.holdRequestId)}
-              onPlace={() => place(request)}
-              onDecline={() => { setDeclining(request); setReason(""); setDeclineError(null); }}
-              onExtend={(days) => void run(request, () => extendVenueHold(request.hold?.holdId ?? "", days))}
-              onRelease={() => void run(request, () => releaseVenueHold(request.hold?.holdId ?? ""))}
-            />
-          ))}
+  const card = (request: VenueHoldRequest) => (
+    <HoldRequestCard
+      key={`hold-${request.holdRequestId}`}
+      request={request}
+      now={now}
+      busy={busyId === request.holdRequestId}
+      recovering={recoveringIds.includes(request.holdRequestId)}
+      onPlace={() => place(request)}
+      onDecline={() => { setDeclining(request); setReason(""); setDeclineError(null); }}
+      onExtend={(days) => void run(request, () => extendVenueHold(request.hold?.holdId ?? "", days))}
+      onRelease={() => void run(request, () => releaseVenueHold(request.hold?.holdId ?? ""))}
+    />
+  );
+  const dialog = (
+    <Dialog
+      open={declining !== null}
+      onClose={() => { if (busyId === null) setDeclining(null); }}
+      title="Decline hold request?"
+      footer={(
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="quiet" disabled={busyId !== null} onClick={() => setDeclining(null)}>Cancel</Button>
+          <Button type="button" variant="danger" disabled={busyId !== null} onClick={() => void decline()}>Decline request</Button>
         </div>
       )}
-
-      <Dialog
-        open={declining !== null}
-        onClose={() => { if (busyId === null) setDeclining(null); }}
-        title="Decline hold request?"
-        footer={(
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="quiet" disabled={busyId !== null} onClick={() => setDeclining(null)}>Cancel</Button>
-            <Button type="button" variant="danger" disabled={busyId !== null} onClick={() => void decline()}>Decline request</Button>
+    >
+      {declining ? (
+        <div className="grid gap-3 text-sm">
+          <p>{declining.venueName ?? `Venue ${declining.venueId}`} for {declining.eventTitle ?? declining.requestId}. The coordinator sees your reason.</p>
+          <div>
+            <FormLabel htmlFor="hold-decline-reason" required>Reason</FormLabel>
+            <textarea id="hold-decline-reason" rows={3} className={fieldClasses} maxLength={HOLD_LIMITS.reason} value={reason} onChange={(change) => setReason(change.target.value)} />
           </div>
-        )}
-      >
-        {declining ? (
-          <div className="grid gap-3 text-sm">
-            <p>{declining.venueName ?? `Venue ${declining.venueId}`} for {declining.eventTitle ?? declining.requestId}. The coordinator sees your reason.</p>
-            <div>
-              <FormLabel htmlFor="hold-decline-reason" required>Reason</FormLabel>
-              <textarea id="hold-decline-reason" rows={3} className={fieldClasses} maxLength={HOLD_LIMITS.reason} value={reason} onChange={(change) => setReason(change.target.value)} />
-            </div>
-            {declineError ? <AlertBanner tone="error">{declineError}</AlertBanner> : null}
-          </div>
-        ) : null}
-      </Dialog>
-    </section>
+          {declineError ? <AlertBanner tone="error">{declineError}</AlertBanner> : null}
+        </div>
+      ) : null}
+    </Dialog>
   );
+  return { state, notice, reload, card, dialog };
 }

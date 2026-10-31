@@ -61,6 +61,8 @@ interface RequestVenueStepProps {
   // Names from the request options, for choices not in the current list.
   knownNames: Map<number, string>;
   onChange: (next: VenueChoices) => void;
+  // Saves the draft from the choices list; disabled until the request can be saved.
+  save: { onSave: () => void; saving: boolean; disabled: boolean; savedAt: string | null };
 }
 
 // SPM-76: the organiser explores venues with the coordinator's search
@@ -69,7 +71,7 @@ interface RequestVenueStepProps {
 // organiser narrows it, by typing or by dragging the yellow block on the
 // venue's calendar; several venues may be wanted at the same or different
 // times. Choosing never holds or books a venue.
-export function RequestVenueStep({ values, knownNames, onChange }: RequestVenueStepProps) {
+export function RequestVenueStep({ values, knownNames, onChange, save }: RequestVenueStepProps) {
   const [learnedNames, setLearnedNames] = useState<Map<number, string>>(new Map());
   const [openId, setOpenId] = useState<number | null>(null);
   const chosen = values.venuePreferences;
@@ -142,9 +144,14 @@ export function RequestVenueStep({ values, knownNames, onChange }: RequestVenueS
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
       <section aria-label="Your venue choices" className="grid gap-3 rounded-panel border border-outline-variant p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-on-surface">Your venue choices</h3>
-          <span className="text-xs text-on-surface-variant">{chosen.length} / {MAX_VENUE_CHOICES}</span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-on-surface">Your venue choices <span className="font-normal text-on-surface-variant">({chosen.length} / {MAX_VENUE_CHOICES})</span></h3>
+          <span className="flex flex-wrap items-center gap-2">
+            {save.savedAt ? <span className="text-xs font-semibold text-success" aria-live="polite">Saved at {save.savedAt}</span> : null}
+            <Button type="button" variant="secondary" onClick={save.onSave} disabled={save.disabled} title={save.disabled && !save.saving ? "Enter an Event Title to save." : undefined}>
+              <Icon name="check" size={16} />{save.saving ? "Saving…" : "Save choices"}
+            </Button>
+          </span>
         </div>
         {chosen.length === 0 ? (
           <p className="text-sm text-on-surface-variant">No venue chosen yet. Choose your ideal venue below, or continue without one.</p>
@@ -192,7 +199,18 @@ export function RequestVenueStep({ values, knownNames, onChange }: RequestVenueS
                           <input type="datetime-local" step={900} className="rounded-control border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface" min={values.startDatetime} max={values.endDatetime} value={values.venueTimes[venueId]?.end ?? values.endDatetime} onChange={(changeEvent) => typeTime(venueId, "end", changeEvent.target.value)} />
                         </label>
                       </div>
-                      <RequestVenueCalendar venueId={venueId} venueName={name} requested={openWindow} bounds={eventWindow} onChange={onCalendarChange} />
+                      <RequestVenueCalendar
+                        venueId={venueId}
+                        venueName={name}
+                        requested={openWindow}
+                        bounds={eventWindow}
+                        onChange={onCalendarChange}
+                        onCollapse={() => setOpenId(null)}
+                        otherChoices={chosen.flatMap((otherId, otherIndex) => {
+                          const other = otherId === venueId ? null : windowOf(otherId);
+                          return other ? [{ label: `Your choice ${otherIndex + 1}: ${nameOf(otherId)}`, ...other }] : [];
+                        })}
+                      />
                     </div>
                   ) : null}
                 </li>

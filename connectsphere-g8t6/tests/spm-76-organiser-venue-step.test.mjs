@@ -83,3 +83,19 @@ test('[SPM-76 AC3][TC3] the organiser calendar shows busy periods by kind and th
   assert.deepEqual([request.start, request.end], [at('14:00'), at('16:00')]);
   assert.equal(dragged.overlays.some((overlay) => overlay.tone === 'conflict'), false);
 });
+
+test("[SPM-76] the organiser's other venues show in their own lane, without busy-period details", () => {
+  const data = {
+    from: at('00:00'), to: at('00:00', '2026-12-02'),
+    venue: { venueId: 7, name: 'Hall', operatingHours: null, setupMinutes: 0, turnaroundMinutes: 0, buffersRecorded: true, busyPeriods: [], check: null },
+  };
+  const { lanes } = requestCalendar(data, { date: '2026-12-01', days: 1 }, {
+    label: 'Your requested time',
+    requested: { start: at('09:00'), end: at('18:00') },
+    otherChoices: [{ label: 'Your choice 2: Breakout', start: at('13:00'), end: at('15:00') }],
+    formatWindow: (start, end) => `${start}–${end}`,
+  });
+  assert.equal(lanes.length, 2);
+  assert.equal(lanes[1].name, 'Your other venues');
+  assert.match(lanes[1].events[0].title, /^Your choice 2: Breakout/);
+});

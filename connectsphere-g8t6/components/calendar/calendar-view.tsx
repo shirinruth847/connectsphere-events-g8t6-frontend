@@ -44,12 +44,14 @@ const COORDINATOR_LABEL: CalendarEntityLabel = { singular: "coordinator", plural
 // than as an event (developer request of 24 October 2026): "request" is the
 // period being checked (translucent yellow, with label in the block and detail
 // in a hover window), "conflict" where it overlaps existing occupied time
-// (red), "closed" outside operating hours (grey, beneath everything).
+// (red), "closed" outside operating hours (grey, beneath everything), and
+// "block" an operational block across the whole day column, so what it
+// overlaps shows red beneath it rather than beside it.
 export type CalendarOverlay = {
   id: string;
   start: string;
   end: string;
-  tone: "request" | "conflict" | "closed";
+  tone: "request" | "conflict" | "closed" | "block";
   label?: string;
   detail?: string;
   // A request whose start and end can be dragged (SPM-76): called with the
@@ -590,6 +592,18 @@ function OverlayBlocks({ overlays, day }: { overlays: CalendarOverlay[]; day: Da
           const top = ((start - bounds.start) / total) * 100;
           const height = ((end - start) / total) * 100;
           const style: CSSProperties = { top: `${top}%`, height: `${height}%` };
+          if (overlay.tone === "block") {
+            return (
+              <div key={overlay.id} className="cal-overlay cal-overlay--block" style={style}>
+                {overlay.label ? (
+                  <span className="cal-overlay-label" tabIndex={0} aria-label={[overlay.label, overlay.detail].filter(Boolean).join(". ")}>
+                    {overlay.label}
+                    {overlay.detail ? <span className="cal-overlay-tip" aria-hidden="true">{overlay.detail}</span> : null}
+                  </span>
+                ) : null}
+              </div>
+            );
+          }
           if (overlay.tone !== "request") {
             return <div key={overlay.id} className={`cal-overlay cal-overlay--${overlay.tone}`} style={style} aria-hidden="true" />;
           }

@@ -41,16 +41,18 @@ const entryTitle = (entry: CalendarEntry, formatWindow?: (start: string, end: st
 // Events span the occupied range (setup and turnaround included), so the
 // calendar shows exactly when the venue is unavailable. The status shown is the
 // backend's label; the frontend never maps states itself.
+// skipBlocks leaves active blocks out of the lanes when blockOverlays draws them.
 export function toCalendarLanes(
   data: VenueAvailability,
   formatWindow?: (start: string, end: string) => string,
+  { skipBlocks = false }: { skipBlocks?: boolean } = {},
 ): { lanes: CalendarCoordinator[]; refs: Map<number, CalendarEntryRef> } {
   const refs = new Map<number, CalendarEntryRef>();
   let nextId = 1;
   const lanes = data.venues.map((venue) => ({
     coordinatorId: venue.venueId,
     name: venue.name,
-    events: venue.entries.map((entry): CalendarEvent => {
+    events: venue.entries.filter((entry) => !(skipBlocks && entry.type === "BLOCK" && entry.blocking)).map((entry): CalendarEvent => {
       const eventId = nextId++;
       refs.set(eventId, { venueId: venue.venueId, venueName: venue.name, entry });
       return {
@@ -138,6 +140,34 @@ export function availabilityOverlays(
   return overlays;
 }
 
+// One venue's active blocks as overlays across the day column, red where a
+// booking's or hold's occupied time overlaps them (developer request of 31
+// October 2026). Only for a single venue: a block covers its own venue, and
+// an overlay spans the whole column.
+export function blockOverlays(data: VenueAvailability, formatWindow: (start: string, end: string) => string): CalendarOverlay[] {
+  if (data.venues.length !== 1) return [];
+  const [venue] = data.venues;
+  const blocks = venue.entries.filter((entry) => entry.type === "BLOCK" && entry.blocking);
+  const others = venue.entries.filter((entry) => entry.type !== "BLOCK" && entry.blocking);
+  const overlays: CalendarOverlay[] = [];
+  for (const block of blocks) {
+    overlays.push({
+      id: `block-${block.entryId}`,
+      tone: "block",
+      start: block.occupiedStart,
+      end: block.occupiedEnd,
+      label: block.reasonLabel ? `${block.label} · ${block.reasonLabel}` : block.label,
+      detail: [formatWindow(block.occupiedStart, block.occupiedEnd), ...(block.note ? [`Note: ${block.note}`] : [])].join("\n"),
+    });
+    for (const other of others) {
+      const from = Math.max(Date.parse(block.occupiedStart), Date.parse(other.occupiedStart));
+      const to = Math.min(Date.parse(block.occupiedEnd), Date.parse(other.occupiedEnd));
+      if (from < to) overlays.push({ id: `block-conflict-${block.entryId}-${other.entryId}`, tone: "conflict", start: iso(from), end: iso(to) });
+    }
+  }
+  return overlays;
+}
+
 // SPM-76: the organiser's calendar for one chosen venue. Busy periods show
 // only their kind and time (never whose). `requested` is the time as the
 // organiser has it now, drawn at once and draggable when `resize` is given;
@@ -145,9 +175,11 @@ export function availabilityOverlays(
 export function requestCalendar(
   data: RequestVenueAvailability,
   range: { date: string; days: number },
-  { label, requested, formatWindow, formatTimes = formatWindow, resize }: {
+  { label, requested, otherChoices = [], formatWindow, formatTimes = formatWindow, resize }: {
     label: string;
     requested: { start: string; end: string } | null;
+    // The organiser's other chosen venues and times, in a lane of their own.
+    otherChoices?: Array<{ label: string; start: string; end: string }>;
     formatWindow: (start: string, end: string) => string;
     formatTimes?: (start: string, end: string) => string;
     resize?: CalendarOverlay["resize"];
@@ -166,6 +198,22 @@ export function requestCalendar(
       status: period.label,
     })),
   }];
+  if (otherChoices.length) {
+    // A lane ID no venue has, so its colour and events stay separate.
+    const laneId = -venue.venueId;
+    lanes.push({
+      coordinatorId: laneId,
+      name: "Your other venues",
+      events: otherChoices.map((choice, index) => ({
+        eventId: venue.busyPeriods.length + index + 1,
+        title: `${choice.label} · ${formatWindow(choice.start, choice.end)}`,
+        startDatetime: choice.start,
+        endDatetime: choice.end,
+        coordinatorId: laneId,
+        status: "Your other venue",
+      })),
+    });
+  }
   const overlays = closedHourOverlays([venue.operatingHours], range);
   if (!requested) return { lanes, overlays };
   const same = (a: string, b: string) => Date.parse(a) === Date.parse(b);

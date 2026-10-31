@@ -23,6 +23,9 @@ interface RequestVenueCalendarProps {
   requested: Window;
   bounds: Window;
   onChange: (next: Window) => void;
+  onCollapse: () => void;
+  // The organiser's other chosen venues and their times, for reference.
+  otherChoices: Array<{ label: string } & Window>;
 }
 
 // SPM-76: one chosen venue's calendar while the organiser fills in the
@@ -30,7 +33,7 @@ interface RequestVenueCalendarProps {
 // yellow block, red where its occupied time (with setup and turnaround)
 // overlaps a busy period, grey outside opening hours. Its top and bottom
 // edges drag in 15-minute steps within the event.
-export function RequestVenueCalendar({ venueId, venueName, requested, bounds, onChange }: RequestVenueCalendarProps) {
+export function RequestVenueCalendar({ venueId, venueName, requested, bounds, onChange, onCollapse, otherChoices }: RequestVenueCalendarProps) {
   const [viewMode, setViewMode] = useState<CalendarViewMode>(Date.parse(bounds.end) - Date.parse(bounds.start) > DAY_MS ? "week" : "day");
   const [currentDate, setCurrentDate] = useState(() => calendarDate(new Date(requested.start)));
   // Each result remembers what it was loaded for, so a newer request shows as loading.
@@ -63,29 +66,37 @@ export function RequestVenueCalendar({ venueId, venueName, requested, bounds, on
     () => (data ? requestCalendar(data, range, {
       label: "Your requested time",
       requested,
+      otherChoices,
       formatWindow: formatEventWindow,
       formatTimes,
       resize: (edge, instant) => onChange(resizeWithin(requested, bounds, edge, instant)),
     }) : null),
     // range is rebuilt each render; its fields are what matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, range.date, range.days, requested, bounds, onChange],
+    [data, range.date, range.days, requested, bounds, onChange, otherChoices],
   );
 
+  const header = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h4 className="text-sm font-semibold text-on-surface">{venueName} calendar</h4>
+      <Button type="button" variant="quiet" onClick={onCollapse}><Icon name="close" size={16} />Collapse calendar</Button>
+    </div>
+  );
   if (error) {
     return (
-      <AlertBanner tone="error" title="Error checking availability">
+      <div className="grid gap-3">{header}<AlertBanner tone="error" title="Error checking availability">
         {error} No time is shown as available until availability loads.
         <div className="mt-3"><Button type="button" variant="secondary" onClick={() => setAttempt((value) => value + 1)}><Icon name="refresh" size={16} />Try again</Button></div>
-      </AlertBanner>
+      </AlertBanner></div>
     );
   }
-  if (!data || !calendar) return <Skeleton className="h-96 w-full" />;
+  if (!data || !calendar) return <div className="grid gap-3">{header}<Skeleton className="h-96 w-full" /></div>;
 
   const check = data.venue.check;
   const current = check && Date.parse(check.start) === Date.parse(requested.start) && Date.parse(check.end) === Date.parse(requested.end) ? check : null;
   return (
     <div className="grid gap-3">
+      {header}
       <p className="text-sm" aria-live="polite">
         {!current || loading ? <span className="text-on-surface-variant">Checking {venueName} for this time…</span> : current.conflicts.length ? (
           <span className="font-semibold text-error">Unavailable at this time: {current.availabilityLabel.toLowerCase()}. Drag the yellow block or choose another venue.</span>
@@ -111,6 +122,7 @@ export function RequestVenueCalendar({ venueId, venueName, requested, bounds, on
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border-2 border-[#CA8A04] bg-[#FACC15]/30" />Your requested time (drag its edges)</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-[#DC2626]/35" />Overlaps existing time</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-outline/25" />Closed</span>
+        <span>Bookings, holds and blocks at this venue show only as unavailable; your other venues are shown for reference.</span>
       </p>
     </div>
   );

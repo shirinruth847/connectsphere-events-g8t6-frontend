@@ -131,7 +131,9 @@
 .coordinator-shell .cal-month-day-number, .coordinator-shell .cal-week-day-num { font-size: 12px; }
 .coordinator-shell .cal-month-dots { display: flex; gap: 3px; }
 .coordinator-shell .cal-month-dot, .coordinator-shell .cal-year-dot { width: 6px; height: 6px; border-radius: 50%; background: #4f46e5; }
-.coordinator-shell .cal-time-grid, .coordinator-shell .cal-day-columns { display: grid; grid-template-columns: repeat(7,minmax(90px,1fr)); overflow: auto; }
+/* The time grid never scrolls itself; its wrapper does (a second, inner
+   scrollbar appeared on venue calendars). */
+.coordinator-shell .cal-time-grid, .coordinator-shell .cal-day-columns { display: grid; grid-template-columns: repeat(7,minmax(90px,1fr)); }
 .coordinator-shell .cal-time-row, .coordinator-shell .cal-day-column { min-height: 42px; border-top: 1px solid #eef0f5; border-right: 1px solid #eef0f5; }
 .coordinator-shell .cal-time-gutter { color: #6b7280; font-size: 10px; }
 .coordinator-shell .cal-event-mini, .coordinator-shell .cal-event-tiny, .coordinator-shell .cal-event-phantom { overflow: hidden; border-left: 3px solid var(--event-color,#4f46e5); border-radius: 4px; background: #eef2ff; color: #3730a3; font-size: 10px; text-overflow: ellipsis; }
@@ -1772,6 +1774,15 @@
   background: rgb(250 204 21 / 28%);
 }
 .coordinator-shell .cal-overlay--conflict { z-index: 4; border-radius: 4px; background: rgb(220 38 38 / 34%); }
+/* An operational block lies over the bookings it overlaps (developer request
+   of 31 October 2026); the overlap itself is the red conflict tone. */
+.coordinator-shell .cal-overlay--block {
+  z-index: 3;
+  border: 2px solid rgb(55 65 81 / 70%);
+  border-radius: 6px;
+  background: repeating-linear-gradient(135deg, rgb(55 65 81 / 10%) 0 8px, rgb(55 65 81 / 18%) 8px 16px);
+}
+.coordinator-shell .cal-overlay--block .cal-overlay-label { color: #1f2937; }
 .coordinator-shell .cal-overlay-label {
   position: relative;
   z-index: 5;

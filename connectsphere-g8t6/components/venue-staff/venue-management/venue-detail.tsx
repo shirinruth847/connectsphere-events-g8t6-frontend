@@ -457,7 +457,8 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
           />
           <VenueBlocksSection venueId={venue.venueId} venueName={venue.name} />
         </div>
-        <aside className="grid gap-5 xl:col-span-4" aria-label="Record history">
+        <aside className="grid content-start gap-5 xl:col-span-4" aria-label="Record history">
+          <Button variant="secondary" className="justify-self-start" onClick={reload}><Icon name="refresh" size={16} />Reload venue</Button>
           <section className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
             <SectionHeading title="Record history" />
             <KeyValuePanel
@@ -470,7 +471,6 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
             />
           </section>
           <VenueHistory venueId={venue.venueId} refreshKey={`${venue.version}-${details?.version ?? "none"}-${revision}`} />
-          <Button variant="secondary" onClick={reload}><Icon name="refresh" size={16} />Reload venue</Button>
         </aside>
       </div>
     </div>
