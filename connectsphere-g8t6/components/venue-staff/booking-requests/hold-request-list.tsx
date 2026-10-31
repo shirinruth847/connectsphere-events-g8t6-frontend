@@ -36,7 +36,7 @@ export function RequestTypeTag({ children }: { children: ReactNode }) {
   return <span className="mr-2 inline-flex rounded-chip bg-surface-container-high px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-label text-on-surface">{children}</span>;
 }
 
-function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, onExtend, onRelease }: {
+function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, onExtend, onRelease, onRetry }: {
   request: VenueHoldRequest;
   now: number;
   busy: boolean;
@@ -45,6 +45,7 @@ function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, o
   onDecline: () => void;
   onExtend: (days: number) => void;
   onRelease: () => void;
+  onRetry: () => void;
 }) {
   const [days, setDays] = useState(1);
   const titleId = `hold-request-${request.holdRequestId}-title`;
@@ -61,7 +62,7 @@ function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, o
         {request.venueName ?? `Venue ${request.venueId}`}{request.label ? ` · ${request.label}` : ""} ·{" "}
         <Link className="font-mono underline" href={`/events/${request.eventId}`}>{request.requestId}</Link>
       </p>
-      <HoldSummary request={request} now={now} bookingLink />
+      <HoldSummary request={request} now={now} bookingLink onRetry={onRetry} />
       <p className="text-xs text-on-surface-variant">
         Requested {formatTimestamp(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ""}
         {request.decidedAt ? ` · Actioned ${formatTimestamp(request.decidedAt)}${request.decidedByName ? ` by ${request.decidedByName}` : ""}` : ""}
@@ -221,6 +222,7 @@ export function useHoldRequests(): {
       onDecline={() => { setDeclining(request); setReason(""); setDeclineError(null); }}
       onExtend={(days) => void run(request, () => extendVenueHold(request.hold?.holdId ?? "", days))}
       onRelease={() => void run(request, () => releaseVenueHold(request.hold?.holdId ?? ""))}
+      onRetry={reload}
     />
   );
   const dialog = (

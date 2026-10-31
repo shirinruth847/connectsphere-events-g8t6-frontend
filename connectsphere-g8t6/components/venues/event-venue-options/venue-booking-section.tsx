@@ -221,6 +221,7 @@ export function VenueBookingSection({
             value={draft.start}
             disabled={disabled}
             readOnly={held}
+            step={held ? "any" : undefined}
             onChange={(event) => onChange({ start: event.target.value })}
             {...describe("start")}
           />
@@ -236,6 +237,7 @@ export function VenueBookingSection({
             value={draft.end}
             disabled={disabled}
             readOnly={held}
+            step={held ? "any" : undefined}
             onChange={(event) => onChange({ end: event.target.value })}
             {...describe("end")}
           />
