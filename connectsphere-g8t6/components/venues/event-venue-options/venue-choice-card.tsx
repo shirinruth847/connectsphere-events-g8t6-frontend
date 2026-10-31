@@ -31,6 +31,7 @@ interface VenueChoiceCardProps {
   // The caller's button, e.g. the coordinator's Select.
   action?: ReactNode;
   onOpenVenue?: (venueId: number) => void;
+  onFindAlternatives?: () => void;
   calendar?: VenueCalendarWindow | null;
 }
 
@@ -38,7 +39,7 @@ interface VenueChoiceCardProps {
 // as a horizontal card: name, photo and status left; the checks right. View
 // details opens the full details in place, with motion, and closes them again
 // (developer requests of 24 and 25 October 2026).
-export function VenueChoiceCard({ venue, expanded, onToggle, badge, action, onOpenVenue, calendar }: VenueChoiceCardProps) {
+export function VenueChoiceCard({ venue, expanded, onToggle, badge, action, onOpenVenue, onFindAlternatives, calendar }: VenueChoiceCardProps) {
   const detailsId = useId();
   const { button: calendarButton, panel: calendarPanel } = useVenueCalendar(expanded ? calendar : null, venue.venueId);
   const hasCapacityCheck = venue.requirements.some((item) => item.key === "capacity");
@@ -82,7 +83,7 @@ export function VenueChoiceCard({ venue, expanded, onToggle, badge, action, onOp
             </div>
           </Reveal>
           <Reveal open={expanded} id={detailsId}>
-            <VenueFacts venue={venue} onOpenVenue={onOpenVenue} />
+            <VenueFacts venue={venue} onOpenVenue={onOpenVenue} onFindAlternatives={onFindAlternatives} />
           </Reveal>
           <div className="flex flex-wrap items-center gap-2">
             <button

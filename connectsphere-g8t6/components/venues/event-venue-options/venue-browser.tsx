@@ -42,16 +42,24 @@ interface VenueBrowserProps<T extends VenueOptionsResult> {
   calendar?: VenueCalendarWindow | null;
   badge?: (venue: EventVenueOption) => ReactNode;
   action?: (venue: EventVenueOption, place: "card" | "panel") => ReactNode;
+  // The event's expected attendance: a venue too small for it offers "Find
+  // Alternative Venues", which filters to venues at least this large (SPM-198 AC4).
+  alternativeCapacity?: number | null;
+  // Opens already filtered to alternativeCapacity, from a card's button.
+  startWithAlternatives?: boolean;
 }
+
+const alternativesFilter = (capacity: number): Filters => ({ ...EMPTY_FILTERS, minCapacity: String(capacity) });
 
 // Search, filter, sort, view, compare and (coordinator) check the calendar
 // for the available venues (SPM-72/74/75); each details panel has its own
 // calendar button (developer request of 25 October 2026). Requirement matching comes from
 // the backend. The cards scroll inside a window two rows of three tall
 // (developer request of 23 October 2026); the event page opens this in a popup.
-export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, onLoaded, calendar, badge, action }: VenueBrowserProps<T>) {
-  const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, onLoaded, calendar, badge, action, alternativeCapacity, startWithAlternatives }: VenueBrowserProps<T>) {
+  const startFilters = startWithAlternatives && alternativeCapacity ? alternativesFilter(alternativeCapacity) : EMPTY_FILTERS;
+  const [draft, setDraft] = useState<Filters>(startFilters);
+  const [applied, setApplied] = useState<Filters>(startFilters);
   const [sort, setSort] = useState<VenueOptionSort>("match");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [pageSize, setPageSize] = useState(DEFAULT_VENUE_PAGE_SIZE);
@@ -120,6 +128,15 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
     setDraft(EMPTY_FILTERS);
     reload({ applied: EMPTY_FILTERS });
   };
+  // From a too-small venue's details: only venues large enough, details closed.
+  const findAlternatives = alternativeCapacity ? () => {
+    const next = alternativesFilter(alternativeCapacity);
+    setDraft(next);
+    setViewId(null);
+    setCompareOpen(false);
+    setCompareId(null);
+    reload({ applied: next });
+  } : undefined;
   const applyOnEnter = (keyEvent: KeyboardEvent<HTMLInputElement>) => {
     if (keyEvent.key !== "Enter") return;
     keyEvent.preventDefault();
@@ -255,6 +272,7 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                 onClose={compareOpen ? undefined : () => setViewId(null)}
                 excludeId={compareOpen ? compareId : null}
                 onOpenVenue={openVenue}
+                onFindAlternatives={findAlternatives}
                 calendar={calendar}
                 badge={viewing ? badge?.(viewing) : undefined}
                 action={viewing ? action?.(viewing, "panel") : undefined}
@@ -268,6 +286,7 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                   onClose={() => { setCompareOpen(false); setCompareId(null); }}
                   excludeId={viewId}
                   onOpenVenue={(venueId) => (venues.some((venue) => venue.venueId === venueId) ? setCompareId(venueId) : openVenue(venueId))}
+                  onFindAlternatives={findAlternatives}
                   calendar={calendar}
                   badge={comparing ? badge?.(comparing) : undefined}
                   action={comparing ? action?.(comparing, "panel") : undefined}
