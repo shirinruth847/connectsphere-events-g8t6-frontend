@@ -16,6 +16,20 @@ test('[SPM-286] equipment names from a loaded event are not sent back on save', 
  assert.deepEqual(formValuesFromEvent(event).equipmentRequirements,[{equipmentId:8,quantity:3}]);
  assert.deepEqual(toPayload({...EMPTY_EVENT_FORM,title:'T',equipmentRequirements:[{equipmentId:8,name:'Projector',quantity:3}]}).equipmentRequirements,[{equipmentId:8,quantity:3}]);
 });
+test('[SPM-35] registration start and end are required, ordered and close by the event start', () => {
+ const values={...EMPTY_EVENT_FORM,title:'T',startDatetime:'2030-03-10T10:00',isRegistrationEnabled:true,registrationCapacity:'50'};
+ const missing=validateEventStep(values,5,true);
+ assert.ok(missing.registrationOpenAt); assert.ok(missing.registrationCloseAt);
+ assert.deepEqual(validateEventStep(values,5,false),{});
+ assert.match(validateEventStep({...values,registrationOpenAt:'2030-03-01T09:00',registrationCloseAt:'2030-03-01T09:00'},5,true).registrationCloseAt,/close after it opens/);
+ assert.match(validateEventStep({...values,registrationOpenAt:'2030-03-01T09:00',registrationCloseAt:'2030-03-10T10:01'},5,true).registrationCloseAt,/no later than the event start/);
+ const ok={...values,registrationOpenAt:'2030-03-01T09:00',registrationCloseAt:'2030-03-10T10:00'};
+ assert.deepEqual(validateEventStep(ok,5,true),{});
+ const payload=toPayload(ok);
+ assert.equal(payload.registrationOpenAt,'2030-03-01T09:00:00+08:00'); assert.equal(payload.registrationCloseAt,'2030-03-10T10:00:00+08:00');
+ assert.equal(formValuesFromEvent({title:'T',registrationOpenAt:'2030-03-01T01:00:00.000Z'}).registrationOpenAt,'2030-03-01T09:00');
+ const off=toPayload({...ok,isRegistrationEnabled:false}); assert.equal(off.registrationOpenAt,null); assert.equal(off.registrationCloseAt,null);
+});
 test('[SPM-35 TC-003] exactly 48 hours is valid; earlier is rejected', () => {
  const now=Date.parse('2027-01-01T10:00:00Z');const values={...EMPTY_EVENT_FORM,startDatetime:'2027-01-03T10:00:00Z',endDatetime:'2027-01-03T12:00:00Z',expectedAttendance:'1'};
  assert.deepEqual(validateEventStep(values,1,true,now),{});
