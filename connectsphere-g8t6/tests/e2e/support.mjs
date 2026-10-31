@@ -135,6 +135,22 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/registrations/mine") return json({ registrations: [{ registration_id: 1, registration_status: "REGISTERED", event: { title: "Registered attendee event", attendee_status: "CONFIRMED", description: "Public event description", venue: null } }], page: { next_offset: null } });
     // The Updates button on attendee pages (SPM-155); its spec mocks the inbox itself.
     if (pathname === "/api/notifications/unread-count") return json({ unreadCount: 0 });
+    // SPM-286: the request form and amendments read equipment availability; plenty
+    // of stock unless a spec routes it. Without a window the note explains why.
+    if (pathname === "/api/events/equipment-options") {
+      const params = new URL(request.url()).searchParams;
+      const windowed = params.has("start") && params.has("end");
+      return json({
+        window: windowed ? { start: params.get("start"), end: params.get("end") } : null,
+        note: windowed ? null : "Availability is confirmed once the event's date and time are chosen.",
+        equipment: [
+          { equipmentId: 1, name: "Projector", category: "Visual", description: null, totalQuantity: 50, availableQuantity: 50 },
+          { equipmentId: 2, name: "Microphone", category: "Audio", description: null, totalQuantity: 50, availableQuantity: 50 },
+        ],
+      });
+    }
+    // The Technical Support dashboard lists technical requests (SPM-287); none unless a spec routes them.
+    if (pathname === "/api/equipment/requests") return json({ technicalRequests: [], total: 0, nextOffset: null });
     if (pathname === "/api/events/request-options") return json({ venues: [{venueId: 1, name: "Main Hall"}], layouts: ["NO_PREFERENCE", "THEATRE"], equipment: [{ equipmentId: 1, name: "Projector" }, { equipmentId: 2, name: "Microphone" }] });
 
     if (pathname === "/api/events/mine" && method === "GET") {
@@ -207,8 +223,11 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
 }
 
 export const localDateTimeInput = (date) => {
+  // Event datetime-local inputs are Singapore civil time, irrespective of the
+  // browser/CI timezone. Format the instant in SGT before filling the field.
+  const singaporeDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
   const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${singaporeDate.getUTCFullYear()}-${pad(singaporeDate.getUTCMonth() + 1)}-${pad(singaporeDate.getUTCDate())}T${pad(singaporeDate.getUTCHours())}:${pad(singaporeDate.getUTCMinutes())}`;
 };
 
 export async function enterCompleteRequestThroughSubmit(page, { startHours = 168, attendance = "150" } = {}) {

@@ -39,7 +39,7 @@ export function EventRequestDashboard() {
   const [statusSelection, setStatusSelection] = useState<StatusSelection>(params.get("status") === "DRAFT" ? DRAFT_LABEL : "ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => { const timer = setTimeout(() => setStatusSelection(requestedStatus === "DRAFT" ? DRAFT_LABEL : "ALL"), 0); return () => clearTimeout(timer); }, [requestedStatus]);
+  useEffect(() => { const timer = setTimeout(() => setStatusSelection(requestedStatus === "DRAFT" ? DRAFT_LABEL : "ALL"), 0); return () => clearTimeout(timer); }, [requestedStatus, mineOnly]);
   const [notice, setNotice] = useState("");
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -77,7 +77,7 @@ export function EventRequestDashboard() {
     const needle = query.trim().toLowerCase();
     const filtered = events.filter((event) => {
       if (mineOnly && event.isOwner !== true) return false;
-      if (isDraftEvent(event) && event.isOwner === false) return false;
+      if (!mineOnly && isDraftEvent(event)) return false;
       const matchesQuery = !needle || `${event.title} ${event.requestId} ${event.organisation?.name ?? ""}`.toLowerCase().includes(needle);
       const matchesStatus = statusSelection === "ALL" || eventStatusLabel(event) === statusSelection;
       return matchesQuery && matchesStatus;
@@ -94,7 +94,7 @@ export function EventRequestDashboard() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-[0.02em] text-[#4F46E5]">{title}</h1>
-            <p className="mt-1 text-sm text-[#6B7280]">{mineOnly ? "Events and private drafts you created." : "Events from everyone in your organisation, plus your private drafts."}</p>
+            <p className="mt-1 text-sm text-[#6B7280]">{mineOnly ? "Events and private drafts you created." : "Events from everyone in your organisation."}</p>
           </div>
           <div className="flex w-full items-center gap-3 sm:max-w-[400px]">
             <label className="relative block min-w-0 flex-1">
@@ -113,8 +113,8 @@ export function EventRequestDashboard() {
               New Event
             </Link>
             <nav aria-label="Event ownership" className="flex flex-wrap gap-2 text-xs font-semibold">
-              <Link href={ROUTES.dashboard} aria-current={!mineOnly ? "page" : undefined} className={`rounded-control px-3 py-2 ${!mineOnly ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#6B7280] hover:bg-[#EEF2FF]"}`}>All organisation events</Link>
-              <Link href={ROUTES.requests} aria-current={mineOnly ? "page" : undefined} className={`rounded-control px-3 py-2 ${mineOnly ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#6B7280] hover:bg-[#EEF2FF]"}`}>Created by me</Link>
+              <Link href={ROUTES.dashboard} aria-current={!mineOnly ? "page" : undefined} className={`rounded-control px-3 py-2 ${!mineOnly ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#6B7280] hover:bg-[#EEF2FF]"}`}>Organisation Dashboard</Link>
+              <Link href={ROUTES.requests} aria-current={mineOnly ? "page" : undefined} className={`rounded-control px-3 py-2 ${mineOnly ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#6B7280] hover:bg-[#EEF2FF]"}`}>My Requests</Link>
             </nav>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -122,7 +122,7 @@ export function EventRequestDashboard() {
               <span className="whitespace-nowrap">Status:</span>
               <select aria-label="Filter events by status" value={statusSelection} onChange={(event) => setStatusSelection(event.target.value)} className="min-w-0 bg-transparent text-[#4B5563] outline-none">
                 <option value="ALL">All statuses</option>
-                {ORGANISER_LABEL_ORDER.map((label) => (
+                {ORGANISER_LABEL_ORDER.filter((label) => mineOnly || label !== DRAFT_LABEL).map((label) => (
                   <option key={label} value={label}>{label}</option>
                 ))}
               </select>
@@ -136,7 +136,7 @@ export function EventRequestDashboard() {
     {loading ? <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-40 w-full" />)}</div>
       : visible.length === 0 ? <SectionCard><EmptyState title="No matching events" description="Try changing your status or search, or create a new event." action={<Link href="/events/new" className="rounded-control bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary">Create an event</Link>} /></SectionCard>
         : <>
-          <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{statusSelection === DRAFT_LABEL ? "My Drafts" : mineOnly ? "Your event requests and drafts" : "Organisation events and your drafts"}</h2>
+          <h2 id="my-drafts" className="mb-4 text-xl font-semibold">{mineOnly ? statusSelection === DRAFT_LABEL ? "My Drafts" : "Your event requests and drafts" : "Organisation events"}</h2>
           <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">
             {visible.map((event) => {
               const displayStatus = eventDisplayStatus(event);

@@ -11,7 +11,7 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
   const rect=element.getBoundingClientRect();return {x:rect.x,y:rect.y,right:rect.right,bottom:rect.bottom};
  }));
  const panel=await page.locator('aside').boundingBox();
- expect(rows).toHaveLength(4);
+ expect(rows).toHaveLength(3);
  for(let index=0;index<rows.length;index++) {
   expect(rows[index].x).toBeGreaterThanOrEqual(panel.x);
   expect(rows[index].right).toBeLessThanOrEqual(panel.x+panel.width);
@@ -26,9 +26,10 @@ test('[SPM-35 UI] organiser sidebar and filters retain the shree layout', async 
  await page.getByRole('button',{name:'Open menu',exact:true}).click();
  await expect.poll(async()=>Math.round((await page.locator('aside').boundingBox()).x)).toBe(0);
  await expect(navigation.getByRole('link',{name:'My Drafts',exact:true})).toHaveCount(0);
- await navigation.getByRole('link',{name:'My Requests',exact:true}).click();
+ await navigation.getByRole('link',{name:'Dashboard',exact:true}).click();
+ await page.getByRole('navigation',{name:'Event ownership',exact:true}).getByRole('link',{name:'My Requests',exact:true}).click();
  await expect(page).toHaveURL(/scope=MINE/);
- await expect(navigation.getByRole('link',{name:'My Requests',exact:true})).toHaveAttribute('aria-current','page');
+ await expect(navigation.getByRole('link',{name:'Dashboard',exact:true})).toHaveAttribute('aria-current','page');
  await expect(page.getByRole('button',{name:'Open menu',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

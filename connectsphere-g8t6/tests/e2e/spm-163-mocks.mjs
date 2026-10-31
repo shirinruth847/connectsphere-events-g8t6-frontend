@@ -35,15 +35,17 @@ export const makeEvent = (eventId, title, overrides = {}) => ({
   ...overrides,
 });
 
-// `events` maps an ID to { event, place, attendeeStatus }. place is null, or
+// `events` maps an ID to { event, place, attendeeStatus, venue, registeredAt }
+// (the last two only on the My Events list row). place is null, or
 // { status, waitlistPosition, offer }. `refuse` maps an action to queued
 // { status, code } answers, used once each before the rules apply. placesStatus,
 // while set, is the status GET /api/registrations/mine fails with. canSignInAgain
-// lets the login page sign the attendee back in after a 401.
-export async function installRegistrationActions(page, { role = 'ATTENDEE', events = {}, profile = {}, refuse = {}, queueAhead = 2, placesStatus = null, canSignInAgain = false } = {}) {
+// lets the login page sign the attendee back in after a 401. pageSize splits the
+// list into pages; listReads records each list request's offset and limit.
+export async function installRegistrationActions(page, { role = 'ATTENDEE', events = {}, profile = {}, refuse = {}, queueAhead = 2, placesStatus = null, canSignInAgain = false, pageSize = null } = {}) {
   if (canSignInAgain) await installLoginMock(page, { role, authenticated: true });
   else await installConnectSphereMocks(page, { role });
-  const state = { events, refuse, queueAhead, placesStatus, actions: [] };
+  const state = { events, refuse, queueAhead, placesStatus, pageSize, actions: [], listReads: [] };
   const savedProfile = { attendeeId: 1, userId: 1, name: 'Test Attendee', email: 'attendee@example.test', phone: null, dietaryRestrictions: null, accessibilityRequirements: null, version: 1, createdAt: null, updatedAt: null, ...profile };
 
   const ownEvent = (id) => {
@@ -68,15 +70,21 @@ export async function installRegistrationActions(page, { role = 'ATTENDEE', even
     const path = new URL(request.url()).pathname;
     if (request.method() === 'GET' && path === '/api/registrations/mine') {
       if (state.placesStatus) return json(route, { error: 'Internal Server Error', code: 'INTERNAL_ERROR' }, state.placesStatus);
-      const registrations = Object.values(state.events).filter((entry) => entry.place).map(({ event, place, attendeeStatus = 'CONFIRMED' }) => ({
+      // As the backend: newest registration first, `pageSize` rows a page.
+      const url = new URL(request.url());
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      state.listReads.push({ offset, limit: Number(url.searchParams.get('limit')) });
+      const all = Object.values(state.events).filter((entry) => entry.place).map(({ event, place, attendeeStatus = 'CONFIRMED', venue = null, registeredAt = '2026-10-01T00:00:00.000Z' }) => ({
         registration_id: event.eventId * 10,
         registration_status: place.status,
-        registered_at: '2026-10-01T00:00:00.000Z',
+        registered_at: registeredAt,
         waitlistPosition: place.status === 'WAITLISTED' ? place.waitlistPosition : null,
         offer: place.offer ?? null,
-        event: { event_id: event.eventId, title: event.title, description: event.description, start_datetime: event.startDatetime, end_datetime: event.endDatetime, attendee_status: attendeeStatus, venue: null },
-      }));
-      return json(route, { registrations, page: { next_offset: null } });
+        event: { event_id: event.eventId, title: event.title, description: event.description, start_datetime: event.startDatetime, end_datetime: event.endDatetime, attendee_status: attendeeStatus, venue },
+      })).sort((a, b) => b.registered_at.localeCompare(a.registered_at));
+      const size = state.pageSize ?? all.length;
+      const registrations = all.slice(offset, offset + size);
+      return json(route, { registrations, page: { next_offset: offset + size < all.length ? offset + size : null } });
     }
     const detail = path.match(/^\/api\/registrations\/mine\/(\d+)$/);
     if (request.method() === 'GET' && detail) {
