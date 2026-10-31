@@ -17,6 +17,8 @@ export interface VenueHold {
   extended: boolean;
   occupiedStart: string | null;
   occupiedEnd: string | null;
+  // The booking a confirmed hold became (SPM-188 AC9).
+  convertedBookingId: number | null;
 }
 
 export interface HoldPreview extends BookingChecks {

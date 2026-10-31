@@ -29,6 +29,9 @@ const iconOf = (requirement: VenueRequirement): IconName => {
 // The capacity assessment's mark, as the ticket shows it: ✓ sufficient,
 // ~ adequate (exactly full), ✗ insufficient.
 const ASSESSMENT_MARK = { SUFFICIENT: "✓", EXACT: "~", INSUFFICIENT: "✗" } as const;
+// Every other requirement is ticked when met and crossed when not (SPM-200 AC1,
+// AC2); a requirement that could not be checked has no mark.
+const STATUS_MARK: Partial<Record<RequirementStatus, string>> = { MET: "✓", UNMET: "✗" };
 
 // Short chip text so a card stays compact: "Capacity" and "Availability"
 // say themselves; a layout, accessibility or facility shows the need itself.
@@ -71,7 +74,7 @@ export function RequirementRow({ requirement, venueValue }: { requirement: Venue
           </>
         ) : (
           <>
-            <span className="font-semibold">{requirement.label}</span>
+            <span className="font-semibold">{STATUS_MARK[requirement.status] ? <span aria-hidden="true">{STATUS_MARK[requirement.status]} </span> : null}{requirement.label}</span>
             <span className="block [overflow-wrap:anywhere]">{requirement.detail}</span>
           </>
         )}

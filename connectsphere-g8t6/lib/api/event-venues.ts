@@ -189,6 +189,9 @@ export interface VenueBookingRequestItem {
   accessibilityNeeds: string[];
   specialRequirements: string | null;
   isPrimary: boolean;
+  // SPM-188 AC9: the event's active hold this booking confirms; the booking
+  // keeps the hold's venue and times.
+  holdId?: string;
 }
 
 export interface VenueBookingRequestResult {
