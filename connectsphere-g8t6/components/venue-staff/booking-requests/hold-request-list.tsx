@@ -3,7 +3,7 @@
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
 import { readHoldCommand, saveHoldCommand } from "@/components/venues/hold-command-recovery";
-import { useHoldExpiryRefresh } from "@/components/venues/use-hold-expiry-refresh";
+import { useHoldExpiryRefresh, useMinuteClock } from "@/components/venues/use-hold-expiry-refresh";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog } from "@/components/shared/dialog";
@@ -55,7 +55,7 @@ function HoldRequestCard({ request, now, busy, recovering, onPlace, onDecline, o
         {request.venueName ?? `Venue ${request.venueId}`}{request.label ? ` · ${request.label}` : ""} ·{" "}
         <Link className="font-mono underline" href={`/events/${request.eventId}`}>{request.requestId}</Link>
       </p>
-      <HoldSummary request={request} now={now} />
+      <HoldSummary request={request} now={now} bookingLink />
       <p className="text-xs text-on-surface-variant">
         Requested {formatTimestamp(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ""}
         {request.decidedAt ? ` · Actioned ${formatTimestamp(request.decidedAt)}${request.decidedByName ? ` by ${request.decidedByName}` : ""}` : ""}
@@ -133,7 +133,10 @@ export function HoldRequestList() {
   }, [view, attempt, actorId]);
 
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
-  const now = useHoldExpiryRefresh(state.status === "ready" ? state.requests : [], reload);
+  const refreshedAt = useHoldExpiryRefresh(state.status === "ready" ? state.requests : [], reload);
+  // One minute timer for every card's countdown (SPM-188 AC8).
+  const clock = useMinuteClock();
+  const now = Math.max(refreshedAt, clock);
   const run = async (request: VenueHoldRequest, work: () => Promise<{ message: string }>) => {
     setBusyId(request.holdRequestId);
     setNotice(null);
