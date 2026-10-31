@@ -3,8 +3,8 @@ import { attachScreenshot } from './support.mjs';
 import { inHours, installRegistrationActions, makeEvent } from './spm-163-mocks.mjs';
 
 // Mocked journeys for joining and leaving a waitlist, answering a place offer
-// (SPM-163) and withdrawing a registration (SPM-147). The routes are not live
-// yet: spm-163-mocks.mjs follows the planned backend contract.
+// (SPM-163) and withdrawing a registration (SPM-147), against
+// spm-163-mocks.mjs, which follows the backend contract.
 
 const offerFor = (hours = 20) => ({ offerId: 7, expiresAt: inHours(hours) });
 const card = (page, title) => page.locator('[id^="registration-event-"]').filter({ hasText: title });

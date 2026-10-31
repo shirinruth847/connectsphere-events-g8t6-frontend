@@ -12,15 +12,13 @@ export interface PlaceOffer {
   expiresAt: string;
 }
 
-// The attendee's own place.
-// MOCK CONTRACT (SPM-163): waitlistPosition and offer are not returned by the
-// live GET yet; until the backend adds them they are undefined and the UI
-// shows no position and no offer.
+// The attendee's own place. waitlistPosition counts from 1 while waitlisted
+// and is null otherwise; offer is set only while an offer is open (SPM-163).
 export interface AttendeeRegistration {
   status: "REGISTERED" | "WAITLISTED" | (string & {});
   registeredAt: string | null;
-  waitlistPosition?: number | null;
-  offer?: PlaceOffer | null;
+  waitlistPosition: number | null;
+  offer: PlaceOffer | null;
 }
 
 // A display status, never the lifecycle state.

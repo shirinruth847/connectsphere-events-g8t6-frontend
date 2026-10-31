@@ -1,13 +1,11 @@
 import { installConnectSphereMocks } from './support.mjs';
 
-// MOCK CONTRACT (SPM-163, SPM-147). The waitlist, offer and withdrawal routes
-// are planned but not live: they follow the backend branch
-// feature/SPM-163-147-waitlist-and-withdrawal (controller/waitlistController.js,
-// validators/waitlistValidator.js), which is not wired into
-// routes/registrationRoutes.js yet. The GET fields waitlistPosition /
-// waitlist_position and offer { offerId, expiresAt } are assumed from
-// findWaitlistPositions in model/waitlistModel.js. Replace with live checks
-// once the routes exist (after SPM-134 merges).
+// Browser-journey mocks of the backend's waitlist, offer and withdrawal routes
+// (SPM-163, SPM-147; backend controller/waitlistController.js and
+// validators/waitlistValidator.js). waitlistPosition (from 1, null when not
+// waitlisted) and offer ({ offerId, expiresAt } while open, otherwise null)
+// are on each GET /api/registrations/mine row and on myRegistration. The live
+// journeys are in tests/live/spm-163-147-waitlist.live.spec.mjs.
 //
 // A stateful attendee: actions change what later GETs return.
 //   GET  /api/registrations/mine                     My Events list (snake_case)
@@ -69,7 +67,8 @@ export async function installRegistrationActions(page, { events = {}, profile = 
       const registrations = Object.values(state.events).filter((entry) => entry.place).map(({ event, place, attendeeStatus = 'CONFIRMED' }) => ({
         registration_id: event.eventId * 10,
         registration_status: place.status,
-        waitlist_position: place.status === 'WAITLISTED' ? place.waitlistPosition : null,
+        registered_at: '2026-10-01T00:00:00.000Z',
+        waitlistPosition: place.status === 'WAITLISTED' ? place.waitlistPosition : null,
         offer: place.offer ?? null,
         event: { event_id: event.eventId, title: event.title, description: event.description, start_datetime: event.startDatetime, attendee_status: attendeeStatus, venue: null },
       }));

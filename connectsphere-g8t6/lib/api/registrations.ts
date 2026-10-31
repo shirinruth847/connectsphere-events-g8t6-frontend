@@ -51,7 +51,7 @@ export function registerForEvent(eventId: number, answers: RegistrationAnswers, 
 }
 
 interface MyRegistrationsPage {
-  registrations: { registration_status: string; registered_at: string | null; event: { event_id: number } }[];
+  registrations: { registration_status: string; registered_at: string | null; waitlistPosition: number | null; offer: AttendeeRegistration["offer"]; event: { event_id: number } }[];
   page: { next_offset: number | null };
 }
 
@@ -65,7 +65,7 @@ export async function listMyPlaces(signal?: AbortSignal): Promise<Map<number, At
   while (offset !== null) {
     const page: MyRegistrationsPage = await apiRequest<MyRegistrationsPage>(`/registrations/mine?limit=100&offset=${offset}`, { signal });
     for (const item of page.registrations) {
-      places.set(item.event.event_id, { status: item.registration_status, registeredAt: item.registered_at });
+      places.set(item.event.event_id, { status: item.registration_status, registeredAt: item.registered_at, waitlistPosition: item.waitlistPosition ?? null, offer: item.offer ?? null });
     }
     offset = page.page.next_offset;
   }

@@ -45,7 +45,7 @@ export function useMyPlaces() {
   const recordRegistered = useCallback((confirmation: RegistrationConfirmation) => {
     setPlaces((current) => {
       const next = new Map(current ?? []);
-      next.set(confirmation.event.eventId, { status: confirmation.status, registeredAt: confirmation.registeredAt });
+      next.set(confirmation.event.eventId, { status: confirmation.status, registeredAt: confirmation.registeredAt, waitlistPosition: null, offer: null });
       return next;
     });
   }, []);

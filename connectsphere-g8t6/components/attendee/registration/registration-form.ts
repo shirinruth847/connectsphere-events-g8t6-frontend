@@ -53,7 +53,7 @@ const OUTCOMES: Record<string, RegistrationOutcome> = {
   REGISTRATION_FULL: {
     tone: "warning", refresh: true, canRetry: false,
     title: "This event is now full",
-    message: "The last place was taken before your registration was submitted, so direct registration is no longer available. Joining the waitlist isn't available here.",
+    message: "The last place was taken before your registration was submitted, so direct registration is no longer available. You can join the waitlist from the event's details.",
   },
   REGISTRATION_CLOSED: {
     tone: "warning", refresh: true, canRetry: false,

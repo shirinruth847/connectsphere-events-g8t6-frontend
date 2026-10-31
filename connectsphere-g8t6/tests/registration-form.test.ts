@@ -10,7 +10,7 @@ import {
 } from "@/components/attendee/registration/registration-form";
 import { getRegistrationState } from "@/components/attendee/discovery/registration-availability";
 
-const place = { status: "REGISTERED", registeredAt: "2026-10-29T02:00:00.000Z" };
+const place = { status: "REGISTERED", registeredAt: "2026-10-29T02:00:00.000Z", waitlistPosition: null, offer: null };
 
 describe("[SPM-134] registration answers", () => {
   it("should_send_both_answers_with_blank_as_null_when_building_the_request", () => {

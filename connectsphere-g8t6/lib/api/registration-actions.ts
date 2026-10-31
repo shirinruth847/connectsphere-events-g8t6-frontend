@@ -3,11 +3,6 @@ import { apiRequest } from "@/lib/api";
 // The attendee's own waitlist, place-offer and withdrawal actions (SPM-163,
 // SPM-147). The attendee comes from the session; the backend decides the
 // queue position, offers, deadlines and every refusal.
-//
-// MOCK CONTRACT: these routes are planned (backend branch
-// feature/SPM-163-147-waitlist-and-withdrawal) but not wired into
-// routes/registrationRoutes.js yet, so they answer 404 against the live API.
-// Browser tests serve them from tests/e2e/spm-163-mocks.mjs.
 
 export interface RegistrationActionResult {
   registrationId: number;
