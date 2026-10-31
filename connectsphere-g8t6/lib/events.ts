@@ -33,7 +33,7 @@ export interface EventRequest {
   venuePreferences?: number[];
   // SPM-76: each choice's requested time; null means the whole event.
   venuePreferenceTimes?: Array<{ venueId: number; requestedStart: string | null; requestedEnd: string | null }>;
-  equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
+  equipmentRequirements?: Array<{ equipmentId: number; name?: string | null; category?: string | null; quantity: number }>;
   isRegistrationEnabled?: boolean;
   registrationCapacity?: number | null;
   organisation?: { organisationId: number; name: string } | null;
@@ -345,7 +345,8 @@ export const toPayload = (values: EventFormValues): EventRequestPayload => ({
   isRegistrationEnabled: values.isRegistrationEnabled,
   registrationCapacity: values.isRegistrationEnabled && values.registrationCapacity.trim() ? Number(values.registrationCapacity) : null,
   venuePreferences: values.venuePreferences.map((venueId) => venuePreferencePayload(venueId, values.venueTimes?.[venueId])),
-  equipmentRequirements: values.equipmentRequirements.map(item => ({ ...item })),
+  // The backend refuses display fields such as name on a line.
+  equipmentRequirements: values.equipmentRequirements.map(({ equipmentId, quantity }) => ({ equipmentId, quantity })),
 });
 
 // SPM-41: fields an owner may amend while a clarification thread is open.
@@ -416,7 +417,7 @@ export const formValuesFromEvent = (event: EventRequest): EventFormValues => {
     venueTimes: Object.fromEntries((event.venuePreferenceTimes ?? [])
       .filter((item) => item.requestedStart && item.requestedEnd)
       .map((item) => [String(item.venueId), { start: toLocalDateTimeInput(item.requestedStart), end: toLocalDateTimeInput(item.requestedEnd) }])),
-    equipmentRequirements: event.equipmentRequirements ?? [],
+    equipmentRequirements: (event.equipmentRequirements ?? []).map(({ equipmentId, quantity }) => ({ equipmentId, quantity })),
   };
 };
 

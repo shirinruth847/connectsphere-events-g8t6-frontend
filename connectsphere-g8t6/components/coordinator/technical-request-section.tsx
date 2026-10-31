@@ -89,7 +89,7 @@ export function TechnicalRequestSection({ event, onSent, onStale }: TechnicalReq
   const reload = () => { setRequests({ status: "loading" }); setAttempt((value) => value + 1); };
 
   const start = () => {
-    setLines(event.equipmentRequirements.map((line) => ({ ...line })));
+    setLines(event.equipmentRequirements.map(({ equipmentId, quantity }) => ({ equipmentId, quantity })));
     setLineErrors({});
     setError(null);
     setNotice(null);
