@@ -110,6 +110,19 @@ Validation used Node.js 24.9.0.
   stock, outbox entries and the items). Run only this part with
   `LIVE_ROLES=TECH_SUPPORT npm run test:live`.
 
+- `npm run test:e2e:live` runs the maintained `@playwright/test` specs in
+  `tests/live/` (configuration `playwright.live.config.mjs`) against the
+  running applications at localhost:3000/8000, with no mocks and no server
+  started for you. Specs create their own synthetic accounts through the
+  backend's fixture modules (Auth Admin + trusted setup) and run-scoped events,
+  record them in the backend fixture manifest and remove them afterwards;
+  attendees that wrote registration history stay deactivated, as the backend
+  cleanup documents. Needs the sibling backend repository and its private
+  `.env` (CONNECTSPHERE_BACKEND_DIR and LIVE_FRONTEND_URL/LIVE_BACKEND_URL may
+  override). SPM-134 registration: `npm run test:e2e:live -- --grep SPM-134`;
+  SPM-163/147 waitlist and withdrawal:
+  `npm run test:e2e:live -- spm-163-147-waitlist.live.spec.mjs`.
+
 The live checker reads the backend's private environment only in its Node.js
 process; no private key is bundled into the browser. Rebuild/restart the normal
 frontend after mock browser tests before running live checks. NEXT_PUBLIC_BACKEND_URL
@@ -191,9 +204,10 @@ Published `CONFIRMED` and `PREPARATION` events are eligible under Master §5.3;
 ended events are excluded by the current backend query.
 
 Cards retain the labels **Registration Open**, **Full - Waitlist** and
-**Registration Closed**. Events without registration show no registration
-wording or actions. Register/waitlist/notify buttons remain unavailable with
-an explanatory note; SPM-44 does not implement registration writes. A detail
+**Registration Closed**, with **Not Yet Open** and **Unavailable** from
+SPM-134. Each card, the details dialog and `/events/[eventId]` show one
+registration state: Register Now (SPM-134), Join Waitlist for a full event
+(SPM-163), the attendee's own place, or a disabled state. A detail
 404 removes the discovery card and replaces the dialog's stale title with
 **Event unavailable**. Session expiry, denied access and retryable failures
 have distinct states.
@@ -257,15 +271,40 @@ of the five latest notifications; **See more** and the attendee sidebar's
   confirmed (`LastConfirmedNotice`). Without such a confirmation, or when not
   published, it shows only its title, status and a short notice. Both notices
   state only what is known ("This event has been cancelled" or "This event's
-  details are being confirmed"), without promising a notification
-  (`TODO(SPM-163)` marks the offer follow-up). The attendee's own place reads
+  details are being confirmed"), without promising a notification. The attendee's own place reads
   "On the waitlist"; Event Discovery uses "Full - Waitlist" for an event
   at capacity. My Events and notification links continue to open this dialog using
   the registration endpoint. SPM-44 also supports direct `/events/<id>` URLs
   through the attendee discovery endpoint; those URLs remain the role-specific
   workspace for staff.
-- Accept Slot and Decline for waitlist offers belong to SPM-163; the
-  notification shows the offer expiry, and the dialog keeps a footer slot.
+- Opened from My Events, the dialog's footer holds the actions on the
+  attendee's own place (SPM-163, SPM-147; see below).
+
+## Waitlist and withdrawal (SPM-163 / SPM-147)
+
+- A full event (`FULL_WAITLIST`) offers **Join Waitlist** on its discovery
+  card, in the details dialog and on `/events/[eventId]`, once the attendee's
+  places (`GET /api/registrations/mine`) have loaded with none for the event;
+  until then it shows the disabled **Registration Full**. The confirmation
+  ("This event is full. Join the waitlist?", **Join Waitlist** / **Not Now**)
+  carries SPM-134's two answers; they survive a session expiry and are
+  restored for the attendee to confirm, never sent automatically.
+- My Events (`/my-registrations`) and its details dialog hold the actions on
+  the attendee's own place: **Accept Slot** / **Decline** for an open offer,
+  with its deadline in SGT; **Leave Waitlist**; **Withdraw Registration**.
+  Each asks first and sends one request with an `Idempotency-Key`
+  (`lib/api/registration-actions.ts`).
+- The backend decides queue positions, offers, deadlines and every refusal.
+  The browser clock never hides an offer or Withdraw; a late answer is refused
+  (`OFFER_EXPIRED`, `EVENT_STARTED`) and the place is read again.
+- Each confirmed change sends `connectsphere:notifications-changed`, so the
+  Updates badge is read again at once.
+- Withdrawn places are not returned by the backend, so a withdrawn or left
+  event leaves My Events; there is no history list. My Events orders events
+  going ahead soonest first, then cancelled and completed ones.
+
+Browser journeys: `npm run test:e2e -- spm-163-147.spec.mjs`; live:
+`npm run test:e2e:live -- spm-163-147-waitlist.live.spec.mjs`.
 
 See [the frontend test plan](docs/test-plans/spm-155.md). Focused browser
 command: `npm run test:e2e -- --grep SPM-155`.
@@ -318,3 +357,55 @@ open the request form in a popup:
 
 The backend route needs the SPM-179 migrations and `VENUE_LOCK_DATABASE_URL`;
 until then it answers `503`, which the form shows as a retryable error.
+
+## Venue blocks and restoration (SPM-195)
+
+Venue Staff only. No new route: the screens extend existing pages.
+
+- **`/venues/[venueId]`, step 4 "Operational blocks"**
+  (`components/venue-staff/venue-management/venue-blocks.tsx`): lists the
+  venue's current and upcoming blocks from `GET /api/venues/:venueId/blocks`,
+  each with the bookings and holds it affects. "Record a block" asks for a
+  reason, start and end (SGT) and a note (`POST .../blocks`, with an
+  `Idempotency-Key` reused while the form is unchanged). Active blocks can be
+  shortened (`PUT .../blocks/:blockId` with the loaded `version`; a longer
+  block is refused in the form with "Record a new block for additional time.")
+  or lifted after a confirmation (`POST .../lift`).
+- **Restore booking** (`components/venues/booking-incident.tsx`): enabled only
+  when the backend's `canBeRestored` is `true`, then confirmed in a dialog and
+  sent to `POST /api/venues/incidents/:incidentId/restore` with its own
+  `Idempotency-Key`. A refusal (for example `INCIDENT_STILL_BLOCKED`, with the
+  blocks still in the way) keeps the dialog open. Available on the venue page
+  and on the Venue Staff event view (`/events/[eventId]?booking=`), where an
+  affected booking also shows an "Open" incident chip.
+- **Coordinator venue section:** an affected booking shows its incident card
+  (reason, period, note, whether the venue is free again) and the backend's
+  options: restore (waiting for Venue Staff), replace (not available yet,
+  SPM-172) and cancel (shown unavailable until the event cancellation workflow
+  is integrated). The supervising
+  Lead sees the card read-only, without the options. The organiser view is
+  SPM-199's and is unchanged.
+
+- **Closed incidents:** the backend closes an incident when its booking or the
+  event ends. The card then reads "Venue incident closed" with the backend's
+  resolution label (for example "Booking released") and no restore action; a
+  restored one reads "Venue available again". A long block list that the
+  backend cut short (`hasMore`) says that later blocks are not shown.
+
+Every change is shown after the backend commits it, then the list reloads. The
+backend needs migrations `20261029130000`, `20261029140000`, `20261029150000`
+and `20261029160000`.
+
+
+SPM-195 block creation cannot be dismissed while sending. An uncertain command
+retains its exact input and idempotency key in per-user, per-venue sessionStorage;
+reopening after a reload or automatic session expiry retries that command with
+its original key. Its inputs stay locked until a definitive result is received.
+Success clears recovery, and explicit logout uses the existing recovery cleanup.
+Cancellation remains an integration dependency owned by
+[SPM-176 — Cancel Event - Coordinator](https://yvery.atlassian.net/browse/SPM-176),
+which was To Do when checked on 30 October 2026. No coordinator cancellation
+endpoint exists in the inspected backend. This frontend does not add that API
+or claim cancellation is available. Jira SPM-195 AC7 still assumes an existing
+cancel action; completing or explicitly deferring that dependency requires a
+scope decision. The unavailable label alone does not complete AC7.

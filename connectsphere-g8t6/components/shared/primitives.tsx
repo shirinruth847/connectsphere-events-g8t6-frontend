@@ -1,10 +1,12 @@
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { STATUS_PRESENTATION, statusPresentation } from "@/lib/events";
 
-export const buttonClasses = (variant: "primary" | "secondary" | "danger" | "quiet" = "primary") => {
+export const buttonClasses = (variant: "primary" | "secondary" | "tertiary" | "danger" | "quiet" = "primary") => {
   const variants = {
     primary: "bg-primary text-on-primary hover:bg-primary-container active:bg-primary-dim",
     secondary: "bg-surface-container-low text-primary hover:bg-surface-container-high",
+    // Violet, for waitlist and other special-allocation actions.
+    tertiary: "bg-tertiary text-on-primary hover:bg-tertiary-container",
     danger: "bg-error text-on-primary hover:bg-error-on-surface",
     quiet: "bg-transparent text-on-surface-variant hover:bg-surface-container-low",
   };
@@ -14,7 +16,7 @@ export const buttonClasses = (variant: "primary" | "secondary" | "danger" | "qui
 
 // Includes `ref`, which React 19 passes through as a prop (e.g. to return focus to a button).
 interface ButtonProps extends ComponentPropsWithRef<"button"> {
-  variant?: "primary" | "secondary" | "danger" | "quiet";
+  variant?: "primary" | "secondary" | "tertiary" | "danger" | "quiet";
   fullWidth?: boolean;
 }
 

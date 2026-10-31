@@ -31,6 +31,9 @@ export interface ManagedVenueFilters {
 
 export interface AvailabilityParams {
   eventId?: number;
+  // One booking's venue calendar for Venue Staff (SPM-186): the server takes
+  // the venue and the checked period from the booking, so only the range is sent.
+  bookingId?: number;
   // A Singapore calendar day (YYYY-MM-DD) and how many days to show.
   date: string;
   days: number;

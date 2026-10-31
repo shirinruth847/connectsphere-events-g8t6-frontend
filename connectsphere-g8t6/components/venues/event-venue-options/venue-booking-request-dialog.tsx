@@ -6,6 +6,7 @@ import { AlertBanner, Button, ReferenceIdTag } from "@/components/shared/primiti
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { ApiError } from "@/lib/api";
+import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
 import { formatEventWindow } from "@/lib/datetime";
 import {
   requestEventVenueBookings,
@@ -32,6 +33,8 @@ import {
   type BookingDraft,
 } from "./venue-booking-form-model";
 import { VenueBookingSection, type VenueChoiceGroups } from "./venue-booking-section";
+import { useVenueBookingChecks } from "./use-venue-booking-checks";
+import { findBookingConflicts, type BookingConflict } from "./booking-precheck";
 
 interface VenueBookingRequestDialogProps {
   // Kept mounted while closing, so focus returns to the button that opened it;
@@ -92,8 +95,11 @@ export function VenueBookingRequestDialog({
   const [banner, setBanner] = useState<{ message: string; stale: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [conflicts, setConflicts] = useState<BookingConflict[] | null>(null);
   // One key per request body: a retry of the same body cannot book twice (AC13).
-  const attempt = useRef<{ body: string; key: string } | null>(null);
+  const [uncertainBody, setUncertainBody] = useState<string | null>(null);
+  const attempt = useRef<{ body: string; key: string; uncertain: boolean } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const venueById = useMemo(() => new Map(venues.map((venue) => [venue.venueId, venue])), [venues]);
@@ -107,6 +113,28 @@ export function VenueBookingRequestDialog({
     const found = venueFilterChoices(venues);
     return { ...found, accessibility: [...new Set([...found.accessibility, ...(event.accessibilityNeeds ?? [])])] };
   }, [venues, event.accessibilityNeeds]);
+
+  // Each section is checked on its own venue and window as it changes (SPM-186
+  // AC17); a section without a venue and both times is not checked yet.
+  const checkItems = useMemo(
+    () => (drafts.some((draft) => draft.venueId != null && draft.start && draft.end) ? toRequestItems(drafts, eventHasPrimary) : null),
+    [drafts, eventHasPrimary],
+  );
+  const checks = useVenueBookingChecks(event.eventId, checkItems);
+  const recoveringRequest = uncertainBody !== null && uncertainBody === JSON.stringify(toRequestItems(drafts, eventHasPrimary));
+  const blockingCount = checks.checking ? 0 : checks.results.filter((result) => result.checked && result.blocking.length).length;
+  // Invalid windows are returned unchecked, with field errors rather than blockers.
+  const hasCheckFieldErrors = !checks.checking && checks.results.some((result) =>
+    Object.keys(result.fields).some((field) => /\.(start|end)$/.test(field)),
+  );
+  // A time the server cannot check yet (e.g. outside the event) shows on its field (AC18).
+  const liveErrors = (index: number) => {
+    const fields = checks.results[index]?.fields ?? {};
+    return Object.fromEntries(["start", "end"].flatMap((name) => {
+      const message = fields[`bookings.${index}.${name}`];
+      return message ? [[name, message]] : [];
+    }));
+  };
 
   const askPrimary = needsPrimaryChoice(drafts.length, eventHasPrimary);
   const primaryGroup = `primary-${event.eventId}`;
@@ -150,7 +178,10 @@ export function VenueBookingRequestDialog({
 
   const submit = async () => {
     if (saving) return;
-    const found = validateDrafts(drafts, { event: context, venues, bookedVenueIds: booked, eventHasPrimary });
+    const items = toRequestItems(drafts, eventHasPrimary);
+    const body = JSON.stringify(items);
+    const recovering = attempt.current?.body === body && attempt.current.uncertain;
+    const found = recovering ? {} : validateDrafts(drafts, { event: context, venues, bookedVenueIds: booked, eventHasPrimary });
     if (Object.keys(found).length) {
       setErrors(found);
       setBanner({ message: "Nothing was sent. Correct the highlighted fields.", stale: false });
@@ -158,18 +189,32 @@ export function VenueBookingRequestDialog({
       showSection(first !== undefined ? Number(first) : null);
       return;
     }
-    const items = toRequestItems(drafts, eventHasPrimary);
-    const body = JSON.stringify(items);
     const key = attempt.current?.body === body ? attempt.current.key : crypto.randomUUID();
-    attempt.current = { body, key };
+    attempt.current = { body, key, uncertain: Boolean(recovering) };
     setSaving(true);
     setBanner(null);
+    // Recovery must reach the server even if availability changed after commit.
+    // New commands still receive the advisory check before submission.
+    if (!recovering) {
+      setChecking(true);
+      const clashes = await findBookingConflicts(event.eventId, drafts, (venueId) => venueById.get(venueId)?.name ?? "This venue");
+      setChecking(false);
+      if (clashes.length) {
+        setSaving(false);
+        setConflicts(clashes);
+        return;
+      }
+    }
     try {
       const result = await requestEventVenueBookings(event.eventId, items, key);
       attempt.current = null;
+      setUncertainBody(null);
       onSubmitted(result);
     } catch (caught) {
       const error = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : "The booking request could not be sent.", 0);
+      const uncertain = keepsIdempotencyKey(error) || error.status === 401;
+      if (attempt.current) attempt.current.uncertain = uncertain;
+      setUncertainBody(uncertain ? body : null);
       const failure = bookingRequestFailure(error);
       setErrors(failure.fields);
       setBanner({ message: failure.banner, stale: failure.stale });
@@ -178,6 +223,12 @@ export function VenueBookingRequestDialog({
     } finally {
       setSaving(false);
     }
+  };
+
+  const closeConflicts = () => {
+    const first = conflicts?.[0]?.index ?? null;
+    setConflicts(null);
+    showSection(first);
   };
 
   const unavailableFor = (index: number) =>
@@ -205,8 +256,14 @@ export function VenueBookingRequestDialog({
         footer={(
           <>
             <Button type="button" variant="quiet" disabled={saving} onClick={close}>Cancel</Button>
-            <Button type="button" disabled={saving || Boolean(banner?.stale)} onClick={() => void submit()}>
-              {saving ? "Sending…" : "Send booking request"}
+            {blockingCount && !recoveringRequest ? (
+              <span className="self-center text-xs font-semibold text-error">
+                {blockingCount === 1 ? "1 venue has" : `${blockingCount} venues have`} a problem to fix first.
+              </span>
+            ) : null}
+            {recoveringRequest ? <span className="self-center text-xs text-on-surface-variant">Retry to recover the previous request&apos;s result.</span> : null}
+            <Button type="button" disabled={saving || Boolean(banner?.stale) || (!recoveringRequest && (blockingCount > 0 || hasCheckFieldErrors))} onClick={() => void submit()}>
+              {checking ? "Checking availability…" : saving ? "Sending…" : "Send booking request"}
             </Button>
           </>
         )}
@@ -248,14 +305,15 @@ export function VenueBookingRequestDialog({
               <VenueBookingSection
                 key={draft.key}
                 index={index}
-                eventId={event.eventId}
                 draft={draft}
                 venue={draft.venueId == null ? null : venueById.get(draft.venueId) ?? null}
                 venueGroups={groups}
                 unavailableVenueIds={unavailableFor(index)}
                 bookedVenueIds={booked}
                 choices={choices}
-                errors={sectionErrors(errors, index)}
+                errors={{ ...liveErrors(index), ...sectionErrors(errors, index) }}
+                checks={checks.results[index]?.checked ? checks.results[index] : null}
+                checking={checks.checking}
                 primaryGroup={askPrimary ? primaryGroup : null}
                 primaryErrorId={errors["bookings.primary"] ? `${primaryGroup}-error` : undefined}
                 canRemove={drafts.length > 1}
@@ -289,6 +347,28 @@ export function VenueBookingRequestDialog({
         )}
       >
         <p className="text-sm text-on-surface">The venue sections you filled in will be lost. Nothing has been sent to Venue Staff.</p>
+      </Dialog>
+
+      {/* SPM-185: clashes found before sending; the form keeps every value. */}
+      <Dialog
+        open={conflicts !== null}
+        onClose={closeConflicts}
+        title={conflicts && conflicts.length > 1 ? "Some venues are not available at those times" : "This venue is not available at that time"}
+        footer={<Button type="button" onClick={closeConflicts}>Change times or venue</Button>}
+      >
+        <div className="grid gap-3 text-sm text-on-surface">
+          <p>Nothing was sent. Each venue&apos;s setup and turnaround time is included.</p>
+          {(conflicts ?? []).map((conflict) => (
+            <section key={conflict.index} aria-label={`Venue section ${conflict.index + 1}: ${conflict.venueName}`} className="grid gap-1">
+              <h3 className="font-semibold">Venue section {conflict.index + 1}: {conflict.venueName}</h3>
+              <ul className="grid gap-1">
+                {conflict.messages.map((message, at) => (
+                  <li key={at} className="rounded-control bg-[#FEF2F2] px-3 py-1.5">{message}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       </Dialog>
     </>
   );

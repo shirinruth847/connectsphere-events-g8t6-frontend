@@ -178,8 +178,10 @@ test('[SPM-155 AC5] a cancelled event shows its title and status but holds back 
   await expect(dialog.getByRole('alert').filter({ hasText: 'This event has been cancelled' })).toContainText('Its date, time and venue are no longer shown.');
   await expect(dialog).not.toContainText(/notification|organiser/i);
   // The attendee's own place says "On the waitlist", never "Waitlisted" (SPM-44's word for a full event).
-  await expect(dialog.getByText('On the waitlist', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('On the waitlist · a place is not yet confirmed', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('On the waitlist', { exact: true })).toHaveCount(2);
+  await expect(dialog.getByText('A place is not yet confirmed.', { exact: true })).toBeVisible();
+  // Cancelled: no Leave Waitlist (SPM-163).
+  await expect(dialog.getByRole('button', { name: /Leave Waitlist/ })).toHaveCount(0);
   await expect(dialog.getByText('Waitlisted', { exact: true })).toHaveCount(0);
   // No schedule, venue or description; only the attendee's own place has a time.
   await expect(dialog).not.toContainText('Schedule');

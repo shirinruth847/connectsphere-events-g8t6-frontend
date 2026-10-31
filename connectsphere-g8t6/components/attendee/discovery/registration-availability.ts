@@ -1,9 +1,9 @@
-import type { AttendeeEventDetail, RegistrationAvailability } from "@/lib/api/discovery";
+import type { RegistrationAvailability } from "@/lib/api/discovery";
+import type { AttendeeRegistration } from "@/lib/api/my-events";
 
 // The one map from the backend's registrationAvailability to its presentation.
-// The chip, its dot and the card's top border all read from here.
-// NOT_ENABLED has no entry: an event without attendee registration shows no
-// chip and no registration wording at all (SPM-34 AC4).
+// The chip, its dot and the card's top border all read from here. The backend
+// decides the state (SPM-134, Master 5.6); nothing here recalculates it.
 interface AvailabilityPresentation {
   label: string;
   chip: string;
@@ -11,7 +11,13 @@ interface AvailabilityPresentation {
   border: string;
 }
 
-const AVAILABILITY: Record<Exclude<RegistrationAvailability, "NOT_ENABLED">, AvailabilityPresentation> = {
+const AVAILABILITY: Record<RegistrationAvailability, AvailabilityPresentation> = {
+  NOT_YET_OPEN: {
+    label: "Not Yet Open",
+    chip: "bg-primary-fixed text-primary",
+    dot: "bg-primary",
+    border: "border-t-primary",
+  },
   OPEN: {
     label: "Registration Open",
     chip: "bg-success/10 text-success",
@@ -30,48 +36,60 @@ const AVAILABILITY: Record<Exclude<RegistrationAvailability, "NOT_ENABLED">, Ava
     dot: "bg-on-surface-variant",
     border: "border-t-on-surface-variant",
   },
+  // Neutral: it is neither full nor closed, and the reason is not the attendee's concern.
+  UNAVAILABLE: {
+    label: "Unavailable",
+    chip: "bg-surface-container-high text-on-surface-variant",
+    dot: "bg-outline",
+    border: "border-t-outline-variant",
+  },
 };
 
-// Returns null for NOT_ENABLED and for any value the backend adds later, so an
-// unmapped value is never guessed into a colour.
+// Returns null for any value the backend adds later, so an unmapped value is
+// never guessed into a colour.
 export function getAvailabilityPresentation(value: string): AvailabilityPresentation | null {
   return Object.prototype.hasOwnProperty.call(AVAILABILITY, value)
     ? AVAILABILITY[value as keyof typeof AVAILABILITY]
     : null;
 }
 
-// True only for the mapped values (OPEN, FULL_WAITLIST, CLOSED), so NOT_ENABLED
-// and any unknown value show no registration wording.
-export const isRegistrationEnabled = (value: string) => getAvailabilityPresentation(value) !== null;
+// Whether the event's registration start and end times are worth showing:
+// every state but UNAVAILABLE (whose times may be missing) and unknown values.
+export const showsRegistrationWindow = (value: string) =>
+  value !== "UNAVAILABLE" && getAvailabilityPresentation(value) !== null;
 
-export interface RegistrationAction {
-  label: string;
-  // A shared Button variant.
-  variant: "primary" | "secondary";
-}
+// What an event surface shows in its registration area (SPM-134): Register
+// Now, Join Waitlist for a full event (SPM-163), the attendee's own place, or
+// a disabled state saying why they cannot register. Shared by the Event
+// Discovery card, the event details dialog and the /events/[eventId] page.
+export type RegistrationState =
+  | { kind: "register"; label: "Register Now" }
+  | { kind: "waitlist"; label: "Join Waitlist" }
+  | { kind: "place" | "unavailable"; label: string };
 
-// The one action the event details offer for each availability. Registering,
-// waitlisting and notifications have no backend endpoints yet, so callers
-// render the action as unavailable.
-export function getRegistrationAction(
-  event: Pick<AttendeeEventDetail, "registrationAvailability" | "registrationOpenAt">,
-  now: Date = new Date(),
-): RegistrationAction | null {
-  switch (event.registrationAvailability) {
-    case "OPEN":
-      return { label: "Register Now", variant: "primary" };
-    case "FULL_WAITLIST":
-      return { label: "Join Waitlist", variant: "primary" };
-    case "CLOSED": {
-      // Closed because the window has not opened yet, as opposed to having ended.
-      // This compares against the browser clock, which can be wrong. That is
-      // acceptable because it only picks the wording of a disabled button: no
-      // request depends on it, and the backend decides availability itself.
-      const opensAt = event.registrationOpenAt ? new Date(event.registrationOpenAt).getTime() : Number.NaN;
-      return opensAt > now.getTime() ? { label: "Notify when registration opens", variant: "secondary" } : null;
-    }
-    default:
-      // NOT_ENABLED, or a value the backend adds later: no action.
-      return null;
-  }
+const DISABLED_LABELS: Record<Exclude<RegistrationAvailability, "OPEN">, string> = {
+  NOT_YET_OPEN: "Registration Not Yet Open",
+  FULL_WAITLIST: "Registration Full",
+  CLOSED: "Registration Closed",
+  UNAVAILABLE: "Registration Unavailable",
+};
+
+// A held place wins over availability. Register Now needs OPEN, and Join
+// Waitlist FULL_WAITLIST, with the attendee's places loaded and none for this
+// event. While the places are unknown (loading or failed) the attendee may
+// already hold one, so an OPEN event shows nothing and a full event only the
+// disabled Registration Full. Any value the backend adds later is shown as
+// unavailable, never as open.
+export function getRegistrationState(
+  availability: string,
+  place: AttendeeRegistration | null,
+  placesKnown: boolean,
+): RegistrationState | null {
+  if (place) return { kind: "place", label: place.status === "WAITLISTED" ? "On the waitlist" : "Registered" };
+  if (availability === "OPEN") return placesKnown ? { kind: "register", label: "Register Now" } : null;
+  if (availability === "FULL_WAITLIST" && placesKnown) return { kind: "waitlist", label: "Join Waitlist" };
+  const label = Object.prototype.hasOwnProperty.call(DISABLED_LABELS, availability)
+    ? DISABLED_LABELS[availability as keyof typeof DISABLED_LABELS]
+    : DISABLED_LABELS.UNAVAILABLE;
+  return { kind: "unavailable", label };
 }

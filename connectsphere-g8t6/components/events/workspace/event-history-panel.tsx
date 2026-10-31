@@ -9,7 +9,7 @@ import type { EventHistoryEntry, EventView } from "@/lib/api/event-workspace";
 import { formatTimestamp } from "@/lib/datetime";
 import { isNewHistoryEntry } from "@/lib/event-history";
 import { fieldLabel } from "./event-detail-rows";
-import { useEventHistory } from "./use-event-history";
+import { useEventHistory, type useHistory } from "./use-event-history";
 
 const ACTION_LABELS: Record<string, string> = {
   DRAFT_CREATED: "Draft created",
@@ -37,7 +37,45 @@ const ACTION_LABELS: Record<string, string> = {
   SAFETY_REVIEW_SUPERSEDED: "Safety review closed after an arrangement change",
   VENUE_SUGGESTED: "Venue suggested",
   VENUE_BOOKINGS_REQUESTED: "Venue bookings requested",
+  // SPM-186/189 booking decisions and venue records. Block, restore and
+  // incident entries keep their own summaries (SPM-195 AC14).
+  VENUE_BOOKING_APPROVED: "Venue booking approved",
+  VENUE_BOOKING_REJECTED: "Venue booking rejected",
+  VENUE_UNAVAILABLE: "Venue taken out of service",
+  VENUE_CREATED: "Venue created",
+  VENUE_UPDATED: "Venue details updated",
+  VENUE_DETAILS_UPDATED: "Venue facilities or times updated",
+  VENUE_STATUS_CHANGED: "Venue status changed",
+  VENUE_PHOTO_ADDED: "Photo added",
+  VENUE_PHOTO_UPDATED: "Photo edited",
+  VENUE_PHOTO_REPLACED: "Photo replaced",
+  VENUE_PHOTO_DELETED: "Photo deleted",
 };
+
+// Fields only venue records carry; event fields, including SPM-195's block
+// and incident fields, use fieldLabel.
+const VENUE_FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  address: "Location",
+  maxCapacity: "Capacity",
+  operatingHours: "Operating hours",
+  statusReason: "Reason",
+  contactPerson: "Contact person",
+  contactEmail: "Contact email",
+  contactNumber: "Contact number",
+  setupMinutes: "Setup (min)",
+  turnaroundMinutes: "Turnaround (min)",
+  photoId: "Photo",
+  position: "Position",
+  bookingId: "Booking",
+  venueBooking: "Venue booking",
+  venueId: "Venue",
+  venueStatus: "Venue status",
+  // A venue's own block entries (SPM-195 venue history).
+  block: "Block",
+};
+
+const historyFieldLabel = (field: string) => VENUE_FIELD_LABELS[field] ?? fieldLabel(field);
 
 const ROLE_LABELS: Record<string, string> = {
   ORGANISER: "Organiser",
@@ -79,10 +117,17 @@ const UNSEEN_LINE =
 // A suggestion is not an edit of the request (SPM-72 AC8): it reads as the
 // venue suggested, and which suggestion it replaces, rather than From/To.
 // Organiser labels come from Express, using the same mapping as the event header.
-const historyStatus = (change: EventHistoryEntry["changes"][number], side: "before" | "after", organiserView: boolean) =>
-  organiserView ? change[side === "before" ? "beforeLabel" : "afterLabel"] ?? "Status updated" : formatValue("status", change[side]);
+// A venue's history passes its own status labels (ACTIVE, UNDER_MAINTENANCE...).
+type StatusLabels = Record<string, string> | undefined;
 
-function ChangeValue({ change, organiserView }: { change: EventHistoryEntry["changes"][number]; organiserView: boolean }) {
+const historyStatus = (change: EventHistoryEntry["changes"][number], side: "before" | "after", organiserView: boolean, statusLabels?: StatusLabels) => {
+  if (organiserView) return change[side === "before" ? "beforeLabel" : "afterLabel"] ?? "Status updated";
+  const value = change[side];
+  if (statusLabels && typeof value === "string") return statusLabels[value] ?? value;
+  return formatValue("status", value);
+};
+
+function ChangeValue({ change, organiserView, statusLabels }: { change: EventHistoryEntry["changes"][number]; organiserView: boolean; statusLabels?: StatusLabels }) {
   // SPM-179: the bookings a request added, one per line; there is no "before".
   if (change.field === "venueBookings" && Array.isArray(change.after)) {
     return (
@@ -103,18 +148,18 @@ function ChangeValue({ change, organiserView }: { change: EventHistoryEntry["cha
   }
   return (
     <dd className="mt-1 grid gap-0.5 text-on-surface">
-      <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {change.field === "status" ? historyStatus(change, "before", organiserView) : formatValue(change.field, change.before)}</span>
-      <span className="line-clamp-3"><span className="font-semibold">To:</span> {change.field === "status" ? historyStatus(change, "after", organiserView) : formatValue(change.field, change.after)}</span>
+      <span className="line-clamp-3 text-on-surface-variant"><span className="font-semibold">From:</span> {change.field === "status" ? historyStatus(change, "before", organiserView, statusLabels) : formatValue(change.field, change.before)}</span>
+      <span className="line-clamp-3"><span className="font-semibold">To:</span> {change.field === "status" ? historyStatus(change, "after", organiserView, statusLabels) : formatValue(change.field, change.after)}</span>
     </dd>
   );
 }
 
-function HistoryItem({ entry, isNew, organiserView }: { entry: EventHistoryEntry; isNew: boolean; organiserView: boolean }) {
+function HistoryItem({ entry, isNew, organiserView, statusLabels }: { entry: EventHistoryEntry; isNew: boolean; organiserView: boolean; statusLabels?: StatusLabels }) {
   const statusChange = entry.changes.find((change) => change.field === "status");
   return (
     <li className={`relative pl-7 ${isNew ? UNSEEN_LINE : ""}`} data-unseen={isNew ? "true" : undefined}>
       <span aria-hidden="true" className="absolute left-0 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-primary-fixed text-primary">
-        <Icon name={entry.action.startsWith("COORDINATOR_") ? "person" : entry.action.startsWith("CLARIFICATION_") ? "forum" : entry.action.startsWith("SAFETY_") ? "shield" : entry.action === "EVENT_SUBMITTED" ? "check" : "edit"} size={16} />
+        <Icon name={entry.action.startsWith("COORDINATOR_") ? "person" : entry.action.startsWith("CLARIFICATION_") ? "forum" : entry.action.startsWith("SAFETY_") ? "shield" : entry.action.startsWith("VENUE_") ? "venue" : entry.action === "EVENT_SUBMITTED" ? "check" : "edit"} size={16} />
       </span>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <p className="text-sm font-semibold text-on-surface">{actionLabel(entry)}</p>
@@ -128,7 +173,7 @@ function HistoryItem({ entry, isNew, organiserView }: { entry: EventHistoryEntry
         {" · "}
         <time dateTime={entry.occurredAt}>{formatTimestamp(entry.occurredAt)}</time>
       </p>
-      {statusChange ? (
+      {statusChange && !statusLabels ? (
         <p className="mt-1 text-xs text-on-surface-variant">Request status: {historyStatus(statusChange, "before", organiserView)} → {historyStatus(statusChange, "after", organiserView)}</p>
       ) : entry.action === "EVENT_SUBMITTED" ? (
         <p className="mt-1 text-xs text-on-surface-variant">Request status: Submitted</p>
@@ -143,8 +188,8 @@ function HistoryItem({ entry, isNew, organiserView }: { entry: EventHistoryEntry
         <dl className="mt-2 grid gap-2 rounded-control bg-surface-container-low p-3">
           {entry.changes.map((change) => (
             <div key={change.field} className="text-xs">
-              <dt className="font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{fieldLabel(change.field)}</dt>
-              <ChangeValue change={change} organiserView={organiserView} />
+              <dt className="font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{historyFieldLabel(change.field)}</dt>
+              <ChangeValue change={change} organiserView={organiserView} statusLabels={statusLabels} />
             </div>
           ))}
         </dl>
@@ -154,16 +199,37 @@ function HistoryItem({ entry, isNew, organiserView }: { entry: EventHistoryEntry
 }
 
 export function EventHistoryPanel({ event, refreshKey }: { event: EventView; refreshKey: number }) {
-  const { state, baseline, retry, loadMore, loadingMore, moreError } = useEventHistory(event.eventId, refreshKey);
-  const headingId = `event-${event.eventId}-history`;
+  const history = useEventHistory(event.eventId, refreshKey);
+  return (
+    <HistoryPanel
+      id={`event-${event.eventId}-history`}
+      description={describeHistory(event)}
+      emptyText="No changes have been recorded for this event yet."
+      history={history}
+      organiserView={["OWNER", "ORGANISATION_MEMBER"].includes(event.viewerRelationship)}
+    />
+  );
+}
+
+// The "Change history" timeline for any history source (useHistory).
+export function HistoryPanel({ id, title = "Change history", description, emptyText, history, organiserView = false, statusLabels }: {
+  id: string;
+  title?: string;
+  description: string;
+  emptyText: string;
+  history: ReturnType<typeof useHistory>;
+  organiserView?: boolean;
+  statusLabels?: Record<string, string>;
+}) {
+  const { state, baseline, retry, loadMore, loadingMore, moreError } = history;
   const newCount = state.status === "ready" ? state.entries.filter((entry) => isNewHistoryEntry(entry, baseline)).length : 0;
 
   return (
-    <section aria-labelledby={headingId} className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
+    <section aria-labelledby={id} className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
       <SectionHeading
-        id={headingId}
-        title="Change history"
-        description={newCount ? `${describeHistory(event)} ${newCount} new since your last visit.` : describeHistory(event)}
+        id={id}
+        title={title}
+        description={newCount ? `${description} ${newCount} new since your last visit.` : description}
       />
       <div className="mt-4">
         {state.status === "loading" ? (
@@ -177,11 +243,11 @@ export function EventHistoryPanel({ event, refreshKey }: { event: EventView; ref
             <div className="mt-3"><Button variant="secondary" onClick={retry}><Icon name="refresh" size={16} />Try again</Button></div>
           </AlertBanner>
         ) : state.entries.length === 0 ? (
-          <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">No changes have been recorded for this event yet.</p>
+          <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">{emptyText}</p>
         ) : (
           <>
             <ol className="relative grid gap-5 before:absolute before:bottom-2 before:left-2.5 before:top-2 before:w-px before:bg-outline-variant">
-              {state.entries.map((entry) => <HistoryItem key={entry.historyId} entry={entry} isNew={isNewHistoryEntry(entry, baseline)} organiserView={["OWNER", "ORGANISATION_MEMBER"].includes(event.viewerRelationship)} />)}
+              {state.entries.map((entry) => <HistoryItem key={entry.historyId} entry={entry} isNew={isNewHistoryEntry(entry, baseline)} organiserView={organiserView} statusLabels={statusLabels} />)}
             </ol>
             {moreError ? <p className="mt-3 text-xs font-semibold text-error" role="alert">{moreError}</p> : null}
             {state.nextCursor ? (
