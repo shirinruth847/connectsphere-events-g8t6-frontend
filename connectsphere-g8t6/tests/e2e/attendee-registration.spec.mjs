@@ -100,7 +100,8 @@ async function openFromCard(page, title = 'SMU Tech Summit') {
 const STATE_EVENTS = [
   { event: makeEvent(), label: 'Register Now' },
   { event: makeEvent({ eventId: 107, title: 'Upcoming Event', registrationAvailability: 'NOT_YET_OPEN', registrationOpenAt: '2099-01-01T01:00:00.000Z', registrationCloseAt: '2099-01-05T01:00:00.000Z' }), label: 'Registration Not Yet Open' },
-  { event: makeEvent({ eventId: 102, title: 'Full Event', registrationAvailability: 'FULL_WAITLIST' }), label: 'Registration Full' },
+  // SPM-163: a full event offers the real waitlist on every surface.
+  { event: makeEvent({ eventId: 102, title: 'Full Event', registrationAvailability: 'FULL_WAITLIST' }), label: 'Join Waitlist' },
   { event: makeEvent({ eventId: 103, title: 'Closed Event', registrationAvailability: 'CLOSED' }), label: 'Registration Closed' },
   { event: makeEvent({ eventId: 104, title: 'Unavailable Event', registrationAvailability: 'UNAVAILABLE', registrationOpenAt: null, registrationCloseAt: null }), label: 'Registration Unavailable' },
   { event: makeEvent({ eventId: 105, title: 'Already Registered Event' }), label: 'Registered' },
@@ -108,15 +109,16 @@ const STATE_EVENTS = [
 ];
 const STATE_PLACES = { 105: 'REGISTERED', 106: 'WAITLISTED' };
 
-// The registration area of one surface: Register Now for an OPEN event the
-// attendee holds no place on, otherwise one visible control that does nothing.
+// The registration area of one surface: Register Now for an OPEN event, or Join
+// Waitlist for a full one (SPM-163), when the attendee holds no place on it;
+// otherwise one visible control that does nothing.
 async function expectRegistrationState(scope, title, label) {
   const register = registerOn(scope, title);
-  // The details dialog and the event page offer a full event's waitlist
-  // (SPM-163) where the card shows "Registration Full".
   if (label === 'Join Waitlist') {
     await expect(register).toHaveCount(0);
-    await expect(scope.getByRole('button', { name: 'Join Waitlist', exact: true })).toBeEnabled();
+    const join = scope.getByRole('button', { name: `Join waitlist for ${title}`, exact: true });
+    await expect(join).toBeEnabled();
+    await expect(join).not.toHaveAttribute('aria-disabled', 'true');
     return;
   }
   if (label === 'Register Now') {
@@ -139,8 +141,8 @@ test('[SPM-134 TC-REG-001/017/018/020] should_show_one_registration_state_per_ev
     await expect(eventCard.getByRole('button', { name: `View event details for ${event.title}`, exact: true })).toBeVisible();
     await expectRegistrationState(eventCard, event.title, label);
   }
-  // TC-REG-017: direct registration is full; joining the waitlist is not built here.
-  await expect(card(page, 'Full Event').getByRole('button', { name: /waitlist/i })).toHaveCount(0);
+  // TC-REG-017: direct registration is full, so no Register Now; SPM-163 offers the waitlist.
+  await expect(card(page, 'Full Event').getByRole('button', { name: /^register now/i })).toHaveCount(0);
   // UNAVAILABLE is never described as full or closed.
   await expect(card(page, 'Unavailable Event')).not.toContainText(/full|closed/i);
   await expect(card(page, 'Already Registered Event')).not.toContainText('Registration Open');
@@ -149,11 +151,10 @@ test('[SPM-134 TC-REG-001/017/018/020] should_show_one_registration_state_per_ev
 test('[SPM-134 TC-REG-001/002] should_show_the_same_registration_state_in_the_details_dialog_and_on_the_event_page', async ({ page }) => {
   await installRegistrationMocks(page, { events: STATE_EVENTS.map(({ event }) => event), places: STATE_PLACES });
   await page.goto('/events');
-  const detailsLabel = (label) => (label === 'Registration Full' ? 'Join Waitlist' : label);
   for (const { event, label } of STATE_EVENTS) {
     await card(page, event.title).getByRole('button', { name: `View event details for ${event.title}`, exact: true }).click();
     const dialog = page.getByRole('dialog', { name: event.title, exact: true });
-    await expectRegistrationState(dialog, event.title, detailsLabel(label));
+    await expectRegistrationState(dialog, event.title, label);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
   }
@@ -161,7 +162,7 @@ test('[SPM-134 TC-REG-001/002] should_show_the_same_registration_state_in_the_de
     await page.goto(`/events/${event.eventId}`);
     const main = page.locator('main');
     await expect(main.getByRole('heading', { level: 1, name: event.title, exact: true })).toBeVisible();
-    await expectRegistrationState(main, event.title, detailsLabel(label));
+    await expectRegistrationState(main, event.title, label);
   }
 });
 
@@ -212,7 +213,8 @@ test('[SPM-134] should_show_the_backend_availability_and_never_recalculate_it_fr
 test('[SPM-134] should_send_no_registration_and_open_no_form_when_a_disabled_state_is_clicked_or_activated_by_keyboard', async ({ page }) => {
   const { calls } = await installRegistrationMocks(page, { events: STATE_EVENTS.map(({ event }) => event), places: STATE_PLACES });
   await page.goto('/events');
-  for (const { event, label } of STATE_EVENTS.filter((item) => item.label !== 'Register Now')) {
+  // Register Now and Join Waitlist (SPM-163) are the enabled ones.
+  for (const { event, label } of STATE_EVENTS.filter((item) => !['Register Now', 'Join Waitlist'].includes(item.label))) {
     const control = card(page, event.title).getByRole('button', { name: `${label} for ${event.title}`, exact: true });
     await control.dispatchEvent('click');
     // Still reachable by keyboard, and inert there too.
@@ -324,7 +326,8 @@ test('[SPM-134] should_show_success_only_after_the_backend_returns_201', async (
 
 for (const [code, title, refreshedAvailability, refreshedLabel] of [
   ['REGISTRATION_NOT_YET_OPEN', "Registration hasn't opened yet", 'NOT_YET_OPEN', 'Registration Not Yet Open'],
-  ['REGISTRATION_FULL', 'This event is now full', 'FULL_WAITLIST', 'Registration Full'],
+  // A full event now offers its waitlist instead (SPM-163).
+  ['REGISTRATION_FULL', 'This event is now full', 'FULL_WAITLIST', 'Join Waitlist'],
   ['REGISTRATION_CLOSED', 'Registration has closed', 'CLOSED', 'Registration Closed'],
   ['REGISTRATION_UNAVAILABLE', 'Registration is currently unavailable', 'UNAVAILABLE', 'Registration Unavailable'],
 ]) {

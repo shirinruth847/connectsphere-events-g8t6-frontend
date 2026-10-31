@@ -625,87 +625,6 @@ async function attendeeProfileLive() {
   }
  }
 }
-// SPM-163/147 as the seed attendee, on this run's own events: a fixture
-// organiser and venue, and a fixture attendee holding the full event's only
-// place. Every row goes through the backend fixture manifest and is removed;
-// the seed attendee's append-only activity entries stay, as in the other seed flows.
-async function attendeeWaitlistLive(attendee) {
- const {newRunId,cleanupAuthFixtures,recordFixtureIds}=require(path.join(backendRoot,'tests/fixtures/authFixtures'));
- const {createRegistrationFixtures,bookPrimaryVenue}=require(path.join(backendRoot,'tests/fixtures/registrationFixtures'));
- const waitRun=newRunId();let fixtures;const eventIds=[];const DAY=24*60*60*1000;
- const accessToken=(page)=>page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>/^sb-.*-auth-token$/.test(key));return key?JSON.parse(localStorage.getItem(key)).access_token:null;});
- const createEvent=async(name,capacity)=>{
-  const startsAt=Date.now()+(14+eventIds.length)*DAY;
-  const row=check(await supabase.from('event').insert({title:`spm163-${waitRun} ${name}`,description:'Synthetic SPM-163/147 live journey event; removed after this run.',organiser_id:fixtures.accounts.organiser.userId,coordinator_id:null,organisation_id:fixtures.organisations.A,status:'CONFIRMED',start_datetime:new Date(startsAt).toISOString(),end_datetime:new Date(startsAt+2*60*60*1000).toISOString(),expected_attendance:capacity,preferred_layout_type:'THEATRE',is_published:true,is_registration_enabled:true,registration_capacity:capacity,registration_open_at:new Date(Date.now()-DAY).toISOString(),registration_close_at:new Date(startsAt-DAY).toISOString()}).select('event_id,title,start_datetime,end_datetime').single());
-  recordFixtureIds(waitRun,'eventIds',[row.event_id]);eventIds.push(row.event_id);
-  await bookPrimaryVenue(waitRun,{eventId:row.event_id,requestedBy:fixtures.accounts.organiser.userId,startDatetime:row.start_datetime,endDatetime:row.end_datetime,capacity:50});
-  return {id:row.event_id,title:row.title};
- };
- const takePlace=async(event,userId)=>{const row=check(await supabase.from('registration').insert({event_id:event.id,attendee_id:userId,registration_status:'REGISTERED'}).select('registration_id').single());recordFixtureIds(waitRun,'registrationIds',[row.registration_id]);};
- const placeOf=async(event)=>check(await supabase.from('registration').select('registration_status,queue_order').eq('event_id',event.id).eq('attendee_id',attendee.user_id).maybeSingle());
- const action=(page,event,name)=>page.waitForResponse(r=>r.url()===`${api}/api/registrations/mine/${event.id}/${name}`&&r.request().method()==='POST');
- const myEvent=(page,event)=>page.locator('[id^="registration-event-"]').filter({hasText:event.title});
- try {
-  fixtures=await createRegistrationFixtures(waitRun,[{key:'organiser',role:'ORGANISER',organisation:'A'},{key:'other',role:'ATTENDEE'}]);
-  const full=await createEvent('full workshop',1);await takePlace(full,fixtures.accounts.other.userId);
-  const registered=await createEvent('withdrawal talk',10);await takePlace(registered,attendee.user_id);
-  const context=await browser.newContext({timezoneId:'Asia/Singapore'});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  try {
-   await login(page,attendee);
-   // SPM-163 AC1/AC2: the full event offers its waitlist; Accept joins it.
-   await page.goto(`${base}/events/${full.id}`);
-   await page.getByRole('heading',{level:1,name:full.title,exact:true}).waitFor();
-   await page.getByRole('button',{name:'Join Waitlist',exact:true}).click();
-   const confirm=page.getByRole('dialog',{name:'This event is full. Join the waitlist?',exact:true});
-   await confirm.getByLabel('Dietary restrictions').waitFor();
-   const joining=action(page,full,'waitlist');await confirm.getByRole('button',{name:'Accept',exact:true}).click();
-   const joined=await joining;assert(joined.status()===201,'Join waitlist returned '+joined.status());
-   const result=(await joined.json()).registration;assert(result.status==='WAITLISTED'&&result.waitlistPosition===1,'Join did not return position 1');
-   await page.getByRole('dialog',{name:"You're on the waitlist",exact:true}).getByText('On the waitlist · Position 1',{exact:true}).waitFor();
-   const stored=await placeOf(full);assert(stored?.registration_status==='WAITLISTED'&&stored.queue_order!==null,'Join did not store a waitlist place');
-   record('SPM-163 AC1/AC2 live join from the full event',{eventId:full.id,position:result.waitlistPosition});
-   await page.getByRole('button',{name:'Done',exact:true}).click();
-   // SPM-163 AC3: the position in My Events and on the attendee's own GETs.
-   await page.goto(base+'/my-registrations');
-   await myEvent(page,full).getByText('On the waitlist · Position 1',{exact:true}).waitFor();
-   const headers={Authorization:'Bearer '+await accessToken(page)};
-   const detail=await (await fetch(`${api}/api/registrations/mine/${full.id}`,{headers})).json();
-   assert(detail.myRegistration?.waitlistPosition===1&&detail.myRegistration.offer===null,'GET /mine/:eventId lacks the waitlist position');
-   const list=await (await fetch(`${api}/api/registrations/mine?limit=100&offset=0`,{headers})).json();
-   const row=list.registrations.find(item=>item.event.event_id===full.id);
-   assert(row?.waitlistPosition===1&&row.offer===null,'GET /mine row lacks the waitlist position');
-   record('SPM-163 AC3 live position in My Events and both GETs',{eventId:full.id});
-   // SPM-163 AC4: Leave Waitlist after its confirmation.
-   await myEvent(page,full).getByRole('button',{name:`Leave Waitlist: ${full.title}`,exact:true}).click();
-   const leaving=action(page,full,'waitlist/leave');
-   await page.getByRole('dialog',{name:'Leave the waitlist?',exact:true}).getByRole('button',{name:'Leave Waitlist',exact:true}).click();
-   assert((await leaving).status()===200,'Leave waitlist failed');
-   await page.getByText(`You left the waitlist for ${full.title}.`,{exact:true}).waitFor();
-   await myEvent(page,full).waitFor({state:'detached'});
-   assert((await placeOf(full))?.registration_status==='WITHDRAWN','Leaving did not withdraw the waitlist place');
-   record('SPM-163 AC4 live leave waitlist',{eventId:full.id});
-   // SPM-147 AC1-AC3: Withdraw Registration after "Are you sure?".
-   await myEvent(page,registered).getByRole('button',{name:`Withdraw Registration: ${registered.title}`,exact:true}).click();
-   const withdraw=page.getByRole('dialog',{name:'Withdraw Registration',exact:true});
-   await withdraw.getByText('Are you sure? This action cannot be undone.',{exact:true}).waitFor();
-   const withdrawing=action(page,registered,'withdraw');await withdraw.getByRole('button',{name:'Confirm Withdrawal',exact:true}).click();
-   assert((await withdrawing).status()===200,'Withdrawal failed');
-   await page.getByText(`Your registration for ${registered.title} has been withdrawn.`,{exact:true}).waitFor();
-   await myEvent(page,registered).waitFor({state:'detached'});
-   assert((await placeOf(registered))?.registration_status==='WITHDRAWN','Withdrawal was not stored');
-   record('SPM-147 AC1-AC3 live withdraw registration',{eventId:registered.id});
-   assert(errors.length===0,'Browser runtime error: '+errors.join('; '));
-  } finally {await context.close();}
- } finally {
-  if(fixtures) {
-   // Places the browser created join the manifest, so cleanup removes them too.
-   if(eventIds.length)recordFixtureIds(waitRun,'registrationIds',check(await supabase.from('registration').select('registration_id').in('event_id',eventIds)).map(row=>row.registration_id));
-   await cleanupAuthFixtures(waitRun);
-   assert(check(await supabase.from('event').select('event_id').in('event_id',eventIds)).length===0,'SPM-163/147 fixture events left behind');
-   record('SPM-163/147 fixture cleanup',{runId:waitRun,removedEvents:eventIds.length});
-  }
- }
-}
 async function main() {
  users=check(await supabase.from('user').select('user_id,name,role,email,auth_user_id,is_active').like('email','dev-%@connectsphere.test')).filter(user=>user.name.startsWith('Seed ')&&user.is_active&&user.auth_user_id);
  assert(process.env.SEED_ACCOUNT_PASSWORD,'SEED_ACCOUNT_PASSWORD is missing');
@@ -777,7 +696,7 @@ async function main() {
   } finally {await Promise.allSettled(tracked);await context.close();}
  }
  const attendee=users.find(user=>user.role==='ATTENDEE');
- if(!process.env.LIVE_ROLES||process.env.LIVE_ROLES.split(',').includes('ATTENDEE')){await attendeeProfileLive();if(attendee)await attendeeWaitlistLive(attendee);}
+ if(!process.env.LIVE_ROLES||process.env.LIVE_ROLES.split(',').includes('ATTENDEE'))await attendeeProfileLive(); // SPM-163/147 journeys: tests/live/spm-163-147-waitlist.live.spec.mjs
  if(attendee)await verifySignedOutRedirectBack(attendee);
 }
 (async()=>{try{await main();}catch(e){record('failure',{message:e.message});process.exitCode=1;}finally{try{await cleanup();}catch(e){record('cleanup failure',{message:e.message});process.exitCode=1;}if(browser)await browser.close();fs.writeFileSync(output,JSON.stringify({runId,createdEventIds:[...ids],checks},null,2));}})();

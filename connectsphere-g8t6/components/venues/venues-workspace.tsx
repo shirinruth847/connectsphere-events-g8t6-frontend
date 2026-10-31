@@ -40,7 +40,14 @@ export function VenuesWorkspace() {
 
   const requested = searchParams.get("view");
   const view = views.find((item) => item.id === requested)?.id ?? views[0].id;
-  const venueId = searchParams.get("venueId");
+  const rawVenueId = searchParams.get("venueId");
+  const venueId = rawVenueId && /^[1-9]\d{0,9}$/.test(rawVenueId) ? rawVenueId : null;
+  // Opened from a venue's page: "Manage venues" goes back to that venue (SPM-186).
+  const fromVenue = searchParams.get("from") === "venue" && venueId !== null;
+  const hrefFor = (id: View) => {
+    if (id === views[0].id) return fromVenue ? `/venues/${venueId}` : "/venues";
+    return `/venues?view=${id}${venueId ? `&venueId=${venueId}` : ""}${fromVenue ? "&from=venue" : ""}`;
+  };
 
   return (
     <PageContent title={TITLES[view].title} eyebrow={ROLE_LABELS[user.role]} description={TITLES[view].description}>
@@ -49,7 +56,7 @@ export function VenuesWorkspace() {
           {views.map((item) => (
             <Link
               key={item.id}
-              href={item.id === views[0].id ? "/venues" : `/venues?view=${item.id}${venueId ? `&venueId=${venueId}` : ""}`}
+              href={hrefFor(item.id)}
               aria-current={item.id === view ? "page" : undefined}
               className={`inline-flex min-h-11 items-center rounded-pill px-4 text-sm font-semibold transition-colors ${item.id === view ? "bg-primary text-on-primary" : "bg-surface-container-low text-primary hover:bg-surface-container-high"}`}
             >

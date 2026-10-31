@@ -5,10 +5,12 @@ import { useSessionUser } from "@/components/auth/auth-gate";
 import { ApiError } from "@/lib/api";
 import type { AttendeeRegistration } from "@/lib/api/my-events";
 import { listMyPlaces, type RegistrationConfirmation } from "@/lib/api/registrations";
+import { JoinWaitlistDialog } from "@/components/attendee/registration-actions/join-waitlist-dialog";
 import { RegistrationDialog } from "./registration-dialog";
 import {
   parseRegistrationRecovery,
   registrationRecoveryKey,
+  waitlistRecoveryKey,
   type RegistrationTarget,
   type RegistrationValues,
 } from "./registration-form";
@@ -53,8 +55,9 @@ export function useMyPlaces() {
   return { places, error, refresh, recordRegistered };
 }
 
-// Opens the one registration form (SPM-134) from any entry point on a page and
-// keeps it in step with the page:
+// Opens the one registration form (SPM-134), and the Join Waitlist
+// confirmation for a full event (SPM-163), from any entry point on a page and
+// keeps them in step with the page:
 // - answers typed and then closed are kept for that event until it succeeds;
 // - answers kept across a session expiry are reopened once places are known;
 // - after success or a refusal the event and the places are read again.
@@ -76,7 +79,11 @@ export function useRegistration({
   const drafts = useRef(new Map<number, RegistrationValues>());
   const trigger = useRef<HTMLElement | null>(null);
   const recoveryChecked = useRef(false);
-  const recoveryKey = registrationRecoveryKey(user?.authId ?? user?.user_id ?? "anonymous");
+  const userKey = user?.authId ?? user?.user_id ?? "anonymous";
+  const recoveryKey = registrationRecoveryKey(userKey);
+  const joinRecoveryKey = waitlistRecoveryKey(userKey);
+  const [joinTarget, setJoinTarget] = useState<RegistrationTarget | null>(null);
+  const [joinRestored, setJoinRestored] = useState<RegistrationValues | null>(null);
 
   const open = useCallback((next: RegistrationTarget, opener: HTMLElement | null) => {
     trigger.current = opener;
@@ -85,22 +92,45 @@ export function useRegistration({
     setTarget(next);
   }, []);
 
+  const openWaitlist = useCallback((next: RegistrationTarget, opener: HTMLElement | null) => {
+    trigger.current = opener;
+    setJoinRestored(null);
+    setJoinTarget(next);
+  }, []);
+
   // Reopen answers kept from an expired session, once, when places are known.
   // They are never submitted automatically; a place already held drops them.
   useEffect(() => {
     if (recoveryChecked.current || places === null) return;
     recoveryChecked.current = true;
-    let recovery = null;
+    let registering = null;
+    let joining = null;
     try {
-      recovery = parseRegistrationRecovery(sessionStorage.getItem(recoveryKey), Date.now());
+      registering = parseRegistrationRecovery(sessionStorage.getItem(recoveryKey), Date.now());
+      joining = parseRegistrationRecovery(sessionStorage.getItem(joinRecoveryKey), Date.now());
       sessionStorage.removeItem(recoveryKey);
+      sessionStorage.removeItem(joinRecoveryKey);
     } catch { /* storage unavailable */ }
-    if (!recovery || places.has(recovery.event.eventId)) return;
-    trigger.current = null;
-    setInitialValues(recovery.values);
-    setRestored(true);
-    setTarget(recovery.event);
-  }, [places, recoveryKey]);
+    if (registering && !places.has(registering.event.eventId)) {
+      trigger.current = null;
+      setInitialValues(registering.values);
+      setRestored(true);
+      setTarget(registering.event);
+    } else if (joining && !places.has(joining.event.eventId)) {
+      trigger.current = null;
+      setJoinRestored(joining.values);
+      setJoinTarget(joining.event);
+    }
+  }, [places, recoveryKey, joinRecoveryKey]);
+
+  // The shared Dialog returns focus to its opener; if that button has gone
+  // (the attendee is now registered or waitlisted), focus a stable place instead.
+  const restoreFocus = () => {
+    const opener = trigger.current;
+    window.setTimeout(() => {
+      if (!opener?.isConnected || document.activeElement === document.body) focusFallback()?.focus();
+    }, 0);
+  };
 
   const close = (values: RegistrationValues | null) => {
     if (target) {
@@ -108,12 +138,13 @@ export function useRegistration({
       else drafts.current.delete(target.eventId);
     }
     setTarget(null);
-    // The shared Dialog returns focus to its opener; if that button has gone
-    // (the attendee is now registered), focus a stable place instead.
-    const opener = trigger.current;
-    window.setTimeout(() => {
-      if (!opener?.isConnected || document.activeElement === document.body) focusFallback()?.focus();
-    }, 0);
+    restoreFocus();
+  };
+
+  const closeWaitlist = () => {
+    setJoinTarget(null);
+    setJoinRestored(null);
+    restoreFocus();
   };
 
   const registered = (confirmation: RegistrationConfirmation) => {
@@ -129,15 +160,25 @@ export function useRegistration({
   };
 
   const dialog = (
-    <RegistrationDialog
-      target={target}
-      initialValues={initialValues}
-      restored={restored}
-      onClose={close}
-      onRegistered={registered}
-      onStale={stale}
-    />
+    <>
+      <RegistrationDialog
+        target={target}
+        initialValues={initialValues}
+        restored={restored}
+        onClose={close}
+        onRegistered={registered}
+        onStale={stale}
+      />
+      <JoinWaitlistDialog
+        target={joinTarget}
+        initialValues={joinRestored}
+        restored={joinRestored !== null}
+        onClose={closeWaitlist}
+        onJoined={(result) => stale(result.event.eventId)}
+        onStale={stale}
+      />
+    </>
   );
 
-  return { ...myPlaces, open, dialog };
+  return { ...myPlaces, open, openWaitlist, dialog };
 }

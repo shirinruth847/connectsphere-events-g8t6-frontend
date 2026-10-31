@@ -12,35 +12,42 @@ export type RegistrationActionKind = "accept" | "decline" | "leave" | "withdraw"
 // list or the details dialog.
 export interface PlaceContext {
   registration: Pick<AttendeeRegistration, "status" | "waitlistPosition" | "offer">;
-  startDatetime: string | null | undefined;
   attendeeStatus: string | null | undefined;
 }
 
 // Cancelled and completed events have no place left to change.
 const CLOSED_STATUSES = new Set(["CANCELLED", "COMPLETED"]);
 
-// The offer while it can still be answered. A deadline that has passed by the
-// browser clock is not offered; the backend refuses a late answer anyway.
-export function openOffer(registration: PlaceContext["registration"], now: Date = new Date()): PlaceOffer | null {
-  const offer = registration.offer;
-  if (registration.status !== "WAITLISTED" || !offer) return null;
-  return new Date(offer.expiresAt).getTime() > now.getTime() ? offer : null;
+// The open offer, exactly as the backend returned it. The backend omits an
+// offer once it is answered or past its deadline; the browser clock never
+// hides one, because a late answer is refused (OFFER_EXPIRED) and the place
+// is then read again.
+export function openOffer(registration: PlaceContext["registration"]): PlaceOffer | null {
+  return registration.status === "WAITLISTED" && registration.offer ? registration.offer : null;
 }
 
-// Withdrawal is hidden once the event has started (SPM-147 AC1). With the
-// date held back (detailsWithheld) the backend decides, so it stays offered.
-export function hasStarted(startDatetime: string | null | undefined, now: Date = new Date()) {
-  if (!startDatetime) return false;
-  const start = new Date(startDatetime).getTime();
-  return Number.isFinite(start) && start <= now.getTime();
-}
-
-// The actions for this place, in the order the buttons appear.
-export function placeActions({ registration, startDatetime, attendeeStatus }: PlaceContext, now: Date = new Date()): RegistrationActionKind[] {
+// The actions for this place, in the order the buttons appear. Withdraw is
+// offered on every registered place of an event still going ahead; the
+// backend refuses it once the event has started (EVENT_STARTED), whatever the
+// browser clock says.
+export function placeActions({ registration, attendeeStatus }: PlaceContext): RegistrationActionKind[] {
   if (attendeeStatus && CLOSED_STATUSES.has(attendeeStatus)) return [];
-  if (registration.status === "REGISTERED") return hasStarted(startDatetime, now) ? [] : ["withdraw"];
-  if (registration.status === "WAITLISTED") return openOffer(registration, now) ? ["accept", "decline"] : ["leave"];
+  if (registration.status === "REGISTERED") return ["withdraw"];
+  if (registration.status === "WAITLISTED") return openOffer(registration) ? ["accept", "decline"] : ["leave"];
   return [];
+}
+
+// My Events order: events still going ahead first, soonest start first, with
+// a held-back date after them; then cancelled and completed events. From the
+// backend's status and start time only, never the browser clock. Stable for
+// equal keys, so the backend's own order is kept between them.
+export function orderMyEvents<T extends { event: { start_datetime: string | null; attendee_status: string } }>(rows: readonly T[]): T[] {
+  const startOf = (row: T) => {
+    const start = row.event.start_datetime ? new Date(row.event.start_datetime).getTime() : Number.NaN;
+    return Number.isFinite(start) ? start : Number.POSITIVE_INFINITY;
+  };
+  const closed = (row: T) => (CLOSED_STATUSES.has(row.event.attendee_status) ? 1 : 0);
+  return [...rows].sort((a, b) => closed(a) - closed(b) || startOf(a) - startOf(b) || 0);
 }
 
 // "On the waitlist · Position 3". Not "Waitlisted", which Event Discovery uses
@@ -60,7 +67,9 @@ const CONFLICT_MESSAGES: Record<string, string> = {
   ALREADY_REGISTERED: "You're already registered for this event.",
   ALREADY_WAITLISTED: "You're already on the waitlist for this event.",
   PLACES_AVAILABLE: "This event has places available again, so there is no waitlist to join.",
+  REGISTRATION_NOT_YET_OPEN: "Registration for this event hasn't opened yet.",
   REGISTRATION_CLOSED: "Registration for this event is closed.",
+  REGISTRATION_UNAVAILABLE: "Registration for this event is currently unavailable.",
   NOT_WAITLISTED: "You're no longer on the waitlist for this event.",
   OFFER_EXPIRED: "This offer has expired.",
   OFFER_NOT_OPEN: "This offer has already been answered.",
@@ -69,6 +78,8 @@ const CONFLICT_MESSAGES: Record<string, string> = {
   EVENT_STARTED: "Cannot withdraw registration for past events",
   EVENT_NOT_ACTIVE: "This event is no longer going ahead.",
   IDEMPOTENCY_IN_PROGRESS: "Your request is still being processed. Try again in a moment.",
+  // Closing and starting again sends a new key.
+  IDEMPOTENCY_KEY_REUSED: "This request couldn't be matched to your earlier attempt. Close this and try again.",
 };
 
 export interface ActionErrorPresentation {

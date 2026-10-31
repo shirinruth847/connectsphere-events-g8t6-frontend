@@ -167,6 +167,13 @@ const dietary = (scope) => scope.getByLabel('Dietary restrictions', { exact: tru
 const accessibility = (scope) => scope.getByLabel('Accessibility requirements', { exact: true });
 const submit = (scope) => scope.getByRole('button', { name: 'Register', exact: true });
 const registered = (scope) => scope.getByText("You're registered", { exact: true });
+// A full event's Join Waitlist (SPM-163): enabled, with no Register Now beside it.
+async function expectJoinWaitlist(scope, event) {
+  const join = scope.getByRole('button', { name: `Join waitlist for ${event.title}`, exact: true });
+  await expect(join).toBeEnabled();
+  await expect(join).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(registerNow(scope, event)).toHaveCount(0);
+}
 // The registration area's control for any state but Register Now: visible, inert.
 const stateControl = (scope, event, label) => scope.getByRole('button', { name: `${label} for ${event.title}`, exact: true });
 async function expectDisabledState(scope, event, label) {
@@ -312,9 +319,6 @@ test('[SPM-134 TC-REG-002/004 AC5] should_register_by_keyboard_at_390px_on_the_d
 // details page show the same disabled control and never Register Now.
 for (const { ids, state, overrides = {}, venueCapacity = 50, label, place = null } of [
   { ids: 'AC12', state: 'not_yet_open', overrides: { registration_open_at: new Date(Date.now() + DAY).toISOString() }, label: 'Registration Not Yet Open' },
-  { ids: 'TC-REG-017 AC12', state: 'full', overrides: { registration_capacity: 1 }, label: 'Registration Full', place: ['other', 'REGISTERED'] },
-  // No organiser capacity (allowed only with the flag off, which no longer gates registration).
-  { ids: 'TC-REG-017 AC12', state: 'full_at_the_venue_capacity', overrides: { is_registration_enabled: false, registration_capacity: null }, venueCapacity: 1, label: 'Registration Full', place: ['other', 'REGISTERED'] },
   { ids: 'TC-REG-018 AC13', state: 'closed', overrides: { registration_close_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() }, label: 'Registration Closed' },
   { ids: 'AC13', state: 'unavailable_without_a_primary_venue', venueCapacity: null, label: 'Registration Unavailable' },
   { ids: 'AC13', state: 'unavailable_without_a_registration_start_time', overrides: { registration_open_at: null }, label: 'Registration Unavailable' },
@@ -343,9 +347,33 @@ for (const { ids, state, overrides = {}, venueCapacity = 50, label, place = null
   });
 }
 
+// A full event: SPM-163 replaced SPM-134's disabled "Registration Full" with
+// the real Join Waitlist, the same on the card and the details page. Joining
+// is covered in spm-163-147-waitlist.live.spec.mjs; here nothing is sent.
+for (const { state, overrides, venueCapacity = 50 } of [
+  { state: 'full', overrides: { registration_capacity: 1 } },
+  // No organiser capacity (allowed only with the flag off, which no longer gates registration).
+  { state: 'full_at_the_venue_capacity', overrides: { is_registration_enabled: false, registration_capacity: null }, venueCapacity: 1 },
+]) {
+  test(`[SPM-134 TC-REG-017 AC12 / SPM-163 AC1] should_offer_join_waitlist_and_no_register_now_when_the_event_is_${state}_on_a_fresh_load`, async ({ page }) => {
+    const event = await createEvent(`fresh ${state}`, overrides, { venueCapacity });
+    await takePlace(event, 'other');
+    const seen = watchBackend(page);
+    await signIn(page, 'attendee');
+    const eventCard = await openDiscoveryCard(page, event);
+    await expect(eventCard).toContainText('Full - Waitlist');
+    await expectJoinWaitlist(eventCard, event);
+
+    await openDetailsPage(page, event);
+    await expectJoinWaitlist(page.locator('main'), event);
+    expect(seen.posts).toEqual([]);
+  });
+}
+
 // The event changes after the form opened; the backend's answer decides (AC16).
 for (const [state, change, title, after] of [
-  ['capacity_fills', (event) => takePlace(event, 'other'), 'This event is now full', 'Registration Full'],
+  // Now full, so the refreshed event offers its waitlist (SPM-163).
+  ['capacity_fills', (event) => takePlace(event, 'other'), 'This event is now full', 'Join Waitlist'],
   ['registration_closes', (event) => updateEvent(event, { registration_close_at: new Date(Date.now() - 60 * 1000).toISOString() }), 'Registration has closed', 'Registration Closed'],
   ['registration_start_moves_later', (event) => updateEvent(event, { registration_open_at: new Date(Date.now() + DAY).toISOString() }), "Registration hasn't opened yet", 'Registration Not Yet Open'],
   ['registration_end_time_is_removed', (event) => updateEvent(event, { registration_close_at: null }), 'Registration is currently unavailable', 'Registration Unavailable'],
@@ -372,7 +400,8 @@ for (const [state, change, title, after] of [
 
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     // The refreshed event shows the backend's new state.
-    await expectDisabledState(page.locator('main'), event, after);
+    if (after === 'Join Waitlist') await expectJoinWaitlist(page.locator('main'), event);
+    else await expectDisabledState(page.locator('main'), event, after);
     const placesHeld = (await registrationsOn(event)).filter((row) => row.attendee_id === fixtures.accounts.attendee.userId);
     expect(placesHeld).toHaveLength(state === 'attendee_registers_elsewhere' ? 1 : 0);
   });

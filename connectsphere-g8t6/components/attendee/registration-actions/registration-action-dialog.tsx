@@ -6,6 +6,7 @@ import { formatTimestamp } from "@/components/attendee/discovery/format-event-ti
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button } from "@/components/shared/primitives";
 import type { PlaceOffer } from "@/lib/api/my-events";
+import { announceNotificationsChanged } from "@/lib/notifications";
 import {
   acceptOffer,
   declineOffer,
@@ -110,7 +111,10 @@ export function RegistrationActionDialog({
     setPending(true);
     setError(null);
     try {
-      onDone(await send(target, key));
+      const result = await send(target, key);
+      // The backend sends its in-app notices in the same transaction.
+      announceNotificationsChanged();
+      onDone(result);
     } catch (caught) {
       setError(actionErrorPresentation(toApiError(caught)));
       setPending(false);

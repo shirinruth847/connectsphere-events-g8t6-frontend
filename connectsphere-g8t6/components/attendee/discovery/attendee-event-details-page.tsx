@@ -90,7 +90,7 @@ function EventDetailsState({
           {place ? <MyPlaceCard registration={place} /> : null}
           {registration.error && registration.error.status !== 401 ? (
             <AlertBanner tone="warning" title="Could not check your registrations">
-              Register Now is hidden until your registrations load.
+              Register Now and Join Waitlist are hidden until your registrations load.
               <div className="mt-3">
                 <Button variant="secondary" onClick={registration.refresh} className="max-lg:min-h-11">Try again</Button>
               </div>
@@ -102,7 +102,7 @@ function EventDetailsState({
             register={{
               placesKnown: registration.places !== null,
               onRegister: (trigger) => registration.open({ eventId: event.eventId, title: event.title, startDatetime: event.startDatetime, endDatetime: event.endDatetime }, trigger),
-              onPlacesChanged: registration.refresh,
+              onJoinWaitlist: (trigger) => registration.openWaitlist({ eventId: event.eventId, title: event.title, startDatetime: event.startDatetime, endDatetime: event.endDatetime }, trigger),
             }}
             className="border-t border-outline-variant/40 pt-4"
           />

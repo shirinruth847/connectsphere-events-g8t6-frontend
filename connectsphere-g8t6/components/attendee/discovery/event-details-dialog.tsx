@@ -57,8 +57,8 @@ interface EventDetailsDialogProps {
   onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
   // Bumped to read the open event again (after a registration or a refusal).
   refreshKey?: number;
-  // Reloads the attendee's places after they join a waitlist (SPM-163).
-  onPlacesChanged?: () => void;
+  // Opens the Join Waitlist confirmation for a full event (SPM-163).
+  onJoinWaitlist?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
   // Runs once the backend has answered an action on the attendee's place
   // (SPM-163, SPM-147) on My Events. Without it the place is shown with no actions.
   onRegistrationChange?: (change: RegistrationChange) => void;
@@ -82,7 +82,7 @@ export function EventDetailsDialog({
   places = null,
   onRegister,
   refreshKey = 0,
-  onPlacesChanged,
+  onJoinWaitlist,
   onRegistrationChange,
 }: EventDetailsDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -129,7 +129,7 @@ export function EventDetailsDialog({
           notFoundDescription={notFoundDescription}
           places={places}
           onRegister={onRegister}
-          onPlacesChanged={onPlacesChanged}
+          onJoinWaitlist={onJoinWaitlist}
           onRegistrationChange={onRegistrationChange}
         />
       ) : null}
@@ -147,7 +147,7 @@ function EventDetailsContent({
   notFoundDescription,
   places,
   onRegister,
-  onPlacesChanged,
+  onJoinWaitlist,
   onRegistrationChange,
 }: {
   summary: EventDetailsTarget;
@@ -159,7 +159,7 @@ function EventDetailsContent({
   notFoundDescription: string;
   places: ReadonlyMap<number, AttendeeRegistration> | null;
   onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
-  onPlacesChanged?: () => void;
+  onJoinWaitlist?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
   onRegistrationChange?: (change: RegistrationChange) => void;
 }) {
   // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
@@ -304,7 +304,7 @@ function EventDetailsContent({
           register={onRegister && detailsFrom === "discovery" ? {
             placesKnown: places !== null,
             onRegister: (trigger) => onRegister(event, trigger),
-            onPlacesChanged,
+            onJoinWaitlist: onJoinWaitlist ? (trigger) => onJoinWaitlist(event, trigger) : undefined,
           } : undefined}
           onRegistrationChange={handleRegistrationChange}
         />

@@ -1,13 +1,13 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId } from "react";
 import { Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
-import { formatEventWindow } from "@/lib/datetime";
 import type { EventVenueOption } from "@/lib/api/event-venues";
 import { VenueMultiSelect } from "./venue-multi-select";
-import { BOOKING_LIMITS, buffersMissing, suitabilityWarnings, type BookingDraft } from "./venue-booking-form-model";
-import { useBookingPeriodCheck, type PeriodCheckState } from "./use-booking-period-check";
+import type { BookingChecks } from "@/lib/api/venue-bookings";
+import { BookingChecksPanel } from "@/components/venues/booking-checks";
+import { BOOKING_LIMITS, buffersMissing, type BookingDraft } from "./venue-booking-form-model";
 
 export interface VenueChoiceGroups {
   // The organiser's ranked choices and the coordinator's suggestion, listed first.
@@ -17,7 +17,6 @@ export interface VenueChoiceGroups {
 
 interface VenueBookingSectionProps {
   index: number;
-  eventId: number;
   draft: BookingDraft;
   venue: EventVenueOption | null;
   venueGroups: VenueChoiceGroups;
@@ -32,6 +31,10 @@ interface VenueBookingSectionProps {
   primaryErrorId?: string;
   canRemove: boolean;
   disabled: boolean;
+  // This section's checks for its own venue and window (SPM-186 AC17), and
+  // whether a newer check is on its way.
+  checks: BookingChecks | null;
+  checking: boolean;
   onChange: (patch: Partial<BookingDraft>) => void;
   onRemove: () => void;
 }
@@ -48,63 +51,12 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 
 const invalidClass = (message?: string) => (message ? "border-error" : "");
 
-const sgtTime = new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const CONFLICT_NAMES: Record<string, string> = { BOOKING: "another booking", HOLD: "a tentative hold", BLOCK: "an operational block" };
-
-function Notice({ tone, icon, children }: { tone: "success" | "warning" | "error" | "neutral"; icon: "check" | "warning" | "info" | "schedule"; children: ReactNode }) {
-  const tones = {
-    success: "bg-success-container/35 text-on-success-container",
-    warning: "bg-tertiary-fixed text-on-tertiary-fixed",
-    error: "bg-error-container text-on-error-container",
-    neutral: "bg-surface-container-low text-on-surface-variant",
-  };
-  return (
-    <div className={`flex items-start gap-2 rounded-control px-3 py-2 text-xs leading-relaxed ${tones[tone]}`}>
-      <Icon name={icon} size={16} className="mt-px shrink-0" />
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-// What the availability calendar says about this section's period. Advisory:
-// the server checks again under the venue lock when the request is sent.
-function AvailabilityNotice({ state }: { state: PeriodCheckState }) {
-  if (state.status === "idle") return null;
-  if (state.status === "checking") return <Notice tone="neutral" icon="schedule">Checking availability…</Notice>;
-  if (state.status === "unavailable") {
-    return <Notice tone="neutral" icon="info">Availability could not be checked now. It is checked again when you send the request.</Notice>;
-  }
-  const { check } = state;
-  const occupied = `${formatEventWindow(check.occupiedStart, check.occupiedEnd)}, including setup and turnaround`;
-  if (!check.canRequest) {
-    return (
-      <Notice tone="error" icon="warning">
-        <p className="font-semibold">{check.availabilityLabel}</p>
-        <ul className="mt-1 grid gap-0.5">
-          {check.conflicts.map((conflict) => (
-            <li key={conflict.entryId}>
-              Taken {sgtTime.format(new Date(conflict.occupiedStart))}–{sgtTime.format(new Date(conflict.occupiedEnd))} SGT by {CONFLICT_NAMES[conflict.type] ?? "another arrangement"}.
-            </li>
-          ))}
-        </ul>
-        <p className="mt-1">This venue would be occupied {occupied}. Change the times or the venue, or the request will be refused.</p>
-      </Notice>
-    );
-  }
-  return (
-    <Notice tone="success" icon="check">
-      <span className="font-semibold">Available</span> · occupied {occupied}.
-    </Notice>
-  );
-}
-
 // One venue section of the booking request (SPM-179 AC3): the venue, its
 // label, times, attendance and layout, then optional facilities,
 // accessibility needs and special requirements. No equipment field: equipment
 // is requested separately.
 export function VenueBookingSection({
   index,
-  eventId,
   draft,
   venue,
   venueGroups,
@@ -116,14 +68,14 @@ export function VenueBookingSection({
   primaryErrorId,
   canRemove,
   disabled,
+  checks,
+  checking,
   onChange,
   onRemove,
 }: VenueBookingSectionProps) {
   const id = useId();
   const ids = (name: string) => ({ input: `${id}-${name}`, error: `${id}-${name}-error` });
-  const period = useBookingPeriodCheck(eventId, draft.venueId, draft.start, draft.end);
-  const hoursWarning = period.status === "ready" ? period.check.operatingHoursWarning?.message ?? null : null;
-  const warnings = [...(hoursWarning ? [hoursWarning] : []), ...suitabilityWarnings(draft, venue)];
+  const ready = draft.venueId != null && Boolean(draft.start) && Boolean(draft.end);
   const number = index + 1;
   const title = venue ? venue.name : `Venue ${number}`;
 
@@ -270,9 +222,6 @@ export function VenueBookingSection({
           <FieldError id={ids("end").error} message={errors.end} />
         </div>
 
-        <div className="min-w-0 md:col-span-2">
-          <AvailabilityNotice state={period} />
-        </div>
 
         <div className="min-w-0">
           <FormLabel htmlFor={ids("layout").input} required>Layout</FormLabel>
@@ -338,13 +287,14 @@ export function VenueBookingSection({
         </div>
       </div>
 
-      {warnings.length ? (
-        <Notice tone="warning" icon="warning">
-          <p className="font-semibold">Warnings: you can still send the request, and Venue Staff decide.</p>
-          <ul className="mt-1 list-disc pl-4">
-            {warnings.map((message, at) => <li key={`${at}-${message}`}>{message}</li>)}
-          </ul>
-        </Notice>
+      {ready ? (
+        <div className="grid gap-1 rounded-control border border-outline-variant p-3">
+          <h4 className="text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Checks for this venue and time</h4>
+          <BookingChecksPanel checks={checks} pending={checking} />
+          {checks?.warnings.length && !checks.blocking.length ? (
+            <p className="text-xs text-on-surface-variant">You can still send the request with warnings; Venue Staff decide.</p>
+          ) : null}
+        </div>
       ) : null}
     </fieldset>
   );

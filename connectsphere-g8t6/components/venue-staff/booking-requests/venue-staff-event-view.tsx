@@ -2,17 +2,22 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AlertBanner, Button, buttonClasses, EmptyState, PageHeader, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { RequirementList, layoutLabel } from "@/components/events/workspace/event-detail-rows";
+import { HistoryPanel } from "@/components/events/workspace/event-history-panel";
+import { useHistory, type HistoryLoader } from "@/components/events/workspace/use-event-history";
 import { ApiError } from "@/lib/api";
 import { formatDuration, formatEventWindow, formatTimestamp } from "@/lib/datetime";
-import { getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
+import { getEventBookingHistory, getEventVenueBookings, type EventVenueBookings, type VenueBookingDetail } from "@/lib/api/venue-bookings";
 import { formatBookingId } from "./booking-filters";
+import { BookingDecision, type DecisionNotice } from "./booking-decision";
+import { BookingChecksPanel } from "@/components/venues/booking-checks";
+import { VenueInfoDialog } from "./venue-info-dialog";
 import { BookingStatusChip } from "./booking-status-chip";
 import { Collapse } from "./collapse";
 import { useOpenedBookings } from "./use-opened-bookings";
@@ -49,47 +54,93 @@ interface IncidentHandlers {
   onRefused: () => void;
 }
 
-function BookingRequirements({ booking, onRestored, onRefused }: { booking: VenueBookingDetail } & IncidentHandlers) {
-  const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > booking.venue.roomCapacity;
+const subheading = "text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant";
+
+function Fact({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) {
   return (
-    <div className="grid gap-4">
+    <div className={`rounded-control border px-3 py-2 ${alert ? "border-error bg-error-container/40" : "border-outline-variant"}`}>
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.05em] text-on-surface-variant">{label}</dt>
+      <dd className={`mt-0.5 text-sm font-semibold ${alert ? "text-error" : "text-on-surface"}`}>{value}</dd>
+    </div>
+  );
+}
+
+function Chips({ items, empty }: { items: string[]; empty: string }) {
+  if (!items.length) return <p className="text-sm text-on-surface-variant">{empty}</p>;
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {items.map((item) => <li key={item} className="rounded-pill bg-primary-fixed/50 px-3 py-1 text-xs font-medium text-on-surface">{item}</li>)}
+    </ul>
+  );
+}
+
+const buffers = (venue: VenueBookingDetail["venue"]) => {
+  if (!venue.detailsAvailable) return "Unavailable";
+  if (venue.setupMinutes == null || venue.turnaroundMinutes == null) return "Not recorded";
+  return `${venue.setupMinutes} / ${venue.turnaroundMinutes} min`;
+};
+
+// What Venue Staff decide on (SPM-186): the venue and how the request fits it,
+// then the requirements. The booking window is in the row header only.
+function BookingRequirements({ booking, onRestored, onRefused, requestId }: { booking: VenueBookingDetail; requestId: string } & IncidentHandlers) {
+  const [venueOpen, setVenueOpen] = useState(false);
+  const { venue } = booking;
+  const overCapacity = booking.expectedAttendance != null && booking.expectedAttendance > venue.roomCapacity;
+  return (
+    <div className="grid gap-5">
       {/* SPM-195 AC9/AC10: an affected booking shows its block and, once free, Restore. */}
       {booking.incident ? <BookingIncidentCard incident={booking.incident} audience="venue-staff" onRestored={onRestored} onRefused={onRefused} /> : null}
-      <KeyValuePanel
-        rows={[
-          { icon: "venue", label: "Requested venue", value: `${booking.venue.name} · ${booking.venue.address}` },
-          { icon: "calendar", label: "Booking window", value: formatEventWindow(booking.startDatetime, booking.endDatetime) },
-          { icon: "attendees", label: "Venue attendance", value: people(booking.expectedAttendance) },
-          { icon: "layout", label: "Layout", value: layoutLabel(booking.layoutType) },
-          { icon: "organisation", label: "Room capacity", value: `${booking.venue.roomCapacity.toLocaleString()} (${booking.venue.roomLayoutType})` },
-          { icon: "schedule", label: "Operating hours", value: booking.venue.operatingHours ?? "Not recorded" },
-          {
-            icon: "schedule",
-            label: "Setup & turnaround",
-            value: booking.venue.setupTurnaroundMinutes != null ? `${booking.venue.setupTurnaroundMinutes} min` : "Not recorded",
-          },
-          { icon: "history", label: "Submitted", value: formatTimestamp(booking.submittedAt) },
-        ]}
-      />
-      {overCapacity ? (
-        <AlertBanner tone="warning" live={false}>
-          Venue attendance ({booking.expectedAttendance?.toLocaleString()}) is above the room capacity ({booking.venue.roomCapacity.toLocaleString()}).
-        </AlertBanner>
+      <div className="grid gap-3">
+        <p className="flex items-start gap-2 text-sm text-on-surface">
+          <Icon name="venue" size={16} />
+          <span>
+            {/* The venue's details and calendar for this booking (SPM-186). */}
+            <button
+              type="button"
+              className="font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              aria-haspopup="dialog"
+              onClick={() => setVenueOpen(true)}
+            >
+              {venue.name}
+            </button>
+            {" · "}<span className="text-on-surface-variant">{venue.address}</span>
+          </span>
+        </p>
+        <VenueInfoDialog open={venueOpen} onClose={() => setVenueOpen(false)} booking={booking} requestId={requestId} />
+        <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <Fact
+            label="Attendance / capacity"
+            value={`${booking.expectedAttendance != null ? booking.expectedAttendance.toLocaleString() : "?"} / ${venue.roomCapacity.toLocaleString()}`}
+            alert={overCapacity}
+          />
+          <Fact label="Layout" value={`${layoutLabel(booking.layoutType)}${venue.roomLayoutType ? ` (room: ${layoutLabel(venue.roomLayoutType)})` : ""}`} />
+          <Fact label="Operating hours" value={venue.operatingHours ?? "Not recorded"} />
+          <Fact label="Setup / turnaround" value={buffers(venue)} />
+        </dl>
+        {overCapacity ? <p className="text-xs font-semibold text-error">Attendance is above the room capacity.</p> : null}
+      </div>
+      {booking.checks ? (
+        <div className="grid gap-2">
+          <h4 className={subheading}>Checks for this booking</h4>
+          <BookingChecksPanel checks={booking.checks} />
+        </div>
       ) : null}
       <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Required facilities</h4>
-          <RequirementList items={booking.requiredFacilities} empty="No facilities were requested." />
+        <div className="grid gap-2">
+          <h4 className={subheading}>Facilities</h4>
+          <Chips items={booking.requiredFacilities} empty="None requested." />
         </div>
-        <div>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Accessibility requirements</h4>
-          <RequirementList items={booking.accessibilityRequirements} empty="No accessibility requirements were requested." />
+        <div className="grid gap-2">
+          <h4 className={subheading}>Accessibility</h4>
+          <Chips items={booking.accessibilityRequirements} empty="None requested." />
         </div>
       </div>
-      <div>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-on-surface-variant">Special requirements</h4>
-        <p className="text-sm text-on-surface">{booking.specialRequirements || "None."}</p>
-      </div>
+      {booking.specialRequirements ? (
+        <div className="grid gap-1">
+          <h4 className={subheading}>Special requirements</h4>
+          <p className="text-sm text-on-surface">{booking.specialRequirements}</p>
+        </div>
+      ) : null}
       {booking.rejectionReason ? (
         <AlertBanner tone="error" live={false} title="Rejection reason">{booking.rejectionReason}</AlertBanner>
       ) : null}
@@ -97,16 +148,18 @@ function BookingRequirements({ booking, onRestored, onRefused }: { booking: Venu
   );
 }
 
-function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored, onRefused }: {
+function VenueBookingsSection({ bookings, requestId, selectedId, onSelect, onDecided, onRestored, onRefused }: {
   bookings: VenueBookingDetail[];
+  requestId: string;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
+  onDecided: (notice: DecisionNotice) => void;
 } & IncidentHandlers) {
   return (
     <ReviewSection
       step={3}
       title="Venue bookings"
-      description={`${bookings.length} venue ${bookings.length === 1 ? "booking" : "bookings"} under this event, each with its own status. Select one to review its requirements.`}
+      description={`${bookings.length} ${bookings.length === 1 ? "booking" : "bookings"}, each decided on its own.`}
       action={<PermissionPill tone="edit">Venue Staff review</PermissionPill>}
     >
       <ul className="grid gap-3">
@@ -114,7 +167,7 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored, onRe
           const selected = booking.bookingId === selectedId;
           const panelId = `booking-panel-${booking.bookingId}`;
           return (
-            <li key={booking.bookingId} className={`rounded-control border ${selected ? "border-primary bg-primary-fixed/30" : "border-outline-variant bg-surface-container-lowest"}`}>
+            <li key={booking.bookingId} className={`rounded-control border bg-surface-container-lowest ${selected ? "border-primary shadow-elevation-1" : "border-outline-variant"}`}>
               <button
                 type="button"
                 className="flex min-h-11 w-full flex-wrap items-center justify-between gap-3 p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -126,8 +179,8 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored, onRe
                   <span className="text-sm font-bold text-on-surface">
                     {booking.venueName}{booking.label ? ` · ${booking.label}` : ""}
                   </span>
-                  <span className="text-xs text-on-surface-variant">
-                    <span className="font-mono">{formatBookingId(booking.bookingId)}</span> · {formatEventWindow(booking.startDatetime, booking.endDatetime)}
+                  <span className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                    <Icon name="calendar" size={16} />{formatEventWindow(booking.startDatetime, booking.endDatetime)}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
@@ -139,8 +192,9 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored, onRe
                 </span>
               </button>
               <Collapse open={selected} id={panelId}>
-                <div className="border-t border-outline-variant p-3 sm:p-4">
-                  <BookingRequirements booking={booking} onRestored={onRestored} onRefused={onRefused} />
+                <div className="grid gap-5 border-t border-outline-variant p-4">
+                  <BookingRequirements booking={booking} onRestored={onRestored} onRefused={onRefused} requestId={requestId} />
+                  <BookingDecision booking={booking} onDecided={onDecided} />
                 </div>
               </Collapse>
             </li>
@@ -151,10 +205,27 @@ function VenueBookingsSection({ bookings, selectedId, onSelect, onRestored, onRe
   );
 }
 
-function LoadedView({ data, selectedId, onSelect, onRestored, onRefused }: {
+// The venue-relevant part of the event's history (SPM-186, Master 4.2).
+function BookingHistory({ eventId, refreshKey }: { eventId: number; refreshKey: number }) {
+  const load = useCallback<HistoryLoader>((options) => getEventBookingHistory(eventId, options), [eventId]);
+  const history = useHistory(load, refreshKey);
+  return (
+    <HistoryPanel
+      id={`event-${eventId}-venue-history`}
+      description="Venue bookings and decisions, and changes to the dates, attendance, layout and access they depend on."
+      emptyText="No venue changes have been recorded for this event yet."
+      history={history}
+    />
+  );
+}
+
+function LoadedView({ data, selectedId, onSelect, notice, onDecided, refreshKey, onRestored, onRefused }: {
   data: EventVenueBookings;
   selectedId: number | null;
   onSelect: (bookingId: number | null) => void;
+  notice: DecisionNotice | null;
+  onDecided: (notice: DecisionNotice) => void;
+  refreshKey: number;
 } & IncidentHandlers) {
   const { event, bookings } = data;
   const duration = formatDuration(event.startDatetime, event.endDatetime);
@@ -177,9 +248,10 @@ function LoadedView({ data, selectedId, onSelect, onRestored, onRefused }: {
       <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <ReferenceIdTag value={event.requestId} />
         {selected ? <ReferenceIdTag value={formatBookingId(selected.bookingId)} /> : null}
-        <span className="text-sm text-on-surface-variant">{formatEventWindow(event.startDatetime, event.endDatetime)}</span>
         <PermissionPill tone="read-only">Venue Staff • Event details read-only</PermissionPill>
       </div>
+
+      {notice ? <AlertBanner tone={notice.tone}>{notice.text}</AlertBanner> : null}
 
       <div className="grid items-start gap-5 xl:grid-cols-12">
         <div className="grid gap-5 xl:col-span-8">
@@ -204,7 +276,7 @@ function LoadedView({ data, selectedId, onSelect, onRestored, onRefused }: {
             />
           </ReviewSection>
 
-          <VenueBookingsSection bookings={bookings} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onRestored={onRestored} onRefused={onRefused} />
+          <VenueBookingsSection bookings={bookings} requestId={event.requestId} selectedId={selected?.bookingId ?? null} onSelect={onSelect} onDecided={onDecided} onRestored={onRestored} onRefused={onRefused} />
 
           <div className="grid gap-5 md:grid-cols-2">
             <ReviewSection step={4} title="Accessibility" action={readOnly}>
@@ -256,6 +328,8 @@ function LoadedView({ data, selectedId, onSelect, onRestored, onRefused }: {
               <p className="mt-4 text-sm text-on-surface-variant">This event has no other venue bookings.</p>
             )}
           </section>
+
+          <BookingHistory eventId={event.eventId} refreshKey={refreshKey} />
         </aside>
       </div>
     </div>
@@ -263,7 +337,8 @@ function LoadedView({ data, selectedId, onSelect, onRestored, onRefused }: {
 }
 
 // /events/[eventId] for Venue Staff (SPM-181): the coordinator's layout with
-// every event section read-only; only the venue bookings are interactive.
+// every event section read-only; only the venue bookings are interactive, and
+// each one is approved or rejected there (SPM-186, SPM-189).
 // ?booking=<id> opens that booking; without it the page is the event view
 // listing all bookings under the event.
 export function VenueStaffEventView({ eventId }: { eventId: number }) {
@@ -272,7 +347,8 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const searchParams = useSearchParams();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const [notice, setNotice] = useState<string | null>(null);
+  // One page notice for decisions (SPM-186, SPM-189) and restorations (SPM-195).
+  const [notice, setNotice] = useState<DecisionNotice | null>(null);
   const rawBooking = searchParams.get("booking");
   const selectedId = rawBooking && /^[1-9]\d{0,9}$/.test(rawBooking) ? Number(rawBooking) : null;
   const { markOpened } = useOpenedBookings();
@@ -300,7 +376,14 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   }, [eventId, attempt]);
 
   const select = (bookingId: number | null) => {
+    setNotice(null);
     router.replace(bookingId ? `${pathname}?booking=${bookingId}` : pathname, { scroll: false });
+  };
+
+  // Reload in place after a decision, or after learning someone else decided first.
+  const decided = (next: DecisionNotice) => {
+    setNotice(next);
+    setAttempt((value) => value + 1);
   };
 
   if (state.status === "loading") {
@@ -338,7 +421,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
   const bookingMissing = selectedId !== null && !state.data.bookings.some((booking) => booking.bookingId === selectedId);
   // The page reloads the bookings once the backend has committed the restore.
   const restored = (message: string) => {
-    setNotice(message);
+    setNotice({ tone: "success", text: message });
     setAttempt((value) => value + 1);
   };
   return (
@@ -346,10 +429,7 @@ export function VenueStaffEventView({ eventId }: { eventId: number }) {
       {bookingMissing ? (
         <div className="mb-4"><AlertBanner tone="warning">That booking is not part of this event. Showing every booking under the event instead.</AlertBanner></div>
       ) : null}
-      <div aria-live="polite">
-        {notice ? <div className="mb-4"><AlertBanner tone="success" live={false}>{notice}</AlertBanner></div> : null}
-      </div>
-      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} onRestored={restored} onRefused={() => setAttempt((value) => value + 1)} />
+      <LoadedView data={state.data} selectedId={selectedId} onSelect={select} onRestored={restored} onRefused={() => setAttempt((value) => value + 1)} notice={notice} onDecided={decided} refreshKey={attempt} />
     </>
   );
 }

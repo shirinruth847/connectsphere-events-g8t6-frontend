@@ -1,4 +1,4 @@
-import { installConnectSphereMocks } from './support.mjs';
+import { installConnectSphereMocks, installLoginMock } from './support.mjs';
 
 // Browser-journey mocks of the backend's waitlist, offer and withdrawal routes
 // (SPM-163, SPM-147; backend controller/waitlistController.js and
@@ -37,10 +37,13 @@ export const makeEvent = (eventId, title, overrides = {}) => ({
 
 // `events` maps an ID to { event, place, attendeeStatus }. place is null, or
 // { status, waitlistPosition, offer }. `refuse` maps an action to queued
-// { status, code } answers, used once each before the rules apply.
-export async function installRegistrationActions(page, { events = {}, profile = {}, refuse = {}, queueAhead = 2 } = {}) {
-  await installConnectSphereMocks(page, { role: 'ATTENDEE' });
-  const state = { events, refuse, queueAhead, actions: [] };
+// { status, code } answers, used once each before the rules apply. placesStatus,
+// while set, is the status GET /api/registrations/mine fails with. canSignInAgain
+// lets the login page sign the attendee back in after a 401.
+export async function installRegistrationActions(page, { role = 'ATTENDEE', events = {}, profile = {}, refuse = {}, queueAhead = 2, placesStatus = null, canSignInAgain = false } = {}) {
+  if (canSignInAgain) await installLoginMock(page, { role, authenticated: true });
+  else await installConnectSphereMocks(page, { role });
+  const state = { events, refuse, queueAhead, placesStatus, actions: [] };
   const savedProfile = { attendeeId: 1, userId: 1, name: 'Test Attendee', email: 'attendee@example.test', phone: null, dietaryRestrictions: null, accessibilityRequirements: null, version: 1, createdAt: null, updatedAt: null, ...profile };
 
   const ownEvent = (id) => {
@@ -64,13 +67,14 @@ export async function installRegistrationActions(page, { events = {}, profile = 
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (request.method() === 'GET' && path === '/api/registrations/mine') {
+      if (state.placesStatus) return json(route, { error: 'Internal Server Error', code: 'INTERNAL_ERROR' }, state.placesStatus);
       const registrations = Object.values(state.events).filter((entry) => entry.place).map(({ event, place, attendeeStatus = 'CONFIRMED' }) => ({
         registration_id: event.eventId * 10,
         registration_status: place.status,
         registered_at: '2026-10-01T00:00:00.000Z',
         waitlistPosition: place.status === 'WAITLISTED' ? place.waitlistPosition : null,
         offer: place.offer ?? null,
-        event: { event_id: event.eventId, title: event.title, description: event.description, start_datetime: event.startDatetime, attendee_status: attendeeStatus, venue: null },
+        event: { event_id: event.eventId, title: event.title, description: event.description, start_datetime: event.startDatetime, end_datetime: event.endDatetime, attendee_status: attendeeStatus, venue: null },
       }));
       return json(route, { registrations, page: { next_offset: null } });
     }
