@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getEventView, type EventView } from "@/lib/api/event-workspace";
+import { useRefreshOnReturn } from "./use-refresh-on-return";
 
 export type EventViewState =
   | { status: "loading" }
@@ -16,26 +17,17 @@ export function useEventView(eventId: number) {
   const [attempt, setAttempt] = useState(0);
   const generation = useRef(0);
 
-  useEffect(() => {
-    const refreshOnFocus = () => setAttempt(value => value + 1);
-    const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshOnFocus(); };
-    window.addEventListener("focus", refreshOnFocus);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.removeEventListener("focus", refreshOnFocus);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
+  // Only the newest read may update the state; a committed mutation also
+  // invalidates reads already in flight (see replaceEvent).
+  const read = useCallback((isMounted: () => boolean) => {
     const requestGeneration = ++generation.current;
-    getEventView(eventId)
+    const isCurrent = () => isMounted() && requestGeneration === generation.current;
+    return getEventView(eventId)
       .then(({ event }) => {
-        if (alive && requestGeneration === generation.current) setState({ status: "ready", event });
+        if (isCurrent()) setState({ status: "ready", event });
       })
       .catch((caught: unknown) => {
-        if (!alive || requestGeneration !== generation.current) return;
+        if (!isCurrent()) return;
         if (caught instanceof ApiError && (caught.status === 404 || caught.status === 403)) {
           setState({ status: "not-found" });
         } else {
@@ -45,10 +37,17 @@ export function useEventView(eventId: number) {
             : { status: "error", message });
         }
       });
+  }, [eventId]);
+
+  useEffect(() => {
+    let alive = true;
+    void read(() => alive);
     return () => {
       alive = false;
     };
-  }, [eventId, attempt]);
+  }, [read, attempt]);
+
+  useRefreshOnReturn(() => read(() => true));
 
   // Retry after a failure: shows the loading state again.
   const reload = useCallback(() => {

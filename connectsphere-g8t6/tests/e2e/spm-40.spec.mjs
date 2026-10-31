@@ -23,7 +23,10 @@ async function setup(page, {role='COORDINATOR',event=original,refusal=null,lost=
       if(lost && commands.length===1)return route.fulfill({status:500,json:{error:'Response lost.',code:'INTERNAL_ERROR'}});
       return route.fulfill({json:{message:'Event request rejected. The organiser has been notified.',event:{...event,status:'REJECTED',statusLabel:'Rejected',version:4}}});
     }
-    if(path.endsWith('/history'))return route.fulfill({json:{history:typeof history==='function'?history(commands):history,nextCursor:null,lastViewedAt:null}});
+    if(path.endsWith('/history')){
+      const result=typeof history==='function'?history(commands,new URL(req.url())):history;
+      return route.fulfill({json:Array.isArray(result)?{history:result,nextCursor:null,lastViewedAt:null}:{lastViewedAt:null,...result}});
+    }
     if(path.endsWith('/history/viewed'))return route.fulfill({json:{lastViewedAt:null}});
     if(path.endsWith('/clarifications'))return route.fulfill({json:{clarifications:[]}});
     if(path.endsWith('/venue-bookings'))return route.fulfill({json:{eventId:42,requestId:'REQ-000042',eventType:null,eventTypeLabel:null,canRequestVenueBookings:false,bookings:[]}});
@@ -167,6 +170,44 @@ test('[SPM-40] returning to an existing organiser tab refreshes rejection and hi
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('status').filter({has:page.getByText('Rejection reason',{exact:true})})).toContainText(rejectionEntry.summary);
   await expect(page.getByRole('region',{name:'Change history'}).getByText('Request rejected',{exact:true})).toBeVisible();
+});
+
+test('[SPM-40] one return to the tab reads once and does not mark history viewed',async({page})=>{
+  await setup(page,{history:[rejectionEntry]});
+  await expect(page.getByRole('region',{name:'Change history'}).getByText('Request rejected',{exact:true})).toBeVisible();
+  const calls=[];
+  page.on('request',req=>{const path=new URL(req.url()).pathname;if(path.startsWith('/api/events/42'))calls.push(`${req.method()} ${path}`);});
+  // Hold the reads until both signals have fired, as on a slow network.
+  let release;const gate=new Promise(resolve=>{release=resolve;});
+  await page.route(/\/api\/events\/42(?:\/history)?(?:\?.*)?$/,async route=>{await gate;return route.fallback();});
+  // Browsers fire focus and visibilitychange as separate tasks when a tab returns.
+  await page.evaluate(()=>new Promise(resolve=>{
+    window.dispatchEvent(new Event('focus'));
+    setTimeout(()=>{document.dispatchEvent(new Event('visibilitychange'));resolve();},0);
+  }));
+  release();
+  await expect.poll(()=>calls.filter(call=>call==='GET /api/events/42').length).toBe(1);
+  await expect.poll(()=>calls.filter(call=>call==='GET /api/events/42/history').length).toBe(1);
+  await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,300)));
+  expect(calls.filter(call=>call==='GET /api/events/42')).toHaveLength(1);
+  expect(calls.filter(call=>call==='GET /api/events/42/history')).toHaveLength(1);
+  expect(calls.filter(call=>call.endsWith('/history/viewed'))).toHaveLength(0);
+});
+test('[SPM-40] returning to the tab keeps older history that was already loaded',async({page})=>{
+  const entry=(historyId,summary)=>({...rejectionEntry,historyId,summary});
+  let returned=false;
+  await setup(page,{history:(commands,url)=>url.searchParams.has('cursor')
+    ?{history:[entry(900,'Older loaded entry.')],nextCursor:null}
+    :{history:returned?[entry(1002,'Newest entry after return.'),entry(1001,'First page entry.')]:[entry(1001,'First page entry.')],nextCursor:'older-page'}});
+  const history=page.getByRole('region',{name:'Change history'});
+  await history.getByRole('button',{name:'Show older changes'}).click();
+  await expect(history.getByText('Older loaded entry.',{exact:true})).toBeVisible();
+  returned=true;
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await expect(history.getByText('Newest entry after return.',{exact:true})).toBeVisible();
+  await expect(history.getByText('Older loaded entry.',{exact:true})).toBeVisible();
+  await expect(history.getByText('First page entry.',{exact:true})).toHaveCount(1);
+  await expect(history.getByRole('button',{name:'Show older changes'})).toHaveCount(0);
 });
 
 test('[SPM-40] an older background refresh cannot undo confirmed rejection',async({page})=>{
