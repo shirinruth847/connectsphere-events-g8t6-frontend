@@ -43,18 +43,27 @@ async function installDiscoveryMocks(page, { pages = { '': { events: [], nextCur
 
 const card = (page, title) => page.getByRole('article', { name: title, exact: true });
 
-const UNAVAILABLE_NOTE = "Online sign-up isn't available in ConnectSphere yet.";
+// Register Now for an OPEN event the attendee holds no place on is a working,
+// enabled action with no unavailable note (SPM-134 AC1/AC2).
+async function expectRegisterNow(scope, title) {
+  const action = scope.getByRole('button', { name: `Register now for ${title}`, exact: true });
+  await expect(action).toBeEnabled();
+  await expect(action).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(scope).not.toContainText("Online sign-up isn't available");
+}
 
-// The action stays focusable, describes why it is unavailable and uses the
-// shared Button's disabled look (no pointer interaction, 55% opacity).
-async function expectUnavailableAction(dialog, label) {
-  const action = dialog.getByRole('button', { name: label, exact: true });
-  await expect(action).toHaveAttribute('aria-disabled', 'true');
-  await expect(action).not.toHaveAttribute('disabled');
-  await expect(action).toHaveAccessibleDescription(UNAVAILABLE_NOTE);
-  await expect(action).toHaveCSS('pointer-events', 'none');
-  await expect(action).toHaveCSS('opacity', '0.55');
-  await expect(dialog).not.toContainText('Registration coming soon');
+// Every other state is a visible control that does nothing (SPM-134): it stays
+// focusable and uses the shared Button's disabled look (no pointer
+// interaction, 55% opacity), with no Register Now beside it.
+async function expectDisabledState(scope, label, title) {
+  const control = scope.getByRole('button', { name: `${label} for ${title}`, exact: true });
+  await expect(control).toBeVisible();
+  await expect(control).toHaveText(label);
+  await expect(control).toHaveAttribute('aria-disabled', 'true');
+  await expect(control).not.toHaveAttribute('disabled');
+  await expect(control).toHaveCSS('pointer-events', 'none');
+  await expect(control).toHaveCSS('opacity', '0.55');
+  await expect(scope.getByRole('button', { name: /^register now/i })).toHaveCount(0);
 }
 
 test('[SPM-34 AC1/AC2] attendee sees published events in the shared workspace', async ({ page }) => {
@@ -105,7 +114,7 @@ test('[SPM-34 AC1] Load more appends the next page without duplicates', async ({
   expect(requests.list).toEqual(['', 'page-2']);
 });
 
-test('[SPM-34 AC3/AC6] details modal shows the latest details and a disabled action', async ({ page }) => {
+test('[SPM-34 AC3/AC6] [SPM-134 AC2] details modal shows the latest details and Register Now', async ({ page }) => {
   const { requests } = await installDiscoveryMocks(page, {
     pages: { '': { events: [makeEvent({ title: 'Old title' })], nextCursor: null } },
     details: { 101: makeEvent({ title: 'SMU Tech Summit', description: 'Updated programme for the summit.' }) },
@@ -122,7 +131,7 @@ test('[SPM-34 AC3/AC6] details modal shows the latest details and a disabled act
   await expect(dialog).toContainText('SMU Computing Club');
   await expect(dialog).toContainText('10 Oct 2026, 08:00 SGT');
   await expect(dialog).toContainText('27 Oct 2026, 23:59 SGT');
-  await expectUnavailableAction(dialog, 'Register Now');
+  await expectRegisterNow(dialog, 'SMU Tech Summit');
   expect(requests.detail).toEqual([101]);
 
   await page.keyboard.press('Escape');
@@ -162,39 +171,43 @@ test('[SPM-34 AC1/AC6] pagination and retry survive every loaded event becoming 
   await expect(page.getByText('You have reached the end of the list.', { exact: true })).toBeVisible();
 });
 
-// Join Waitlist works since SPM-163 (tests/e2e/spm-163-147.spec.mjs); the
-// notify action stays unavailable.
-test('[SPM-34 AC3 / SPM-163 AC1] Join Waitlist is offered for a full event; notify stays unavailable', async ({ page }) => {
-  const waitlist = makeEvent({ eventId: 106, title: 'Full Workshop', registrationAvailability: 'FULL_WAITLIST' });
-  // Opens far in the future, so the browser clock always reads it as not yet open.
-  const upcoming = makeEvent({ eventId: 107, title: 'Future Gala', registrationAvailability: 'CLOSED', registrationOpenAt: '2099-01-01T00:00:00.000Z', registrationCloseAt: null });
-  await installDiscoveryMocks(page, { pages: { '': { events: [waitlist, upcoming], nextCursor: null } }, details: { 106: waitlist, 107: upcoming } });
+// A full event offers its waitlist in the details dialog (SPM-163,
+// tests/e2e/spm-163-147.spec.mjs) instead of SPM-134's disabled
+// "Registration Full"; a not-yet-open event stays disabled.
+test('[SPM-134 / SPM-163 AC1] full events offer Join Waitlist in the details dialog; not-yet-open events stay disabled', async ({ page }) => {
+  const full = makeEvent({ eventId: 106, title: 'Full Workshop', registrationAvailability: 'FULL_WAITLIST' });
+  const upcoming = makeEvent({ eventId: 107, title: 'Future Gala', registrationAvailability: 'NOT_YET_OPEN', registrationOpenAt: '2099-01-01T01:00:00.000Z', registrationCloseAt: '2099-01-05T01:00:00.000Z' });
+  await installDiscoveryMocks(page, { pages: { '': { events: [full, upcoming], nextCursor: null } }, details: { 106: full, 107: upcoming } });
   await page.goto('/events');
   await page.getByRole('button', { name: 'View event details for Full Workshop', exact: true }).click();
-  const full = page.getByRole('dialog', { name: 'Full Workshop', exact: true });
-  await expect(full.getByRole('button', { name: 'Join Waitlist', exact: true })).toBeEnabled();
-  await expect(full.getByRole('button', { name: 'Join Waitlist', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
-  await expect(full).not.toContainText(UNAVAILABLE_NOTE);
+  const fullDialog = page.getByRole('dialog', { name: 'Full Workshop', exact: true });
+  await expect(fullDialog.getByRole('button', { name: 'Join Waitlist', exact: true })).toBeEnabled();
+  await expect(fullDialog.getByRole('button', { name: 'Join Waitlist', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(fullDialog.getByRole('button', { name: 'Registration Full for Full Workshop', exact: true })).toHaveCount(0);
+  await expect(fullDialog.getByRole('button', { name: /^register now/i })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(full).toBeHidden();
+  await expect(fullDialog).toBeHidden();
 
   await page.getByRole('button', { name: 'View event details for Future Gala', exact: true }).click();
   const upcomingDialog = page.getByRole('dialog', { name: 'Future Gala', exact: true });
-  await expectUnavailableAction(upcomingDialog, 'Notify when registration opens');
+  await expectDisabledState(upcomingDialog, 'Registration Not Yet Open', 'Future Gala');
+  await expect(upcomingDialog.getByRole('button', { name: /waitlist|notify/i })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(upcomingDialog).toBeHidden();
 });
 
-test('[SPM-34 AC4] NOT_ENABLED events show no registration wording', async ({ page }) => {
-  const event = makeEvent({ eventId: 104, title: 'Open House', description: 'Walk in any time.', registrationAvailability: 'NOT_ENABLED', registrationOpenAt: null, registrationCloseAt: null });
+test('[SPM-134] an UNAVAILABLE event shows a neutral disabled state and no registration window, never full or closed', async ({ page }) => {
+  const event = makeEvent({ eventId: 104, title: 'Open House', description: 'Walk in any time.', registrationAvailability: 'UNAVAILABLE', registrationOpenAt: null, registrationCloseAt: null });
   await installDiscoveryMocks(page, { pages: { '': { events: [event], nextCursor: null } }, details: { 104: event } });
   await page.goto('/events');
-  await expect(card(page, 'Open House')).not.toContainText(/regist|waitlist/i);
+  await expectDisabledState(card(page, 'Open House'), 'Registration Unavailable', 'Open House');
+  await expect(card(page, 'Open House')).not.toContainText(/full|closed|waitlist/i);
   await page.getByRole('button', { name: 'View event details for Open House', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Open House', exact: true });
   await expect(dialog).toContainText('Walk in any time.');
-  await expect(dialog).not.toContainText(/regist|waitlist|notify/i);
-  await expect(dialog.getByRole('button', { name: /register|waitlist|notify/i })).toHaveCount(0);
+  await expectDisabledState(dialog, 'Registration Unavailable', 'Open House');
+  // Missing times are not shown as "Immediately" or "No closing date", and nothing internal is named.
+  await expect(dialog).not.toContainText(/full|closed|waitlist|Registration opens|Registration closes|Immediately|No closing date|venue capacity|configur/i);
 });
 
 test('[SPM-34 AC6] a 404 on details says the event is no longer available', async ({ page }) => {
@@ -239,17 +252,19 @@ test('[SPM-44 TC-EVENT-003] every returned event renders as its own card, whatev
   const events = [
     makeEvent({ eventId: 401, title: 'Open Event', registrationAvailability: 'OPEN' }),
     makeEvent({ eventId: 402, title: 'Closed Event', registrationAvailability: 'CLOSED' }),
-    makeEvent({ eventId: 403, title: 'No Registration Event', registrationAvailability: 'NOT_ENABLED' }),
+    makeEvent({ eventId: 403, title: 'Unavailable Event', registrationAvailability: 'UNAVAILABLE' }),
     makeEvent({ eventId: 404, title: 'Waitlist Event', registrationAvailability: 'FULL_WAITLIST' }),
+    makeEvent({ eventId: 405, title: 'Upcoming Event', registrationAvailability: 'NOT_YET_OPEN' }),
   ];
   const { requests } = await installDiscoveryMocks(page, { pages: { '': { events, nextCursor: null } } });
   await page.goto('/events');
-  await expect(page.getByRole('article')).toHaveCount(4);
+  await expect(page.getByRole('article')).toHaveCount(5);
   await expect(card(page, 'Open Event')).toContainText('Registration Open');
   await expect(card(page, 'Closed Event')).toContainText('Registration Closed');
-  await expect(card(page, 'No Registration Event')).toBeVisible();
+  await expect(card(page, 'Unavailable Event')).toContainText('Registration Unavailable');
   await expect(card(page, 'Waitlist Event')).toContainText('Full - Waitlist');
-  await expect(page.getByText('Showing 4 events', { exact: true })).toBeVisible();
+  await expect(card(page, 'Upcoming Event')).toContainText('Registration Not Yet Open');
+  await expect(page.getByText('Showing 5 events', { exact: true })).toBeVisible();
   expect(requests.list).toEqual(['']);
 });
 
@@ -285,7 +300,7 @@ test('[SPM-44] an attendee opening /events/:id reads only the discovery details 
   await expect(page.getByText('Registration Open', { exact: true })).toBeVisible();
   await expect(page.getByText('SMU Hall A', { exact: true })).toBeVisible();
   await expect(page.getByText('SMU Computing Club', { exact: true })).toBeVisible();
-  await expectUnavailableAction(page.locator('main'), 'Register Now');
+  await expectRegisterNow(page.locator('main'), 'SMU Tech Summit');
   const nav = page.getByRole('navigation', { name: 'Main Navigation', exact: true });
   await expect(nav.getByRole('link', { name: 'Event Discovery', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'Back to Event Discovery', exact: true })).toHaveAttribute('href', '/events');
@@ -459,7 +474,7 @@ test('[SPM-44] should_fit_390px_with_readable_cards_and_44px_actions_when_viewin
   const events = [
     makeEvent({ eventId: 501, title: LONG_TITLE, registrationAvailability: 'OPEN', location: 'Lee Kong Chian School of Business Auditorium, Level 2' }),
     makeEvent({ eventId: 502, title: 'Closed Event', registrationAvailability: 'CLOSED' }),
-    makeEvent({ eventId: 503, title: 'No Registration Event', registrationAvailability: 'NOT_ENABLED', organisationName: null }),
+    makeEvent({ eventId: 503, title: 'Unavailable Event', registrationAvailability: 'UNAVAILABLE', organisationName: null }),
     makeEvent({ eventId: 504, title: 'Waitlist Event', registrationAvailability: 'FULL_WAITLIST', location: null }),
   ];
   await installDiscoveryMocks(page, { pages: { '': { events, nextCursor: 'page-2' }, 'page-2': { events: [], nextCursor: null } } });
@@ -480,9 +495,14 @@ test('[SPM-44] should_fit_390px_with_readable_cards_and_44px_actions_when_viewin
     // Full-width CTA under 768px.
     expect((await action.boundingBox()).width).toBeGreaterThan(box.width * 0.8);
   }
-  // Status stays in text at this width.
+  // Status stays in text at this width, and every card keeps a full-width registration state.
   await expect(card(page, 'Closed Event')).toContainText('Registration Closed');
   await expect(card(page, 'Waitlist Event')).toContainText('Full - Waitlist');
+  for (const [title, label] of [['Closed Event', 'Registration Closed'], ['Unavailable Event', 'Registration Unavailable'], ['Waitlist Event', 'Registration Full']]) {
+    const control = card(page, title).getByRole('button', { name: `${label} for ${title}`, exact: true });
+    await expect(control).toHaveAttribute('aria-disabled', 'true');
+    expect((await control.boundingBox()).width).toBeGreaterThan(MOBILE.width * 0.7);
+  }
   await expect(page.getByRole('button', { name: 'Load more events', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open menu', exact: true })).toBeVisible();
   await expectTouchTargets(page);
@@ -503,7 +523,7 @@ test('[SPM-44] should_fit_390px_with_44px_actions_when_viewing_attendee_event_de
   }
   await expect(main.getByText('Registration Open', { exact: true })).toBeVisible();
   await expect(main.getByRole('link', { name: 'Back to Event Discovery', exact: true })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Register Now', exact: true })).toBeVisible();
+  await expect(main.getByRole('button', { name: `Register now for ${LONG_TITLE}`, exact: true })).toBeVisible();
   await expectTouchTargets(page);
 });
 

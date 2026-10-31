@@ -20,8 +20,8 @@ test('[SPM-163 AC1-AC3] a full event offers the waitlist; Decline sends nothing,
   await details.getByRole('button', { name: 'Join Waitlist', exact: true }).click();
 
   const confirm = page.getByRole('dialog', { name: 'This event is full. Join the waitlist?', exact: true });
-  await expect(confirm.getByLabel('Dietary restrictions (optional)')).toHaveValue('Vegetarian');
-  await expect(confirm.getByLabel('Accessibility requirements (optional)')).toHaveValue('');
+  await expect(confirm.getByLabel('Dietary restrictions')).toHaveValue('Vegetarian');
+  await expect(confirm.getByLabel('Accessibility requirements')).toHaveValue('');
   await confirm.getByRole('button', { name: 'Decline', exact: true }).click();
   await expect(confirm).toBeHidden();
   await expect(details).toBeVisible();
@@ -29,7 +29,7 @@ test('[SPM-163 AC1-AC3] a full event offers the waitlist; Decline sends nothing,
   expect(state.actions).toEqual([]);
 
   await details.getByRole('button', { name: 'Join Waitlist', exact: true }).click();
-  await confirm.getByLabel('Accessibility requirements (optional)').fill('Step-free access');
+  await confirm.getByLabel('Accessibility requirements').fill('Step-free access');
   await attachScreenshot(testInfo, page, 'join-waitlist-confirm');
   await confirm.getByRole('button', { name: 'Accept', exact: true }).click();
 
@@ -41,10 +41,10 @@ test('[SPM-163 AC1-AC3] a full event offers the waitlist; Decline sends nothing,
   expect(state.actions[0].idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
   await joined.getByRole('button', { name: 'Done', exact: true }).click();
 
-  // The join is not offered again from the same view.
+  // The places are read again, so the join is not offered again: the footer
+  // shows SPM-134's held-place state.
   await expect(details.getByRole('button', { name: 'Join Waitlist', exact: true })).toHaveCount(0);
-  await expect(details).toContainText('On the waitlist · Position 3');
-  await expect(details.getByRole('link', { name: 'View in My Events', exact: true })).toHaveAttribute('href', '/my-registrations?eventId=101');
+  await expect(details.getByRole('button', { name: 'On the waitlist for Full Workshop', exact: true })).toHaveAttribute('aria-disabled', 'true');
 });
 
 test('[SPM-163] a refused join explains why; a failed join retries with the same Idempotency-Key', async ({ page }) => {
@@ -56,11 +56,11 @@ test('[SPM-163] a refused join explains why; a failed join retries with the same
   await page.getByRole('button', { name: 'View event details for Popular Talk', exact: true }).click();
   await page.getByRole('button', { name: 'Join Waitlist', exact: true }).click();
   const confirm = page.getByRole('dialog', { name: 'This event is full. Join the waitlist?', exact: true });
-  await confirm.getByLabel('Dietary restrictions (optional)').fill('Halal');
+  await confirm.getByLabel('Dietary restrictions').fill('Halal');
   await confirm.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect(confirm.getByRole('alert')).toContainText('Nothing was changed. Try again.');
   // The entered answers are kept for the retry.
-  await expect(confirm.getByLabel('Dietary restrictions (optional)')).toHaveValue('Halal');
+  await expect(confirm.getByLabel('Dietary restrictions')).toHaveValue('Halal');
   await confirm.getByRole('button', { name: 'Try again: Accept', exact: true }).click();
   await expect(confirm.getByRole('alert')).toContainText('This event has places available again, so there is no waitlist to join.');
   await expect(confirm.getByRole('button', { name: /Accept/ })).toHaveCount(0);

@@ -3,33 +3,34 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { toApiError } from "@/components/attendee/discovery/use-discovery-events";
+import { PreferenceField } from "@/components/attendee/profile/attendee-profile";
+import { fieldErrorsFromBackend, valuesFromProfile } from "@/components/attendee/profile/profile-form";
 import {
-  PROFILE_FIELDS,
-  fieldErrorsFromBackend,
-  validateProfileValues,
-  valuesFromProfile,
-  type ProfileField,
-  type ProfileFieldErrors,
-  type ProfileValues,
-} from "@/components/attendee/profile/profile-form";
+  REGISTRATION_FIELDS,
+  attemptFor,
+  toRegistrationAnswers,
+  validateRegistrationValues,
+  type RegistrationField,
+  type RegistrationFieldErrors,
+  type RegistrationValues,
+  type SubmissionAttempt,
+} from "@/components/attendee/registration/registration-form";
 import { Dialog } from "@/components/shared/dialog";
-import { AlertBanner, Button, FormLabel, Skeleton, buttonClasses, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, Skeleton, buttonClasses } from "@/components/shared/primitives";
 import type { ApiError } from "@/lib/api";
 import { getMyAttendeeProfile } from "@/lib/api/attendee-profile";
 import { joinWaitlist, newIdempotencyKey, type RegistrationActionResult } from "@/lib/api/registration-actions";
 import { ROUTES } from "@/lib/auth";
 import { actionErrorPresentation, placeLabel, type ActionErrorPresentation } from "./registration-action-rules";
 
-const FIELD_LABELS: Record<ProfileField, string> = {
-  dietaryRestrictions: "Dietary restrictions",
-  accessibilityRequirements: "Accessibility requirements",
-};
+const FIELD_HINT = "Optional. Filled in from your Attendee Profile; changes here apply to this event only.";
 
 // Join Waitlist for a full event (SPM-163 AC1, AC2). The button opens "This
 // event is full. Join the waitlist?" with Accept and Decline. Once the backend
 // has added the attendee, the button is replaced by their position, so a
-// second join is never offered from the same view.
-export function JoinWaitlistAction({ eventId, title }: { eventId: number; title: string }) {
+// second join is never offered from the same view; onJoined runs when the
+// confirmation closes, so the surface can reload the attendee's places.
+export function JoinWaitlistAction({ eventId, title, onJoined }: { eventId: number; title: string; onJoined?: () => void }) {
   const [open, setOpen] = useState(false);
   const [joined, setJoined] = useState<RegistrationActionResult | null>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -39,6 +40,7 @@ export function JoinWaitlistAction({ eventId, title }: { eventId: number; title:
   const close = () => {
     setOpen(false);
     requestAnimationFrame(() => (joined ? status.current : button.current)?.focus());
+    if (joined) onJoined?.();
   };
 
   return (
@@ -74,18 +76,20 @@ function JoinWaitlistDialog({
   onJoined: (result: RegistrationActionResult) => void;
 }) {
   const formId = useId();
-  const [key] = useState(newIdempotencyKey);
+  // One key per set of answers, as SPM-134: a retry of the same answers is
+  // replayed by the backend; changed answers are a new request.
+  const submission = useRef<SubmissionAttempt | null>(null);
   const [profile, setProfile] = useState<ProfileState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const [values, setValues] = useState<ProfileValues>({ dietaryRestrictions: "", accessibilityRequirements: "" });
-  const [fieldErrors, setFieldErrors] = useState<ProfileFieldErrors>({});
+  const [values, setValues] = useState<RegistrationValues>({ dietaryRestrictions: "", accessibilityRequirements: "" });
+  const [fieldErrors, setFieldErrors] = useState<RegistrationFieldErrors>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ActionErrorPresentation | null>(null);
   const [result, setResult] = useState<RegistrationActionResult | null>(null);
-  const firstField = useRef<HTMLTextAreaElement>(null);
+  const fields = useRef<Partial<Record<RegistrationField, HTMLTextAreaElement | null>>>({});
 
-  // The answers start from the attendee's profile, as SPM-134's registration
-  // form does; edits here apply to this event only.
+  // The answers start from the attendee's profile, with SPM-134's registration
+  // fields and rules; edits here apply to this event only.
   useEffect(() => {
     const controller = new AbortController();
     getMyAttendeeProfile(controller.signal)
@@ -101,23 +105,19 @@ function JoinWaitlistDialog({
   }, [attempt]);
 
   const submit = async () => {
-    const errors = validateProfileValues(values);
+    const errors = validateRegistrationValues(values);
     setFieldErrors(errors);
-    if (Object.keys(errors).length) {
-      firstField.current?.focus();
+    const invalid = REGISTRATION_FIELDS.find((field) => errors[field]);
+    if (invalid) {
+      fields.current[invalid]?.focus();
       return;
     }
+    const answers = toRegistrationAnswers(values);
+    submission.current = attemptFor(submission.current, answers, newIdempotencyKey);
     setPending(true);
     setError(null);
     try {
-      const joined = await joinWaitlist(
-        eventId,
-        {
-          dietaryRestrictions: values.dietaryRestrictions.trim() ? values.dietaryRestrictions : null,
-          accessibilityRequirements: values.accessibilityRequirements.trim() ? values.accessibilityRequirements : null,
-        },
-        key,
-      );
+      const joined = await joinWaitlist(eventId, answers, submission.current.key);
       setResult(joined);
       onJoined(joined);
     } catch (caught) {
@@ -223,35 +223,22 @@ function JoinWaitlistDialog({
             </div>
           </AlertBanner>
         ) : (
-          <fieldset className="flex flex-col gap-4" disabled={pending || stale}>
-            <legend className="mb-1 text-xs text-on-surface-variant">
-              From your attendee profile. Changes here apply to this event only and don&apos;t update your profile.
-            </legend>
-            {PROFILE_FIELDS.map((field, index) => {
-              const inputId = `${formId}-${field}`;
-              const errorId = `${inputId}-error`;
-              return (
-                <div key={field}>
-                  <FormLabel htmlFor={inputId}>{FIELD_LABELS[field]} (optional)</FormLabel>
-                  <textarea
-                    ref={index === 0 ? firstField : undefined}
-                    id={inputId}
-                    rows={2}
-                    value={values[field]}
-                    onChange={(event) => setValues((current) => ({ ...current, [field]: event.target.value }))}
-                    aria-invalid={fieldErrors[field] ? true : undefined}
-                    aria-describedby={fieldErrors[field] ? errorId : undefined}
-                    className={`${fieldClasses} bg-surface-container-low focus:bg-surface-container-lowest ${fieldErrors[field] ? "border-error" : ""}`}
-                    placeholder="None"
-                  />
-                  {fieldErrors[field] ? (
-                    <p id={errorId} className="mt-1 text-xs text-error">
-                      {fieldErrors[field]}
-                    </p>
-                  ) : null}
-                </div>
-              );
-            })}
+          <fieldset className="flex flex-col gap-4">
+            <legend className="sr-only">Your answers for this event</legend>
+            {REGISTRATION_FIELDS.map((field) => (
+              <PreferenceField
+                key={field}
+                field={field}
+                value={values[field]}
+                error={fieldErrors[field]}
+                hint={FIELD_HINT}
+                readOnly={pending || stale}
+                inputRef={(element) => {
+                  fields.current[field] = element;
+                }}
+                onChange={(value) => setValues((current) => ({ ...current, [field]: value }))}
+              />
+            ))}
           </fieldset>
         )}
         {error ? (

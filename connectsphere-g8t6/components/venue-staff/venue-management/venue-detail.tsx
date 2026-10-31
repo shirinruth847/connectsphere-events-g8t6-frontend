@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/venues";
 import { BufferFields, Field, VenueCoreFields, VenueStatusChip, type FieldErrors } from "./venue-fields";
 import { VenueGallery } from "./venue-gallery";
+import { VenueBlocksSection } from "./venue-blocks";
 import { EMPTY_VENUE_FORM, formatList, parseList, validateVenueForm, type VenueFormValues } from "./venue-form-rules";
 
 type Loaded = { venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus };
@@ -245,7 +246,15 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
       onSaved(result.details, result.message);
     } catch (caught) {
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
-      setMessage({ tone: "error", text: caught instanceof Error ? caught.message : "The details could not be saved." });
+      // A time was recorded elsewhere after this page loaded (SPM-185 AC5):
+      // the whole save is refused, so say so and point to the recorded value.
+      const locked = caught instanceof ApiError && caught.code === "VENUE_BUFFERS_LOCKED";
+      setMessage({
+        tone: "error",
+        text: locked
+          ? `${caught.message} Nothing was saved. Reload the venue to see the recorded times.`
+          : caught instanceof Error ? caught.message : "The details could not be saved.",
+      });
     } finally {
       setSaving(false);
     }
@@ -384,6 +393,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
             detailStatus={detailStatus}
             onSaved={(updated, message) => { setState({ status: "ready", data: { ...state.data, details: updated, detailStatus: "CURRENT" } }); saved(message); }}
           />
+          <VenueBlocksSection venueId={venue.venueId} venueName={venue.name} />
         </div>
         <aside className="grid gap-5 xl:col-span-4" aria-label="Record history">
           <section className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">

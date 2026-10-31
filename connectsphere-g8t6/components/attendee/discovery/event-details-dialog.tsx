@@ -18,7 +18,7 @@ import type {
   AttendeeEventDetail,
   AttendeeEventSummary,
 } from "@/lib/api/discovery";
-import type { AttendeeEventView } from "@/lib/api/my-events";
+import type { AttendeeEventView, AttendeeRegistration } from "@/lib/api/my-events";
 import type { RegistrationChange } from "@/components/attendee/registration-actions/registration-actions";
 import { discoveryErrorMessage } from "./discovery-state";
 import { DiscoveryIcon } from "./discovery-icon";
@@ -30,8 +30,6 @@ import {
   useAttendeeEvent,
   type EventDetailsSource,
 } from "@/components/attendee/event-details/use-attendee-event";
-
-export { REGISTRATION_UNAVAILABLE_NOTE } from "@/components/attendee/event-details/event-details-parts";
 
 // What opens the dialog: a discovery row, or just an ID and title from My Events.
 export type EventDetailsTarget = Pick<
@@ -52,8 +50,17 @@ interface EventDetailsDialogProps {
   onNotFound?: (eventId: number) => void;
   // Explains a 404 in the opener's terms.
   notFoundDescription?: string;
+  // Event Discovery only (SPM-134): the attendee's places, which the discovery
+  // endpoint does not include, and the shared registration form. Null places
+  // (not loaded) offer no Register Now.
+  places?: ReadonlyMap<number, AttendeeRegistration> | null;
+  onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
+  // Bumped to read the open event again (after a registration or a refusal).
+  refreshKey?: number;
+  // Reloads the attendee's places after they join a waitlist (SPM-163).
+  onPlacesChanged?: () => void;
   // Runs once the backend has answered an action on the attendee's place
-  // (SPM-163, SPM-147). Without it the place is shown with no actions.
+  // (SPM-163, SPM-147) on My Events. Without it the place is shown with no actions.
   onRegistrationChange?: (change: RegistrationChange) => void;
 }
 
@@ -72,6 +79,10 @@ export function EventDetailsDialog({
   onLoaded,
   onNotFound,
   notFoundDescription = DISCOVERY_NOT_FOUND,
+  places = null,
+  onRegister,
+  refreshKey = 0,
+  onPlacesChanged,
   onRegistrationChange,
 }: EventDetailsDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -108,7 +119,7 @@ export function EventDetailsDialog({
     >
       {event ? (
         <EventDetailsContent
-          key={event.eventId}
+          key={`${event.eventId}:${refreshKey}`}
           summary={event}
           titleId={titleId}
           detailsFrom={detailsFrom}
@@ -116,6 +127,9 @@ export function EventDetailsDialog({
           onLoaded={onLoaded}
           onNotFound={onNotFound}
           notFoundDescription={notFoundDescription}
+          places={places}
+          onRegister={onRegister}
+          onPlacesChanged={onPlacesChanged}
           onRegistrationChange={onRegistrationChange}
         />
       ) : null}
@@ -131,6 +145,9 @@ function EventDetailsContent({
   onLoaded,
   onNotFound,
   notFoundDescription,
+  places,
+  onRegister,
+  onPlacesChanged,
   onRegistrationChange,
 }: {
   summary: EventDetailsTarget;
@@ -140,6 +157,9 @@ function EventDetailsContent({
   onLoaded?: (event: AttendeeEventView) => void;
   onNotFound?: (eventId: number) => void;
   notFoundDescription: string;
+  places: ReadonlyMap<number, AttendeeRegistration> | null;
+  onRegister?: (event: AttendeeEventView, trigger: HTMLButtonElement) => void;
+  onPlacesChanged?: () => void;
   onRegistrationChange?: (change: RegistrationChange) => void;
 }) {
   // Event Discovery reads its own endpoint; My Events reads the attendee's registration.
@@ -157,7 +177,8 @@ function EventDetailsContent({
       }
     : undefined;
   const withheld = Boolean(event?.detailsWithheld);
-  const myRegistration = event?.myRegistration ?? null;
+  // My Events reads the place with the event; Event Discovery adds it from the places.
+  const myRegistration = event?.myRegistration ?? (detailsFrom === "discovery" ? places?.get(summary.eventId) ?? null : null);
   // Availability is for deciding whether to sign up, so it is not shown to
   // someone who already holds a place, or when the details are held back.
   const availability = event
@@ -277,7 +298,17 @@ function EventDetailsContent({
         {event && !withheld ? <EventSummaryBody event={event} /> : null}
       </div>
 
-      {event ? <EventDetailsFooter event={event} onRegistrationChange={handleRegistrationChange} /> : null}
+      {event ? (
+        <EventDetailsFooter
+          event={{ ...event, myRegistration }}
+          register={onRegister && detailsFrom === "discovery" ? {
+            placesKnown: places !== null,
+            onRegister: (trigger) => onRegister(event, trigger),
+            onPlacesChanged,
+          } : undefined}
+          onRegistrationChange={handleRegistrationChange}
+        />
+      ) : null}
     </>
   );
 }

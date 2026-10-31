@@ -110,6 +110,17 @@ Validation used Node.js 24.9.0.
   stock, outbox entries and the items). Run only this part with
   `LIVE_ROLES=TECH_SUPPORT npm run test:live`.
 
+- `npm run test:e2e:live` runs the maintained `@playwright/test` specs in
+  `tests/live/` (configuration `playwright.live.config.mjs`) against the
+  running applications at localhost:3000/8000, with no mocks and no server
+  started for you. Specs create their own synthetic accounts through the
+  backend's fixture modules (Auth Admin + trusted setup) and run-scoped events,
+  record them in the backend fixture manifest and remove them afterwards;
+  attendees that wrote registration history stay deactivated, as the backend
+  cleanup documents. Needs the sibling backend repository and its private
+  `.env` (CONNECTSPHERE_BACKEND_DIR and LIVE_FRONTEND_URL/LIVE_BACKEND_URL may
+  override). SPM-134 registration: `npm run test:e2e:live -- --grep SPM-134`.
+
 The live checker reads the backend's private environment only in its Node.js
 process; no private key is bundled into the browser. Rebuild/restart the normal
 frontend after mock browser tests before running live checks. NEXT_PUBLIC_BACKEND_URL
@@ -318,3 +329,55 @@ open the request form in a popup:
 
 The backend route needs the SPM-179 migrations and `VENUE_LOCK_DATABASE_URL`;
 until then it answers `503`, which the form shows as a retryable error.
+
+## Venue blocks and restoration (SPM-195)
+
+Venue Staff only. No new route: the screens extend existing pages.
+
+- **`/venues/[venueId]`, step 4 "Operational blocks"**
+  (`components/venue-staff/venue-management/venue-blocks.tsx`): lists the
+  venue's current and upcoming blocks from `GET /api/venues/:venueId/blocks`,
+  each with the bookings and holds it affects. "Record a block" asks for a
+  reason, start and end (SGT) and a note (`POST .../blocks`, with an
+  `Idempotency-Key` reused while the form is unchanged). Active blocks can be
+  shortened (`PUT .../blocks/:blockId` with the loaded `version`; a longer
+  block is refused in the form with "Record a new block for additional time.")
+  or lifted after a confirmation (`POST .../lift`).
+- **Restore booking** (`components/venues/booking-incident.tsx`): enabled only
+  when the backend's `canBeRestored` is `true`, then confirmed in a dialog and
+  sent to `POST /api/venues/incidents/:incidentId/restore` with its own
+  `Idempotency-Key`. A refusal (for example `INCIDENT_STILL_BLOCKED`, with the
+  blocks still in the way) keeps the dialog open. Available on the venue page
+  and on the Venue Staff event view (`/events/[eventId]?booking=`), where an
+  affected booking also shows an "Open" incident chip.
+- **Coordinator venue section:** an affected booking shows its incident card
+  (reason, period, note, whether the venue is free again) and the backend's
+  options: restore (waiting for Venue Staff), replace (not available yet,
+  SPM-172) and cancel (shown unavailable until the event cancellation workflow
+  is integrated). The supervising
+  Lead sees the card read-only, without the options. The organiser view is
+  SPM-199's and is unchanged.
+
+- **Closed incidents:** the backend closes an incident when its booking or the
+  event ends. The card then reads "Venue incident closed" with the backend's
+  resolution label (for example "Booking released") and no restore action; a
+  restored one reads "Venue available again". A long block list that the
+  backend cut short (`hasMore`) says that later blocks are not shown.
+
+Every change is shown after the backend commits it, then the list reloads. The
+backend needs migrations `20261029130000`, `20261029140000`, `20261029150000`
+and `20261029160000`.
+
+
+SPM-195 block creation cannot be dismissed while sending. An uncertain command
+retains its exact input and idempotency key in per-user, per-venue sessionStorage;
+reopening after a reload or automatic session expiry retries that command with
+its original key. Its inputs stay locked until a definitive result is received.
+Success clears recovery, and explicit logout uses the existing recovery cleanup.
+Cancellation remains an integration dependency owned by
+[SPM-176 — Cancel Event - Coordinator](https://yvery.atlassian.net/browse/SPM-176),
+which was To Do when checked on 30 October 2026. No coordinator cancellation
+endpoint exists in the inspected backend. This frontend does not add that API
+or claim cancellation is available. Jira SPM-195 AC7 still assumes an existing
+cancel action; completing or explicitly deferring that dependency requires a
+scope decision. The unavailable label alone does not complete AC7.
