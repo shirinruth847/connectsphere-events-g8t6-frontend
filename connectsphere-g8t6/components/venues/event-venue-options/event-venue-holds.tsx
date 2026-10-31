@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
 import { readHoldCommand, saveHoldCommand } from "../hold-command-recovery";
-import { useHoldExpiryRefresh } from "../use-hold-expiry-refresh";
+import Link from "next/link";
+import { useHoldExpiryRefresh, useMinuteClock } from "../use-hold-expiry-refresh";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, FormLabel, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
@@ -37,22 +38,14 @@ export const holdChipStatus = (request: VenueHoldRequest, now = Date.now()) => (
 export const holdChipLabel = (request: VenueHoldRequest, now: number) =>
   holdChipStatus(request, now) === "EXPIRED" ? "Hold expired" : request.statusLabel;
 
-// The current time, refreshed every minute, so the countdown (SPM-188 AC8)
-// keeps counting between the list's own refreshes, which come only at expiry.
-function useMinuteClock() {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return now;
-}
+// A hold confirmed but never saved as a booking (Master T35) can be confirmed again.
+export const canConfirmAgain = (request: VenueHoldRequest) => request.status === "PLACED" && Boolean(request.hold?.bookingMissing);
 
-export function HoldSummary({ request, now }: { request: VenueHoldRequest; now: number }) {
+// bookingLink: Venue Staff open the booking a confirmed hold became.
+export function HoldSummary({ request, now, bookingLink = false }: { request: VenueHoldRequest; now: number; bookingLink?: boolean }) {
   const hold = request.hold;
-  const clock = useMinuteClock();
-  const at = Math.max(now, clock);
-  const countdown = isActiveHold(request, at) ? holdCountdown(hold?.expiresAt, at) : null;
+  const countdown = isActiveHold(request, now) ? holdCountdown(hold?.expiresAt, now) : null;
+  const booking = hold?.convertedBooking ?? null;
   return (
     <div className="grid gap-1 text-sm text-on-surface-variant">
       <p>
@@ -65,8 +58,17 @@ export function HoldSummary({ request, now }: { request: VenueHoldRequest; now: 
           {hold.extended ? " (extended once)" : ""}
         </p>
       ) : null}
-      {hold?.status === "CONVERTED" && hold.convertedBookingId ? (
-        <p className="font-semibold text-on-surface">Confirmed as Booking #{hold.convertedBookingId}, waiting for Venue Staff.</p>
+      {booking ? (
+        <p className="font-semibold text-on-surface">
+          Confirmed as{" "}
+          {bookingLink ? (
+            <Link className="underline" href={`/events/${request.eventId}?booking=${booking.bookingId}`}>Booking #{booking.bookingId}</Link>
+          ) : `Booking #${booking.bookingId}`}
+          {` · ${booking.statusLabel}`}
+        </p>
+      ) : null}
+      {hold?.bookingMissing ? (
+        <p className="font-semibold text-error">The booking was not saved. Confirm the hold again to send it to Venue Staff.</p>
       ) : null}
       {request.holdUnavailable ? <p className="text-xs">The hold&apos;s current state cannot be read right now.</p> : null}
       {request.note ? <p className="text-xs"><span className="font-semibold">Note:</span> {request.note}</p> : null}
@@ -279,7 +281,9 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
   }, [event.eventId, event.status, attempt, reloadKey]);
 
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
-  const now = useHoldExpiryRefresh(state.status === "ready" ? state.holds : [], reload);
+  const refreshedAt = useHoldExpiryRefresh(state.status === "ready" ? state.holds : [], reload);
+  const clock = useMinuteClock();
+  const now = Math.max(refreshedAt, clock);
   const act = async (request: VenueHoldRequest, action: "withdraw" | "release") => {
     setBusyId(request.holdRequestId);
     setNotice(null);
@@ -330,9 +334,9 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
                 <BookingStatusChip status={holdChipStatus(request, now)} label={holdChipLabel(request, now)} />
               </div>
               <HoldSummary request={request} now={now} />
-              {isCoordinator && (request.status === "PENDING" || isActiveHold(request, now)) ? (
+              {isCoordinator && (request.status === "PENDING" || isActiveHold(request, now) || canConfirmAgain(request)) ? (
                 <div className="flex flex-wrap gap-2">
-                  {onConfirm && isActiveHold(request, now) ? (
+                  {onConfirm && (isActiveHold(request, now) || canConfirmAgain(request)) ? (
                     <Button
                       type="button"
                       aria-haspopup="dialog"
@@ -343,9 +347,11 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
                       <Icon name="check" size={16} />Confirm as booking
                     </Button>
                   ) : null}
-                  <Button type="button" variant="quiet" disabled={busyId === request.holdRequestId} onClick={() => void act(request, request.status === "PENDING" ? "withdraw" : "release")}>
-                    {request.status === "PENDING" ? "Withdraw request" : "Release hold"}
-                  </Button>
+                  {request.status === "PENDING" || isActiveHold(request, now) ? (
+                    <Button type="button" variant="quiet" disabled={busyId === request.holdRequestId} onClick={() => void act(request, request.status === "PENDING" ? "withdraw" : "release")}>
+                      {request.status === "PENDING" ? "Withdraw request" : "Release hold"}
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </li>

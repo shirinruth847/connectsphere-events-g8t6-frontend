@@ -3,6 +3,17 @@
 import { useEffect, useState } from "react";
 import type { VenueHoldRequest } from "@/lib/api/venue-holds";
 
+// The current time, refreshed every minute, so a hold's countdown (SPM-188 AC8)
+// keeps counting between refreshes; one timer per list.
+export function useMinuteClock() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
 // Refresh at the next active expiry and on return to the page. The local clock
 // also removes expired actions immediately, even if that refresh fails.
 export function useHoldExpiryRefresh(requests: VenueHoldRequest[], refresh: () => void) {

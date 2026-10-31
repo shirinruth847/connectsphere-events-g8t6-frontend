@@ -142,11 +142,13 @@ export function VenueTitle({ venue }: { venue: EventVenueOption }) {
 // venue on the event window (SPM-74). The button sits at the foot of the photo
 // column; the calendar takes the card's full width.
 export function useVenueCalendar(calendar: VenueCalendarWindow | null | undefined, venueId: number) {
-  const [open, setOpen] = useState(false);
+  // Open for one venue only, so changing the venue (e.g. in a booking section) closes it.
+  const [openFor, setOpenFor] = useState<number | null>(null);
+  const open = openFor === venueId;
   if (!calendar) return { button: null, panel: null };
   return {
     button: (
-      <Button type="button" variant="secondary" aria-pressed={open} onClick={() => setOpen((value) => !value)}>
+      <Button type="button" variant="secondary" aria-pressed={open} onClick={() => setOpenFor(open ? null : venueId)}>
         <Icon name="calendar" size={16} />{open ? "Hide availability calendar" : "Show availability calendar"}
       </Button>
     ),

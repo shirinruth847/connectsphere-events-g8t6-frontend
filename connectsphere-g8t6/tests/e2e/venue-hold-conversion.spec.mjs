@@ -43,12 +43,12 @@ const activeHold = (expiresAt = "2030-03-01T03:00:00.000Z") => ({
   label: "Keynote hall", start: HOLD_START, end: HOLD_END, expectedAttendance: 120, note: null,
   status: "PLACED", statusLabel: "On hold (tentative)", requestedAt: "2026-10-30T02:00:00.000Z", requestedByName: "Synthetic Coordinator",
   decidedAt: "2026-10-30T03:00:00.000Z", decidedByName: "Synthetic Venue Staff", declineReason: null,
-  hold: { holdId: HOLD_ID, status: "ACTIVE", statusLabel: "On hold (tentative)", expiresAt, extended: false, occupiedStart: "2030-03-10T01:30:00.000Z", occupiedEnd: "2030-03-10T04:45:00.000Z", convertedBookingId: null },
+  hold: { holdId: HOLD_ID, status: "ACTIVE", statusLabel: "On hold (tentative)", expiresAt, extended: false, occupiedStart: "2030-03-10T01:30:00.000Z", occupiedEnd: "2030-03-10T04:45:00.000Z", convertedBookingId: null, convertedBooking: null, bookingMissing: false },
   holdUnavailable: false,
 });
 const converted = (hold) => ({
   ...hold, statusLabel: "Converted to a booking request",
-  hold: { ...hold.hold, status: "CONVERTED", statusLabel: "Converted to a booking request", convertedBookingId: 900 },
+  hold: { ...hold.hold, status: "CONVERTED", statusLabel: "Converted to a booking request", convertedBookingId: 900, convertedBooking: { bookingId: 900, status: "PENDING", statusLabel: "Pending" } },
 });
 const VENUE_HELD = { code: "VENUE_HELD", message: "Held for another event 10 Mar, 09:30–12:45, until 1 Mar 11:00." };
 
@@ -116,7 +116,8 @@ test("[SPM-188-TC-13][AC9] the coordinator confirms an active hold as a booking 
   await expect(dialog).toBeHidden();
   expect(sent.bookings).toHaveLength(1);
   expect(sent.bookings[0].bookings[0]).toMatchObject({ venueId: 45, label: "Keynote hall", start: HOLD_START, end: HOLD_END, expectedAttendance: 120, holdId: HOLD_ID });
-  await expect(holdsRegion(page).getByText("Confirmed as Booking #900, waiting for Venue Staff.")).toBeVisible();
+  // The booking's own status comes from the backend, never assumed.
+  await expect(holdsRegion(page).getByText("Confirmed as Booking #900 · Pending")).toBeVisible();
   await expect(holdsRegion(page).getByRole("button", { name: "Confirm as booking" })).toHaveCount(0);
 });
 
@@ -176,4 +177,56 @@ test("[SPM-200-TC-03][AC1][AC2] each accessibility need is ticked when met and c
   await expect(rows.nth(0)).toContainText(/Met$/);
   await expect(rows.nth(1)).toContainText("✗ AccessibilityHearing loop");
   await expect(rows.nth(1)).toContainText(/Not met$/);
+});
+
+test("[SPM-188][T35] a hold whose booking was not saved can be confirmed again and cannot be released", async ({ page }) => {
+  const notSaved = { ...activeHold(), statusLabel: "Booking not saved – confirm again", hold: { ...activeHold().hold, status: "CONVERTED", statusLabel: "Booking not saved – confirm again", convertedBookingId: 899, bookingMissing: true } };
+  const sent = await routeEvent(page, { holds: [notSaved] });
+  await page.goto("/events/42");
+
+  const item = holdsRegion(page).locator("li[data-hold-request-id='3']");
+  await expect(item.getByText("Booking not saved – confirm again")).toBeVisible();
+  await expect(item.getByText("The booking was not saved. Confirm the hold again to send it to Venue Staff.")).toBeVisible();
+  await expect(item.getByRole("button", { name: "Release hold" })).toHaveCount(0);
+
+  await item.getByRole("button", { name: "Confirm as booking" }).click();
+  await confirmDialog(page).getByRole("button", { name: "Send booking request" }).click();
+  await expect(confirmDialog(page)).toBeHidden();
+  expect(sent.bookings[0].bookings[0]).toMatchObject({ holdId: HOLD_ID });
+});
+
+// Venue Staff's My Requests: the hold card's countdown and booking link, and
+// the booking card that came from a hold.
+async function routeVenueStaff(page, { requests, bookings }) {
+  await page.route("**/api/venues/bookings**", (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/venues/bookings") return route.fallback();
+    return route.fulfill({ json: { bookings, hasMore: false, pendingCount: bookings.length, approvedCount: 0 } });
+  });
+  await page.route(/\/api\/venues\/hold-requests(\?.*)?$/, (route) => {
+    if (route.request().method() === "OPTIONS") return route.fallback();
+    return route.fulfill({ json: { requests, pendingCount: 0 } });
+  });
+}
+const bookingItem = (overrides = {}) => ({
+  bookingId: 900, label: "Keynote hall", status: "PENDING", statusLabel: "Pending", venueId: 45, venueName: hall.name,
+  startDatetime: HOLD_START, endDatetime: HOLD_END, expectedAttendance: 120, submittedAt: "2026-10-30T04:00:00.000Z", updatedAt: "2026-10-30T04:00:00.000Z",
+  event: { eventId: 42, requestId: "REQ-000042", title: eventView.title, status: "PLANNING", eventType: null, eventTypeLabel: null },
+  ...overrides,
+});
+
+test("[SPM-188-TC-09][AC8][AC9] Venue Staff see the countdown, the converted hold's booking and the From hold badge", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  const soon = new Date(Date.now() + 6 * 3600 * 1000 + 30 * 60 * 1000).toISOString();
+  const expiring = { ...activeHold(soon), holdRequestId: 4 };
+  await routeVenueStaff(page, {
+    requests: [expiring, converted(activeHold())],
+    bookings: [bookingItem({ fromHold: true }), bookingItem({ bookingId: 901, label: "Breakout", fromHold: false })],
+  });
+  await page.goto("/dashboard");
+
+  await expect(page.locator('article[data-hold-request-id="4"]').getByText(/^Hold expires in 6 hours \(.+\)$/)).toBeVisible();
+  const link = page.locator('article[data-hold-request-id="3"]').getByRole("link", { name: "Booking #900" });
+  await expect(link).toHaveAttribute("href", "/events/42?booking=900");
+  await expect(page.locator('article[data-booking-id="900"]').getByText("From hold")).toBeVisible();
+  await expect(page.locator('article[data-booking-id="901"]').getByText("From hold")).toHaveCount(0);
 });
