@@ -300,8 +300,17 @@ test("[SPM-179 TC-01][AC2][AC11][AC12] the coordinator requests one venue and se
 test("[SPM-179 AC11] after a request the event, readiness and history are loaded again", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const sent = await routeBookingSection(page);
+  await page.route("**/api/events/42/readiness", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fallback();
+    sent.readinessLoads += 1;
+    const failure = sent.requests.length
+      ? { code: "BOOKING_NOT_APPROVED", message: "The new venue booking is awaiting approval." }
+      : { code: "NO_VENUE_BOOKING", message: "Request a venue booking before submitting for safety review." };
+    return route.fulfill({ json: { ready: false, failures: [failure], status: "PLANNING", version: 3, arrangementVersion: sent.requests.length ? 4 : 3 } });
+  });
   await page.goto("/events/42");
   await expect(bookingsRegion(page).getByText("No venue bookings have been requested yet.")).toBeVisible();
+  await expect(page.getByText("Request a venue booking before submitting for safety review.", { exact: true })).toBeVisible();
   await expect.poll(() => sent.readinessLoads).toBeGreaterThan(0);
   const before = { event: sent.eventLoads, readiness: sent.readinessLoads };
 
@@ -311,6 +320,9 @@ test("[SPM-179 AC11] after a request the event, readiness and history are loaded
   // The request moves arrangement_version, not the event version.
   await expect.poll(() => sent.eventLoads).toBeGreaterThan(before.event);
   await expect.poll(() => sent.readinessLoads).toBeGreaterThan(before.readiness);
+  await expect(page.getByText("The new venue booking is awaiting approval.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Request a venue booking before submitting for safety review.", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Submit for safety review", exact: true })).toBeDisabled();
 });
 
 test("[SPM-179 AC11] the history entry lists each requested booking, without empty From/To rows", async ({ page }) => {
