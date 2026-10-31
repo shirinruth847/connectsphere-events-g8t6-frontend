@@ -33,8 +33,8 @@ import {
   type BookingDraft,
 } from "./venue-booking-form-model";
 import { VenueBookingSection, type VenueChoiceGroups } from "./venue-booking-section";
-import { findBookingConflicts, type BookingConflict } from "./booking-precheck";
 import { useVenueBookingChecks } from "./use-venue-booking-checks";
+import { findBookingConflicts, type BookingConflict } from "./booking-precheck";
 
 interface VenueBookingRequestDialogProps {
   // Kept mounted while closing, so focus returns to the button that opened it;
@@ -98,6 +98,7 @@ export function VenueBookingRequestDialog({
   const [checking, setChecking] = useState(false);
   const [conflicts, setConflicts] = useState<BookingConflict[] | null>(null);
   // One key per request body: a retry of the same body cannot book twice (AC13).
+  const [uncertainBody, setUncertainBody] = useState<string | null>(null);
   const attempt = useRef<{ body: string; key: string; uncertain: boolean } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -120,7 +121,12 @@ export function VenueBookingRequestDialog({
     [drafts, eventHasPrimary],
   );
   const checks = useVenueBookingChecks(event.eventId, checkItems);
+  const recoveringRequest = uncertainBody !== null && uncertainBody === JSON.stringify(toRequestItems(drafts, eventHasPrimary));
   const blockingCount = checks.checking ? 0 : checks.results.filter((result) => result.checked && result.blocking.length).length;
+  // Invalid windows are returned unchecked, with field errors rather than blockers.
+  const hasCheckFieldErrors = !checks.checking && checks.results.some((result) =>
+    Object.keys(result.fields).some((field) => /\.(start|end)$/.test(field)),
+  );
   // A time the server cannot check yet (e.g. outside the event) shows on its field (AC18).
   const liveErrors = (index: number) => {
     const fields = checks.results[index]?.fields ?? {};
@@ -202,10 +208,13 @@ export function VenueBookingRequestDialog({
     try {
       const result = await requestEventVenueBookings(event.eventId, items, key);
       attempt.current = null;
+      setUncertainBody(null);
       onSubmitted(result);
     } catch (caught) {
       const error = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : "The booking request could not be sent.", 0);
-      if (attempt.current) attempt.current.uncertain = keepsIdempotencyKey(error) || error.status === 401;
+      const uncertain = keepsIdempotencyKey(error) || error.status === 401;
+      if (attempt.current) attempt.current.uncertain = uncertain;
+      setUncertainBody(uncertain ? body : null);
       const failure = bookingRequestFailure(error);
       setErrors(failure.fields);
       setBanner({ message: failure.banner, stale: failure.stale });
@@ -247,12 +256,13 @@ export function VenueBookingRequestDialog({
         footer={(
           <>
             <Button type="button" variant="quiet" disabled={saving} onClick={close}>Cancel</Button>
-            {blockingCount ? (
+            {blockingCount && !recoveringRequest ? (
               <span className="self-center text-xs font-semibold text-error">
                 {blockingCount === 1 ? "1 venue has" : `${blockingCount} venues have`} a problem to fix first.
               </span>
             ) : null}
-            <Button type="button" disabled={saving || Boolean(banner?.stale) || blockingCount > 0} onClick={() => void submit()}>
+            {recoveringRequest ? <span className="self-center text-xs text-on-surface-variant">Retry to recover the previous request&apos;s result.</span> : null}
+            <Button type="button" disabled={saving || Boolean(banner?.stale) || (!recoveringRequest && (blockingCount > 0 || hasCheckFieldErrors))} onClick={() => void submit()}>
               {checking ? "Checking availability…" : saving ? "Sending…" : "Send booking request"}
             </Button>
           </>

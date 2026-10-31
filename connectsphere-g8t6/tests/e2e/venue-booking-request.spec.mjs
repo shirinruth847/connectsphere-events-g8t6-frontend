@@ -428,6 +428,7 @@ test("[SPM-179 TC-09][TC-22][AC7][AC13][AC16] a refused request keeps every valu
   // The period check passes (SPM-185's pre-check sends the request); the slot
   // is taken before the server's own check under the venue lock, which refuses it.
   const sent = await routeBookingSection(page, {
+    // The form looked fine; the venue was taken between the check and the send.
     respond: (body, attempt) => {
       if (attempt === 1) return { status: 409, json: { error: conflictText, code: "BOOKING_CONFLICT", bookingIndex: 1, venueId: 46, fields: { "bookings.1.start": conflictText }, conflicts: [{ index: 1, type: "BOOKING", occupiedStart: "2030-03-10T02:30:00.000Z", occupiedEnd: "2030-03-10T05:45:00.000Z" }] } };
       if (attempt === 2) return { status: 503, json: { error: "Availability could not be checked. Try again later.", code: "AVAILABILITY_UNAVAILABLE" } };
@@ -442,11 +443,8 @@ test("[SPM-179 TC-09][TC-22][AC7][AC13][AC16] a refused request keeps every valu
   await second.getByLabel("Expected attendance at this venue").fill("60");
   await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
   await section(page, 1).getByRole("radio", { name: "Primary venue" }).check();
-  await expect(second.getByText("Available", { exact: true })).toBeVisible();
 
-  // The calendar already shows the clash before sending (advisory).
-  await expect(second.getByText("Unavailable – booking")).toBeVisible();
-  await expect(second.getByText(/Taken 10:30–13:45 SGT by another booking/)).toBeVisible();
+  await expect(second.getByText("Available", { exact: true })).toBeVisible();
 
   await form(page).getByRole("button", { name: "Send booking request" }).click();
   await expect(second.getByText(conflictText)).toBeVisible();
@@ -471,6 +469,11 @@ test("[SPM-185 AC2] a setup/turnaround clash found before sending opens a dialog
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const turnaround = "Venue's turnaround period (10:00am–10:45am) overlaps with your requested booking, including its 30-minute setup from 10:00am.";
   const sent = await routeBookingSection(page, { availability: { 45: { canRequest: false, message: turnaround }, 46: { canRequest: false } } });
+  // The advisory answer was available; a clash appears before the send-time check.
+  await page.route('**/api/events/42/venue-bookings/check', route => {
+    const items = route.request().postDataJSON().bookings;
+    return route.fulfill({ json: { bookings: items.map((item, index) => checkResult(item, index)) } });
+  });
   await page.goto("/events/42");
   await openForm(page);
   await form(page).getByRole("button", { name: "Add another venue" }).click();
@@ -480,9 +483,7 @@ test("[SPM-185 AC2] a setup/turnaround clash found before sending opens a dialog
   await second.getByRole("combobox", { name: "Layout (required)", exact: true }).fill("Classroom");
   await section(page, 1).getByRole("radio", { name: "Primary venue" }).check();
 
-  // The section's own advisory check already warns.
-  await expect(second.getByText("Unavailable – booking")).toBeVisible();
-  await expect(second.getByText(/Taken 10:30–13:45 SGT by another booking/)).toBeVisible();
+  await expect(second.getByText("Available", { exact: true })).toBeVisible();
 
   await form(page).getByRole("button", { name: "Send booking request" }).click();
   const clash = page.getByRole("dialog", { name: "Some venues are not available at those times" });
@@ -760,7 +761,7 @@ test("[SPM-186-AC17][SPM-186-TC20] each venue is checked on its own window as th
 
 test("[SPM-186-AC18][SPM-186-TC21] a time outside the event shows on its field and is not checked", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
-  await routeBookingSection(page);
+  const sent = await routeBookingSection(page);
   await page.goto("/events/42");
   await openForm(page);
 
@@ -769,7 +770,46 @@ test("[SPM-186-AC18][SPM-186-TC21] a time outside the event shows on its field a
 
   await expect(first.getByText("Must be within the event's dates and times.")).toBeVisible();
   await expect(first.getByTestId("booking-checks")).toHaveCount(0);
+  const send = form(page).getByRole("button", { name: "Send booking request", exact: true });
+  await expect(send).toBeDisabled();
+  expect(sent.requests).toHaveLength(0);
   await first.getByLabel("End (SGT)").fill("2030-03-10T12:00");
   await expect(first.getByText("Must be within the event's dates and times.")).toHaveCount(0);
   await expect(first.getByText("Available", { exact: true })).toBeVisible();
+  await expect(send).toBeEnabled();
+});
+
+test('[SPM-186] advisory blockers permit only an unchanged uncertain request to recover', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  const availability = {};
+  const sent = await routeBookingSection(page, {
+    availability,
+    respond: (body, attempt) => attempt === 1
+      ? { status: 503, json: { error: 'Commit outcome uncertain.' } }
+      : { status: 200, json: { ...saved(body.bookings), replayed: true } },
+  });
+  await page.goto('/events/42');
+  await openForm(page);
+  const first = section(page, 1);
+  await expect(first.getByText('Available', { exact: true })).toBeVisible();
+  await form(page).getByRole('button', { name: 'Send booking request', exact: true }).click();
+  await expect(form(page).getByText('Commit outcome uncertain.', { exact: true })).toBeVisible();
+
+  // A committed booking (or a new block) can make advisory checks unavailable.
+  // Changing the command must not inherit permission to replay the old one.
+  availability[45] = { canRequest: false };
+  const requirements = first.getByLabel('Special requirements');
+  const original = await requirements.inputValue();
+  await requirements.fill(`${original} changed`);
+  await expect(first.getByText('Unavailable', { exact: true })).toBeVisible();
+  const send = form(page).getByRole('button', { name: 'Send booking request', exact: true });
+  await expect(send).toBeDisabled();
+  expect(sent.requests).toHaveLength(1);
+
+  await requirements.fill(original);
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(form(page)).toBeHidden();
+  expect(sent.requests).toHaveLength(2);
+  expect(sent.requests[1]).toEqual(sent.requests[0]);
 });
