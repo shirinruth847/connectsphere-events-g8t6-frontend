@@ -8,7 +8,10 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { useNavigationGuard } from "@/components/shared/navigation-guard";
 import { SESSION_EXPIRED } from "@/lib/session";
-import { ACCESSIBILITY_OPTIONS, validateEventStep, fieldStep, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, eventStatusLabel, isDraftEvent, toPayload } from "@/lib/events";
+import { ACCESSIBILITY_OPTIONS, validateEventStep, fieldStep, EMPTY_EVENT_FORM, EventFormValues, EventRequest, formValuesFromEvent, formatSavedTime, eventStatusLabel, isDraftEvent, localDateTimeToIso, toPayload } from "@/lib/events";
+import { equipmentAvailabilityErrors } from "@/lib/technical-requests";
+import { EquipmentRequirementsEditor } from "@/components/events/equipment/equipment-requirements-editor";
+import { useEquipmentAvailability, type AvailabilityState } from "@/components/events/equipment/use-equipment-availability";
 
 const steps = [
   "Event Identity & Core Purpose",
@@ -23,7 +26,7 @@ const stepDescriptions = [
   "Propose a date, event duration, and expected in-person attendance.",
   "Share venue and room layout preferences with the coordinator.",
   "Tell the team about access needs and accommodations.",
-  "Note technical and equipment needs for event planning.",
+  "Choose equipment and note technical support needs for event planning.",
   "Set up the supported event registration options.",
 ];
 const guidance = [
@@ -31,7 +34,7 @@ const guidance = [
   { title: "Attendance & scheduling", body: "Submit at least 48 hours before the proposed start. Your end time must follow the start time; attendance is used during coordinator review." },
   { title: "Venue coordination", body: "Choose venue preferences and a supported layout. Preferences do not reserve or hold a venue." },
   { title: "Accessibility planning", body: "Share the access arrangements your attendees need. The event team can follow up if more detail is required." },
-  { title: "Equipment planning", body: "Equipment requests are managed separately. Any requirements already saved with this draft are preserved." },
+  { title: "Equipment planning", body: "Availability is shown for your event's date and time; without dates it shows the total stock. Choosing equipment does not reserve it. Your coordinator sends the request to Technical Support." },
   { title: "Registration", body: "You can enable registration and set a capacity. Access controls and waitlists are not supported by this request API." },
 ];
 type SaveResponse = { event?: EventRequest; savedAt?: string };
@@ -61,6 +64,14 @@ export function EventRequestWizard() {
   const submissionInFlight = useRef(false);
   const recoveryKey = `connectsphere:recovery:${user?.authId ?? user?.user_id}:${draftId ?? "new"}`;
   const replaceValues = useCallback((next: EventFormValues) => { valuesRef.current = next; setValues(next); }, []);
+  // SPM-286: quantities free for the entered dates; read by the save and submit checks.
+  const availability = useEquipmentAvailability(localDateTimeToIso(values.startDatetime), localDateTimeToIso(values.endDatetime));
+  const availabilityRef = useRef<AvailabilityState>(availability.state);
+  useEffect(() => { availabilityRef.current = availability.state; }, [availability.state]);
+  const equipmentProblems = useCallback(() => {
+    const current = availabilityRef.current;
+    return current.status === "ready" ? equipmentAvailabilityErrors(valuesRef.current.equipmentRequirements, current.data) : {};
+  }, []);
 
   useEffect(() => { setBlocked(dirty); return () => setBlocked(false); }, [dirty, setBlocked]);
   useEffect(() => {
@@ -135,7 +146,7 @@ export function EventRequestWizard() {
     }
     const snapshot = valuesRef.current;
     if (!snapshot.title.trim() || locked || submissionInFlight.current || uncertainSubmission) return;
-    const invalid = Object.assign({}, ...steps.map((_, i) => validateEventStep(snapshot, i, false)));
+    const invalid = Object.assign({}, ...steps.map((_, i) => validateEventStep(snapshot, i, false)), equipmentProblems());
     if (Object.keys(invalid).length) { setFieldErrors(invalid); setStep(fieldStep(Object.keys(invalid)[0])); return; }
     if (timer.current) clearTimeout(timer.current);
     const operation = async () => {
@@ -178,7 +189,7 @@ export function EventRequestWizard() {
     };
     const work = operation(); inFlight.current = work;
     try { await work; } finally { if (inFlight.current === work) inFlight.current = null; }
-  }, [allowNavigation, locked, recoveryKey, router, showFailure, uncertainSubmission]);
+  }, [allowNavigation, equipmentProblems, locked, recoveryKey, router, showFailure, uncertainSubmission]);
 
   useEffect(() => {
     const arm = () => {
@@ -193,13 +204,13 @@ export function EventRequestWizard() {
     };
   }, [dirty, loading, locked, saveDraft, saving, submitting, uncertainSubmission, values]);
 
-  const update = (key: keyof EventFormValues, value: string | boolean | string[] | number[]) => {
+  const update = (key: keyof EventFormValues, value: EventFormValues[keyof EventFormValues]) => {
     revision.current += 1;
     replaceValues({ ...valuesRef.current, [key]: value });
     setDirty(true); changedRef.current = true; setNotice(""); setError("");
   };
   const advance = () => {
-    const invalid = validateEventStep(valuesRef.current, step, true);
+    const invalid = { ...validateEventStep(valuesRef.current, step, true), ...(step === 4 ? equipmentProblems() : {}) };
     setFieldErrors(invalid);
     if (Object.keys(invalid).length) return;
     setStep(current => Math.min(steps.length - 1, current + 1));
@@ -232,7 +243,7 @@ export function EventRequestWizard() {
       }
       // An uncertain create reuses its original payload and idempotency key.
       if (!submitAttempt.current) {
-        const invalid = Object.assign({}, ...steps.map((_, i) => validateEventStep(valuesRef.current, i, true)));
+        const invalid = Object.assign({}, ...steps.map((_, i) => validateEventStep(valuesRef.current, i, true)), equipmentProblems());
         setFieldErrors(invalid);
         if (Object.keys(invalid).length) { setStep(fieldStep(Object.keys(invalid)[0])); return; }
       }
@@ -335,7 +346,7 @@ export function EventRequestWizard() {
               <div><FormLabel htmlFor="layout" required>Preferred Seating &amp; Room Geometry</FormLabel><select id="layout" {...errorProps("preferredLayoutType")} value={values.preferredLayoutType} onChange={e => update("preferredLayoutType", e.target.value)} className={fieldClasses}>{[...new Set([...options.layouts, values.preferredLayoutType])].map(layout => <option key={layout} value={layout}>{layout === "NO_PREFERENCE" ? "No preference" : layout.replaceAll("_", " ")}</option>)}</select>{field("preferredLayoutType")}</div>
             </div>}
             {step === 3 && <div className="space-y-5">{field("accessibilityNeeds")}<div><p className="mb-3 text-[13px] font-semibold text-on-surface">Access and accommodation requirements</p><div className="grid gap-2 sm:grid-cols-2">{ACCESSIBILITY_OPTIONS.map((option) => <label key={option} className="flex min-h-12 items-start gap-3 rounded-control border border-[#e2e5f1] bg-white p-3 text-[13px] leading-5 text-on-surface"><input type="checkbox" className="mt-1 size-4 accent-primary" checked={values.accessibilityNeeds.includes(option)} onChange={(e) => update("accessibilityNeeds", e.target.checked ? [...values.accessibilityNeeds, option] : values.accessibilityNeeds.filter((item) => item !== option))} />{option}</label>)}</div></div><div><FormLabel htmlFor="accessibilityNotes">Other accessibility notes</FormLabel><textarea id="accessibilityNotes" {...errorProps("accessibilityNotes")} maxLength={4000} rows={4} value={values.accessibilityNotes} onChange={(e) => update("accessibilityNotes", e.target.value)} className={`${fieldClasses} resize-y`} placeholder="Describe other access requirements." />{field("accessibilityNotes")}<p className="mt-1 text-xs text-on-surface-variant">Up to 200 characters per note.</p></div></div>}
-            {step === 4 && <div className="space-y-4">{field("equipmentRequirements")}<AlertBanner tone="info" title="Equipment requests">Equipment requests are handled separately. Existing saved equipment requirements will be preserved.</AlertBanner><div><FormLabel htmlFor="technicalSupportNeeds">Technical support needs</FormLabel><textarea id="technicalSupportNeeds" {...errorProps("technicalSupportNeeds")} maxLength={2000} rows={4} value={values.technicalSupportNeeds} onChange={(e) => update("technicalSupportNeeds", e.target.value)} className={`${fieldClasses} resize-y`} placeholder="Describe any AV setup, presentation assistance or on-site technical support you need." />{field("technicalSupportNeeds")}<p className="mt-1 text-xs text-on-surface-variant">Optional, up to 2,000 characters. Your coordinator reviews these needs with your event request.</p></div></div>}
+            {step === 4 && <div className="space-y-4"><section aria-labelledby="equipment-heading" className="grid gap-2"><h3 id="equipment-heading" className="text-[13px] font-semibold text-on-surface">Equipment</h3><EquipmentRequirementsEditor idPrefix="wizard" lines={values.equipmentRequirements} onChange={(lines) => { update("equipmentRequirements", lines); setFieldErrors((errors) => { const next = { ...errors }; delete next.equipmentRequirements; return next; }); }} availability={availability.state} onRetry={availability.retry} error={fieldErrors.equipmentRequirements} /></section><div><FormLabel htmlFor="technicalSupportNeeds">Technical support needs</FormLabel><textarea id="technicalSupportNeeds" {...errorProps("technicalSupportNeeds")} maxLength={2000} rows={4} value={values.technicalSupportNeeds} onChange={(e) => update("technicalSupportNeeds", e.target.value)} className={`${fieldClasses} resize-y`} placeholder="Describe any AV setup, presentation assistance or on-site technical support you need." />{field("technicalSupportNeeds")}<p className="mt-1 text-xs text-on-surface-variant">Optional, up to 2,000 characters. Your coordinator reviews these needs with your event request.</p></div></div>}
             {step === 5 && <div className="space-y-5"><div><FormLabel htmlFor="registrationEnabled">Event Access &amp; Enrollment Mechanism</FormLabel><label className="mt-1 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-control border border-[#e2e5f1] p-4"><span><span className="block text-sm font-semibold text-on-surface">Enable event registration</span><span className="mt-1 block text-xs text-on-surface-variant">Collect registrations for this event.</span></span><input id="registrationEnabled" type="checkbox" className="size-5 accent-primary" checked={values.isRegistrationEnabled} onChange={(e) => update("isRegistrationEnabled", e.target.checked)} /></label></div>{values.isRegistrationEnabled && <div><FormLabel htmlFor="registrationCapacity" required>Registration capacity</FormLabel><input id="registrationCapacity" {...errorProps("registrationCapacity")} type="number" min="1" step="1" value={values.registrationCapacity} onChange={(e) => update("registrationCapacity", e.target.value)} className={fieldClasses} placeholder="Maximum registrations" />{field("registrationCapacity")}</div>}<p className="text-xs leading-relaxed text-on-surface-variant">Registration capacity is supported. Access rules, ticketing, and waitlists are not available in this API.</p></div>}
           </div>
         </section>
