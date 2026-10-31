@@ -51,7 +51,9 @@ export function registerForEvent(eventId: number, answers: RegistrationAnswers, 
 }
 
 // A row of GET /api/registrations/mine. waitlistPosition and offer are as on
-// myRegistration (SPM-163); venue is the approved one, or null.
+// myRegistration (SPM-163). The event values follow the same snapshot rules as
+// GET /mine/:eventId (SPM-141): withheld ones are null, and venue is set only
+// when there is exactly one attendee-visible approved venue.
 export interface MyRegistrationRow {
   registration_id: number;
   registration_status: string;
@@ -65,7 +67,7 @@ export interface MyRegistrationRow {
     start_datetime: string | null;
     end_datetime: string | null;
     attendee_status: string;
-    venue: { name: string; address: string } | null;
+    venue: { name: string | null; address: string | null } | null;
   };
 }
 
@@ -75,7 +77,8 @@ interface MyRegistrationsPage {
 }
 
 // Every page of the attendee's active places (REGISTERED or WAITLISTED;
-// withdrawn places are not returned), in the backend's order.
+// withdrawn places are not returned), in the backend's order (newest
+// registration first); My Events sorts them with orderMyEvents.
 export async function listMyRegistrations(signal?: AbortSignal): Promise<MyRegistrationRow[]> {
   const rows: MyRegistrationRow[] = [];
   let offset: number | null = 0;

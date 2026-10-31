@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionErrorPresentation, actionSuccessMessage, openOffer, orderMyEvents, placeActions, placeLabel } from '../components/attendee/registration-actions/registration-action-rules.ts';
+import { actionErrorPresentation, actionSuccessMessage, attendeeStatusLabel, openOffer, orderMyEvents, placeActions, placeLabel } from '../components/attendee/registration-actions/registration-action-rules.ts';
 
 const place = (registration, overrides = {}) => ({ registration, attendeeStatus: 'CONFIRMED', ...overrides });
 const offer = (expiresAt) => ({ offerId: 7, expiresAt });
@@ -116,4 +116,16 @@ test('My Events lists events going ahead soonest first, then held-back dates, th
   assert.deepEqual(orderMyEvents(rows).map((item) => item.id), ['soon', 'later', 'withheld', 'bad date', 'completed', 'cancelled']);
   // The input is left as the backend returned it.
   assert.equal(rows[0].id, 'completed');
+});
+
+test('[SPM-141 AC1] the event status has its own label, apart from the attendee\'s place', () => {
+  assert.equal(attendeeStatusLabel('CONFIRMED'), 'Confirmed');
+  assert.equal(attendeeStatusLabel('PENDING_CONFIRMATION'), 'Event confirmation pending');
+  assert.equal(attendeeStatusLabel('CANCELLED'), 'Cancelled');
+  assert.equal(attendeeStatusLabel('COMPLETED'), 'Completed');
+  // An unknown status is shown as sent, never mapped to a known one.
+  assert.equal(attendeeStatusLabel('NEW_STATUS'), 'NEW STATUS');
+  assert.equal(attendeeStatusLabel('constructor'), 'constructor');
+  // A cancelled event is not the attendee withdrawing.
+  assert.notEqual(attendeeStatusLabel('CANCELLED'), placeLabel({ status: 'WITHDRAWN', waitlistPosition: null }));
 });
