@@ -66,7 +66,8 @@ export const MAX_HOLD_EXTENSION_DAYS = 7;
 export const HOLD_LIMITS = Object.freeze({ label: 100, note: 500, reason: 1000 });
 
 // Whether the coordinator may act on this hold request now.
-export const isActiveHold = (request: VenueHoldRequest) => request.status === "PLACED" && request.hold?.status === "ACTIVE";
+export const isActiveHold = (request: VenueHoldRequest, now = Date.now()) => request.status === "PLACED"
+  && request.hold?.status === "ACTIVE" && Boolean(request.hold.expiresAt) && Date.parse(request.hold.expiresAt as string) > now;
 
 // ---------- coordinator ----------
 
