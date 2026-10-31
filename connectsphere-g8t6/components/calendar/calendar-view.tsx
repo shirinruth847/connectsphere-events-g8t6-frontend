@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactElement,
 } from "react";
 import { calendarDate, calendarDayBounds, overlapsCalendarDay, shiftCalendarMonth, calendarLabelInstant, calendarHourInstant } from "@/lib/coordinator-calendar";
@@ -43,15 +44,71 @@ const COORDINATOR_LABEL: CalendarEntityLabel = { singular: "coordinator", plural
 // than as an event (developer request of 24 October 2026): "request" is the
 // period being checked (translucent yellow, with label in the block and detail
 // in a hover window), "conflict" where it overlaps existing occupied time
-// (red), "closed" outside operating hours (grey, beneath everything).
+// (red), "closed" outside operating hours (grey, beneath everything), and
+// "block" an operational block across the whole day column, so what it
+// overlaps shows red beneath it rather than beside it.
 export type CalendarOverlay = {
   id: string;
   start: string;
   end: string;
-  tone: "request" | "conflict" | "closed";
+  tone: "request" | "conflict" | "closed" | "block";
   label?: string;
   detail?: string;
+  // A request whose start and end can be dragged (SPM-76): called with the
+  // edge and the instant (ms) under the pointer, snapped to RESIZE_STEP_MS;
+  // the owner keeps it inside its bounds.
+  resize?: (edge: "start" | "end", instant: number) => void;
 };
+
+export const RESIZE_STEP_MS = 15 * 60 * 1000;
+const snapToStep = (instant: number) => Math.round(instant / RESIZE_STEP_MS) * RESIZE_STEP_MS;
+
+// The day column under the pointer carries its bounds, so a drag can cross days.
+const instantAtPoint = (x: number, y: number) => {
+  const column = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-day-start]");
+  if (!column) return null;
+  const start = Number(column.dataset.dayStart);
+  const end = Number(column.dataset.dayEnd);
+  const rect = column.getBoundingClientRect();
+  const fraction = Math.min(1, Math.max(0, (y - rect.top) / rect.height));
+  return snapToStep(start + fraction * (end - start));
+};
+
+function ResizeHandle({ edge, instant, resize }: { edge: "start" | "end"; instant: number; resize: NonNullable<CalendarOverlay["resize"]> }) {
+  const label = edge === "start" ? "Requested start" : "Requested end";
+  // Window listeners: the handle unmounts when its edge moves to another day.
+  const startDrag = (pointerEvent: ReactPointerEvent) => {
+    pointerEvent.preventDefault();
+    pointerEvent.stopPropagation();
+    const move = (moveEvent: PointerEvent) => {
+      const next = instantAtPoint(moveEvent.clientX, moveEvent.clientY);
+      if (next !== null) resize(edge, next);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className={`cal-overlay-handle cal-overlay-handle--${edge}`}
+      aria-label={`${label}: ${formatTime(new Date(instant))}. Drag, or press the up and down arrow keys, to change it by 15 minutes.`}
+      title={`Drag to change the ${edge} time`}
+      onPointerDown={startDrag}
+      onKeyDown={(keyEvent) => {
+        if (keyEvent.key !== "ArrowUp" && keyEvent.key !== "ArrowDown") return;
+        keyEvent.preventDefault();
+        resize(edge, instant + (keyEvent.key === "ArrowUp" ? -RESIZE_STEP_MS : RESIZE_STEP_MS));
+      }}
+    />
+  );
+}
 
 export type CalendarCoordinator = {
   coordinatorId: number;
@@ -535,12 +592,28 @@ function OverlayBlocks({ overlays, day }: { overlays: CalendarOverlay[]; day: Da
           const top = ((start - bounds.start) / total) * 100;
           const height = ((end - start) / total) * 100;
           const style: CSSProperties = { top: `${top}%`, height: `${height}%` };
+          if (overlay.tone === "block") {
+            return (
+              <div key={overlay.id} className="cal-overlay cal-overlay--block" style={style}>
+                {overlay.label ? (
+                  <span className="cal-overlay-label" tabIndex={0} aria-label={[overlay.label, overlay.detail].filter(Boolean).join(". ")}>
+                    {overlay.label}
+                    {overlay.detail ? <span className="cal-overlay-tip" aria-hidden="true">{overlay.detail}</span> : null}
+                  </span>
+                ) : null}
+              </div>
+            );
+          }
           if (overlay.tone !== "request") {
             return <div key={overlay.id} className={`cal-overlay cal-overlay--${overlay.tone}`} style={style} aria-hidden="true" />;
           }
-          // Only the label takes the pointer, so events under the block stay clickable.
+          // Only the label and handles take the pointer, so events under the block stay clickable.
+          const overlayStart = new Date(overlay.start).getTime();
+          const overlayEnd = new Date(overlay.end).getTime();
           return (
-            <div key={overlay.id} className="cal-overlay cal-overlay--request" style={style}>
+            <div key={overlay.id} className={`cal-overlay cal-overlay--request${overlay.resize ? " cal-overlay--resizable" : ""}`} style={style}>
+              {overlay.resize && overlayStart >= bounds.start ? <ResizeHandle edge="start" instant={overlayStart} resize={overlay.resize} /> : null}
+              {overlay.resize && overlayEnd <= bounds.end ? <ResizeHandle edge="end" instant={overlayEnd} resize={overlay.resize} /> : null}
               {overlay.label ? (
                 <span className="cal-overlay-label" tabIndex={0} aria-label={[overlay.label, overlay.detail].filter(Boolean).join(". ")}>
                   {overlay.label}
@@ -687,7 +760,7 @@ function WeekView({
                 : [];
 
             return (
-              <div key={day.getTime()} className="cal-day-column">
+              <div key={day.getTime()} className="cal-day-column" data-day-start={calendarDayBounds(day).start} data-day-end={calendarDayBounds(day).end}>
                 <OverlayBlocks overlays={overlays} day={day} />
                 {layouted.map((event) => (
                   <EventBlock
@@ -785,7 +858,7 @@ function DayView({
           now={now}
           showNowLine={isToday}
         >
-          <div className="cal-day-column">
+          <div className="cal-day-column" data-day-start={calendarDayBounds(currentDate).start} data-day-end={calendarDayBounds(currentDate).end}>
             <OverlayBlocks overlays={overlays} day={currentDate} />
             {layoutDayEvents(allEvents, currentDate, colorMap).map((event) => (
               <EventBlock

@@ -40,16 +40,18 @@ const entryTitle = (entry: CalendarEntry, formatWindow?: (start: string, end: st
 // Events span the occupied range (setup and turnaround included), so the
 // calendar shows exactly when the venue is unavailable. The status shown is the
 // backend's label; the frontend never maps states itself.
+// skipBlocks leaves active blocks out of the lanes when blockOverlays draws them.
 export function toCalendarLanes(
   data: VenueAvailability,
   formatWindow?: (start: string, end: string) => string,
+  { skipBlocks = false }: { skipBlocks?: boolean } = {},
 ): { lanes: CalendarCoordinator[]; refs: Map<number, CalendarEntryRef> } {
   const refs = new Map<number, CalendarEntryRef>();
   let nextId = 1;
   const lanes = data.venues.map((venue) => ({
     coordinatorId: venue.venueId,
     name: venue.name,
-    events: venue.entries.map((entry): CalendarEvent => {
+    events: venue.entries.filter((entry) => !(skipBlocks && entry.type === "BLOCK" && entry.blocking)).map((entry): CalendarEvent => {
       const eventId = nextId++;
       refs.set(eventId, { venueId: venue.venueId, venueName: venue.name, entry });
       return {
@@ -87,23 +89,29 @@ const iso = (time: number) => new Date(time).toISOString();
 //   the full period and each venue's result in the hover detail;
 // - conflict: where a venue's occupied time for the request overlaps an
 //   existing booking, hold or block.
+// The hours every venue is closed, each day of the range; nothing when any
+// venue's hours are not recorded.
+export function closedHourOverlays(operatingHours: Array<string | null>, range: { date: string; days: number }): CalendarOverlay[] {
+  const overlays: CalendarOverlay[] = [];
+  const hours = operatingHours.map(parseOperatingHours);
+  if (!hours.length || !hours.every(Boolean)) return overlays;
+  const open = Math.min(...hours.map((item) => item!.open));
+  const close = Math.max(...hours.map((item) => item!.close));
+  const first = Date.parse(`${range.date}T00:00:00+08:00`);
+  for (let day = 0; day < range.days; day += 1) {
+    const midnight = first + day * DAY_MS;
+    if (open > 0) overlays.push({ id: `closed-${day}-am`, tone: "closed", start: iso(midnight), end: iso(midnight + open * MINUTE_MS) });
+    if (close < 24 * 60) overlays.push({ id: `closed-${day}-pm`, tone: "closed", start: iso(midnight + close * MINUTE_MS), end: iso(midnight + DAY_MS) });
+  }
+  return overlays;
+}
+
 export function availabilityOverlays(
   data: VenueAvailability,
   range: { date: string; days: number },
   { label, formatWindow, formatTimes = formatWindow }: { label: string; formatWindow: (start: string, end: string) => string; formatTimes?: (start: string, end: string) => string },
 ): CalendarOverlay[] {
-  const overlays: CalendarOverlay[] = [];
-  const hours = data.venues.map((venue) => parseOperatingHours(venue.operatingHours));
-  if (hours.length && hours.every(Boolean)) {
-    const open = Math.min(...hours.map((item) => item!.open));
-    const close = Math.max(...hours.map((item) => item!.close));
-    const first = Date.parse(`${range.date}T00:00:00+08:00`);
-    for (let day = 0; day < range.days; day += 1) {
-      const midnight = first + day * DAY_MS;
-      if (open > 0) overlays.push({ id: `closed-${day}-am`, tone: "closed", start: iso(midnight), end: iso(midnight + open * MINUTE_MS) });
-      if (close < 24 * 60) overlays.push({ id: `closed-${day}-pm`, tone: "closed", start: iso(midnight + close * MINUTE_MS), end: iso(midnight + DAY_MS) });
-    }
-  }
+  const overlays = closedHourOverlays(data.venues.map((venue) => venue.operatingHours), range);
 
   const checked = data.venues.filter((venue) => venue.check);
   if (!checked.length) return overlays;
@@ -126,6 +134,34 @@ export function availabilityOverlays(
       const from = Math.max(Date.parse(conflict.occupiedStart), Date.parse(check.occupiedStart));
       const to = Math.min(Date.parse(conflict.occupiedEnd), Date.parse(check.occupiedEnd));
       if (from < to) overlays.push({ id: `conflict-${venue.venueId}-${conflict.entryId}`, tone: "conflict", start: iso(from), end: iso(to) });
+    }
+  }
+  return overlays;
+}
+
+// One venue's active blocks as overlays across the day column, red where a
+// booking's or hold's occupied time overlaps them (developer request of 31
+// October 2026). Only for a single venue: a block covers its own venue, and
+// an overlay spans the whole column.
+export function blockOverlays(data: VenueAvailability, formatWindow: (start: string, end: string) => string): CalendarOverlay[] {
+  if (data.venues.length !== 1) return [];
+  const [venue] = data.venues;
+  const blocks = venue.entries.filter((entry) => entry.type === "BLOCK" && entry.blocking);
+  const others = venue.entries.filter((entry) => entry.type !== "BLOCK" && entry.blocking);
+  const overlays: CalendarOverlay[] = [];
+  for (const block of blocks) {
+    overlays.push({
+      id: `block-${block.entryId}`,
+      tone: "block",
+      start: block.occupiedStart,
+      end: block.occupiedEnd,
+      label: block.reasonLabel ? `${block.label} · ${block.reasonLabel}` : block.label,
+      detail: [formatWindow(block.occupiedStart, block.occupiedEnd), ...(block.note ? [`Note: ${block.note}`] : [])].join("\n"),
+    });
+    for (const other of others) {
+      const from = Math.max(Date.parse(block.occupiedStart), Date.parse(other.occupiedStart));
+      const to = Math.min(Date.parse(block.occupiedEnd), Date.parse(other.occupiedEnd));
+      if (from < to) overlays.push({ id: `block-conflict-${block.entryId}-${other.entryId}`, tone: "conflict", start: iso(from), end: iso(to) });
     }
   }
   return overlays;

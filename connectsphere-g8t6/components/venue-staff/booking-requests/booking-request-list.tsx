@@ -20,7 +20,7 @@ import {
 import { BOOKING_SORT_OPTIONS, MAX_SEARCH_LENGTH, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
 import { BOOKING_BORDERS, BookingStatusChip } from "./booking-status-chip";
 import { useOpenedBookings } from "./use-opened-bookings";
-import { HoldRequestList } from "./hold-request-list";
+import { useHoldRequests } from "./hold-request-list";
 
 type ListState =
   | { status: "loading" }
@@ -126,6 +126,7 @@ export function BookingRequestList() {
   const [attempt, setAttempt] = useState(0);
   const venueOptions = useVenueOptions();
   const { opened, markOpened } = useOpenedBookings();
+  const holdRequests = useHoldRequests();
   const filtered = Boolean(filters.status || filters.venueId || filters.date || q);
 
   const request: VenueBookingFilters = useMemo(() => ({ ...filters, q, sort, order }), [filters, q, sort, order]);
@@ -176,17 +177,32 @@ export function BookingRequestList() {
     <PageContent
       title="My Requests"
       eyebrow={ROLE_LABELS.VENUE_STAFF}
-      description="Venue booking requests from event coordinators. Open a request to review its venue requirements, approve or reject it."
+      description="Review hold and booking requests from event coordinators in one place. Holds temporarily protect a venue; bookings are the requests you approve or reject."
       action={
         state.status === "ready" ? (
           <div className="flex flex-wrap gap-2">
-            <CountTile count={state.pendingCount} label="Pending" />
+            <CountTile count={state.pendingCount + (holdRequests.state.status === "ready" ? holdRequests.state.pendingCount : 0)} label="Pending" />
             <CountTile count={state.approvedCount} label="Approved" />
           </div>
         ) : null
       }
     >
-      <HoldRequestList />
+      <section aria-labelledby="venue-requests-heading" className="mb-6 grid gap-3">
+        <div>
+          <h2 id="venue-requests-heading" className="text-lg font-semibold text-on-surface">Hold and booking requests</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">Process pending holds when a coordinator needs time to obtain organiser confirmation, then review booking requests for final venue approval.</p>
+        </div>
+        {holdRequests.notice ? <AlertBanner tone={holdRequests.notice.tone} live={false}>{holdRequests.notice.text}</AlertBanner> : null}
+        {holdRequests.state.status === "loading" ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-48 w-full" /></div> : null}
+        {holdRequests.state.status === "error" ? <AlertBanner tone="error" title="Could not load hold requests">{holdRequests.state.message}<div className="mt-3"><Button variant="secondary" onClick={holdRequests.reload}><Icon name="refresh" size={16} />Try again</Button></div></AlertBanner> : null}
+        {holdRequests.state.status === "ready" && holdRequests.state.requests.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-label="Hold requests">
+            {holdRequests.state.requests.map(holdRequests.card)}
+          </div>
+        ) : null}
+        {holdRequests.state.status === "ready" && holdRequests.state.requests.length === 0 ? <p className="text-sm text-on-surface-variant">No hold requests.</p> : null}
+        {holdRequests.dialog}
+      </section>
       <h2 className="mb-3 text-lg font-semibold text-on-surface">Booking requests</h2>
       <section aria-label="Search, sort and filter booking requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
         {/* Clear is always present (disabled when empty), so typing never resizes the box. */}

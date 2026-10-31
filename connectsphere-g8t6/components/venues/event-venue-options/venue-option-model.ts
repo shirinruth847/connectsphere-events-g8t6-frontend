@@ -30,6 +30,8 @@ export function suggestionBlocker(venue: EventVenueOption): string | null {
 // twelve, four rows of three).
 export const DEFAULT_VENUE_PAGE_SIZE = 12;
 export const MAX_VENUE_PAGE_SIZE = 100;
+// The organiser's venue step: 10 by default, or 20, 50 or 100 (SPM-76 AC2).
+export const ORGANISER_VENUE_PAGE_SIZES = [10, 20, 50, 100] as const;
 
 // The typed "Show" number, or null while it is not a whole number from 1 to 100.
 export function parsePageSize(value: string): number | null {

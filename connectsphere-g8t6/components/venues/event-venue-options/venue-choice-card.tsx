@@ -33,13 +33,15 @@ interface VenueChoiceCardProps {
   onOpenVenue?: (venueId: number) => void;
   onFindAlternatives?: () => void;
   calendar?: VenueCalendarWindow | null;
+  // When the organiser wants this venue (SPM-76), under the badges.
+  requested?: ReactNode;
 }
 
 // One of the organiser's choices, or the coordinator's suggestion (SPM-72),
 // as a horizontal card: name, photo and status left; the checks right. View
 // details opens the full details in place, with motion, and closes them again
 // (developer requests of 24 and 25 October 2026).
-export function VenueChoiceCard({ venue, expanded, onToggle, badge, action, onOpenVenue, onFindAlternatives, calendar }: VenueChoiceCardProps) {
+export function VenueChoiceCard({ venue, expanded, onToggle, badge, action, onOpenVenue, onFindAlternatives, calendar, requested }: VenueChoiceCardProps) {
   const detailsId = useId();
   const { button: calendarButton, panel: calendarPanel } = useVenueCalendar(expanded ? calendar : null, venue.venueId);
   const hasCapacityCheck = venue.requirements.some((item) => item.key === "capacity");
@@ -63,6 +65,7 @@ export function VenueChoiceCard({ venue, expanded, onToggle, badge, action, onOp
               {venue.allRequirementsMet ? <VenueBadge tone="success"><Icon name="check" size={16} />Meets every requirement</VenueBadge> : null}
             </div>
           ) : null}
+          {requested}
           {calendarButton ? <div>{calendarButton}</div> : null}
         </div>
 

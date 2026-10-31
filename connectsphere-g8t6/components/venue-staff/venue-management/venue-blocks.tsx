@@ -311,12 +311,21 @@ function BlockIncidents({ block, onRestored, onRefused }: {
   onRestored: (message: string) => void;
   onRefused: () => void;
 }) {
+  const closed = block.closedEventBookings ?? 0;
+  const closedNote = closed
+    ? `${closed} ${closed === 1 ? "booking" : "bookings"} in this period ${closed === 1 ? "belongs" : "belong"} to events that have already finished, been cancelled or been rejected, so ${closed === 1 ? "it is" : "they are"} left unchanged.`
+    : null;
   if (!block.incidents.length) {
-    return <p className="text-xs text-on-surface-variant">No bookings or holds were affected.</p>;
+    return (
+      <p className="text-xs text-on-surface-variant">
+        No upcoming bookings or holds were affected.{closedNote ? ` ${closedNote}` : ""}
+      </p>
+    );
   }
   return (
     <div>
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-label text-on-surface-variant">Affected bookings and holds</h4>
+      {closedNote ? <p className="mb-2 text-xs text-on-surface-variant">{closedNote}</p> : null}
       <ul className="grid gap-2">
         {block.incidents.map((incident) => (
           <li key={incident.incidentId} className="grid gap-2 rounded-control bg-surface-container-lowest p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">

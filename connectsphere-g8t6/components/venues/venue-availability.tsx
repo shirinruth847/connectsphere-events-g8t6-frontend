@@ -17,7 +17,7 @@ import {
   type CalendarEntry,
   type VenueAvailability,
 } from "@/lib/api/venues";
-import { availabilityOverlays, calendarRange, civilDate, toCalendarLanes, type CalendarEntryRef } from "./availability-calendar-model";
+import { availabilityOverlays, blockOverlays, calendarRange, civilDate, toCalendarLanes, type CalendarEntryRef } from "./availability-calendar-model";
 import { useVenueOptions } from "./use-venue-options";
 import { OptionDropdown } from "@/components/shared/option-dropdown";
 
@@ -153,13 +153,22 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
     () => (picker.venues ?? []).map((venue) => ({ value: String(venue.venueId), label: venue.name })),
     [picker.venues],
   );
+  // In week and day view one venue's blocks lie over its timeline instead of
+  // beside its bookings; month and year keep them as bars.
+  const blocksAsOverlays = (viewMode === "week" || viewMode === "day") && state.status === "ready" && state.data.venues.length === 1;
   // Each entry is labelled with its event and start and end (SPM-186).
-  const calendar = useMemo(() => (state.status === "ready" ? toCalendarLanes(state.data, formatEventWindow) : null), [state]);
+  const calendar = useMemo(
+    () => (state.status === "ready" ? toCalendarLanes(state.data, formatEventWindow, { skipBlocks: blocksAsOverlays }) : null),
+    [state, blocksAsOverlays],
+  );
   const overlays = useMemo(
-    () => (state.status === "ready" ? availabilityOverlays(state.data, range, { label: fixed?.label ?? "Requested period", formatWindow: formatEventWindow, formatTimes }) : []),
+    () => (state.status === "ready" ? [
+      ...availabilityOverlays(state.data, range, { label: fixed?.label ?? "Requested period", formatWindow: formatEventWindow, formatTimes }),
+      ...(blocksAsOverlays ? blockOverlays(state.data, formatEventWindow) : []),
+    ] : []),
     // range is rebuilt each render; its fields are what matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state, range.date, range.days, fixed?.label],
+    [state, range.date, range.days, fixed?.label, blocksAsOverlays],
   );
   const missingBuffers = state.status === "ready" ? state.data.venues.filter((venue) => !venue.buffersRecorded) : [];
   const overlapping = state.status === "ready" ? state.data.venues.filter((venue) => venue.overlaps.length) : [];

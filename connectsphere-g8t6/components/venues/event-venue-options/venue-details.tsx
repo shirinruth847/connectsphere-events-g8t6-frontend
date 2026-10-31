@@ -39,14 +39,19 @@ const venueValue = (requirement: VenueRequirement, venue: EventVenueOption) => {
   return undefined;
 };
 
-// The checks and details of one venue, read-only (SPM-72 AC4). Description,
-// emergency access and known restrictions are left out here; the safety
-// review still reads them (Master 5.9).
-export function VenueFacts({ venue, onOpenVenue, onFindAlternatives }: {
+const text = (value: string | null | undefined, venue: EventVenueOption) => value?.trim() || notRecorded(venue);
+
+// The checks and details of one venue, read-only (SPM-72 AC4). Coordinators
+// leave out description, emergency access and known restrictions; the safety
+// review still reads them (Master 5.9). The organiser's venue step shows them
+// (SPM-76 AC4), and names linked rooms as such: a room booked on its own is
+// its own venue, linked to its hall (T31).
+export function VenueFacts({ venue, onOpenVenue, onFindAlternatives, organiser = false }: {
   venue: EventVenueOption;
   onOpenVenue?: (venueId: number) => void;
   // Opens the venue search for venues large enough for the event (SPM-198 AC4).
   onFindAlternatives?: () => void;
+  organiser?: boolean;
 }) {
   const has = (key: string) => venue.requirements.some((item) => item.key === key || item.key.startsWith(`${key}-`));
   const tooSmall = venue.requirements.some((item) => item.assessment?.level === "INSUFFICIENT");
@@ -59,6 +64,13 @@ export function VenueFacts({ venue, onOpenVenue, onFindAlternatives }: {
     ...(has("layout") ? [] : [["Supported layouts", listText(venue.supportedLayouts, venue)] as [string, ReactNode]]),
     ["Facilities", listText(venue.facilities, venue)],
     ...(has("accessibility") ? [] : [["Accessibility", listText(venue.accessibilityFeatures, venue)] as [string, ReactNode]]),
+    ...(organiser
+      ? [
+          ["Emergency access", text(venue.emergencyAccess, venue)],
+          ["Known restrictions", listText(venue.knownRestrictions, venue)],
+          ["Description", text(venue.description, venue)],
+        ] as [string, ReactNode][]
+      : []),
   ];
 
   return (
@@ -87,7 +99,10 @@ export function VenueFacts({ venue, onOpenVenue, onFindAlternatives }: {
             {venue.availability.conflicts.map((conflict, index) => (
               <li key={`${conflict.type}-${index}`} className="rounded-control bg-[#FEF2F2] px-3 py-1.5">
                 {conflict.message
-                  || `${conflict.label}${conflict.reasonLabel ? ` · ${conflict.reasonLabel}` : ""}: ${formatEventWindow(conflict.occupiedStart, conflict.occupiedEnd)}`}
+                  || [
+                    `${conflict.label}${conflict.reasonLabel ? ` · ${conflict.reasonLabel}` : ""}`,
+                    conflict.occupiedStart && conflict.occupiedEnd ? formatEventWindow(conflict.occupiedStart, conflict.occupiedEnd) : null,
+                  ].filter(Boolean).join(": ")}
                 {conflict.holdExpiresAt ? ` · hold expires ${formatTimestamp(conflict.holdExpiresAt)}` : ""}
               </li>
             ))}
@@ -106,7 +121,7 @@ export function VenueFacts({ venue, onOpenVenue, onFindAlternatives }: {
           </div>
         ))}
         <div className="col-span-full min-w-0">
-          <dt className="text-xs font-semibold uppercase tracking-label text-on-surface-variant">Related venues</dt>
+          <dt className="text-xs font-semibold uppercase tracking-label text-on-surface-variant">{organiser ? "Rooms and related venues" : "Related venues"}</dt>
           <dd className="mt-0.5 text-sm text-on-surface">
             {related == null ? notRecorded(venue) : related.length ? (
               <ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Related venues">
@@ -169,12 +184,14 @@ interface VenueDetailsProps {
   onOpenVenue?: (venueId: number) => void;
   onFindAlternatives?: () => void;
   calendar?: VenueCalendarWindow | null;
+  // The organiser's venue step: adds the details coordinators leave out (SPM-76 AC4).
+  organiser?: boolean;
 }
 
 // One venue's details in the search popup and the related-venue popup: name
 // and photos left with the status and calendar button under them, checks and
 // details right (developer requests of 24 and 25 October 2026).
-export function VenueDetails({ venue, badge, action, onOpenVenue, onFindAlternatives, calendar }: VenueDetailsProps) {
+export function VenueDetails({ venue, badge, action, onOpenVenue, onFindAlternatives, calendar, organiser }: VenueDetailsProps) {
   const { button, panel } = useVenueCalendar(calendar, venue.venueId);
   return (
     <div className="@container grid min-w-0">
@@ -186,7 +203,7 @@ export function VenueDetails({ venue, badge, action, onOpenVenue, onFindAlternat
           {button ? <div>{button}</div> : null}
         </div>
         <div className="grid min-w-0 content-start gap-3">
-          <VenueFacts venue={venue} onOpenVenue={onOpenVenue} onFindAlternatives={onFindAlternatives} />
+          <VenueFacts venue={venue} onOpenVenue={onOpenVenue} onFindAlternatives={onFindAlternatives} organiser={organiser} />
           {action}
         </div>
         {panel}
