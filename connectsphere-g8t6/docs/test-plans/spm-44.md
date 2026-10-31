@@ -16,8 +16,11 @@ Implementation reviewed: `d086e46`, including the merge of main `b050293`.
   events. The frontend displays the returned page and its opaque `nextCursor`.
 - Cards show attendee-facing title, schedule in SGT, location, description and
   registration availability. Labels remain `Registration Open`,
-  `Full - Waitlist` and `Registration Closed`. `NOT_ENABLED` has no registration
-  wording or action. Sign-up actions are unavailable, with explanatory text.
+  `Full - Waitlist` and `Registration Closed`, with `Not Yet Open` and
+  `Unavailable` added by SPM-134, which retired `NOT_ENABLED`. Every card,
+  the details dialog and `/events/[eventId]` show one registration state:
+  Register Now for `OPEN`, otherwise a disabled control (see
+  `attendee-registration.spec.mjs`).
 - A detail 404 removes the discovery card and hides its stale title and
   availability. Malformed direct IDs show the unavailable state. A 401 follows
   shared session recovery; 403 explains access; other failures offer retry.

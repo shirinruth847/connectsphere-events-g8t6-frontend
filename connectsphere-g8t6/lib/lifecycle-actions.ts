@@ -37,6 +37,11 @@ export function lifecycleActionsFor(
 ): LifecycleActionOption[] {
   const readinessReason = readinessReasonFor(ready);
   switch (status) {
+    case "UNDER_REVIEW":
+      return [{ action: "acceptFeasibility", label: "Approve request", disabledReason: null }];
+    case "REJECTED":
+    case "CANCELLED":
+      return [{ action: "acceptFeasibility", label: "Approve request", disabledReason: `This event request is ${status.toLowerCase()} and cannot be approved.` }];
     case "PLANNING":
       return [{ action: "submitForSafetyReview", label: "Submit for safety review", disabledReason: readinessReason }];
     case "SAFETY_REVIEW":

@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSessionUser } from "@/components/auth/auth-gate";
+import { keepsIdempotencyKey } from "@/lib/lifecycle-actions";
+import { readHoldCommand, saveHoldCommand } from "../hold-command-recovery";
+import { useHoldExpiryRefresh } from "../use-hold-expiry-refresh";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, FormLabel, Skeleton, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
@@ -25,9 +29,14 @@ import { useVenueBookingChecks } from "./use-venue-booking-checks";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // The chip shows the hold's own state once placed, otherwise the request's.
-export const holdChipStatus = (request: VenueHoldRequest) => (request.hold ? request.hold.status : request.status);
+export const holdChipStatus = (request: VenueHoldRequest, now = Date.now()) => (
+  request.hold?.status === "ACTIVE" && request.hold.expiresAt && Date.parse(request.hold.expiresAt) <= now
+    ? "EXPIRED" : request.hold?.status ?? request.status
+);
+export const holdChipLabel = (request: VenueHoldRequest, now: number) =>
+  holdChipStatus(request, now) === "EXPIRED" ? "Hold expired" : request.statusLabel;
 
-export function HoldSummary({ request }: { request: VenueHoldRequest }) {
+export function HoldSummary({ request, now }: { request: VenueHoldRequest; now: number }) {
   const hold = request.hold;
   return (
     <div className="grid gap-1 text-sm text-on-surface-variant">
@@ -35,7 +44,7 @@ export function HoldSummary({ request }: { request: VenueHoldRequest }) {
         {formatEventWindow(request.start, request.end)}
         {request.expectedAttendance ? ` · ${request.expectedAttendance.toLocaleString()} people` : ""}
       </p>
-      {hold?.status === "ACTIVE" && hold.expiresAt ? (
+      {isActiveHold(request, now) && hold?.expiresAt ? (
         <p className="font-semibold text-[#92400E]">
           Held until {formatTimestamp(hold.expiresAt)}{hold.extended ? " (extended once)" : ""}
         </p>
@@ -62,15 +71,30 @@ interface HoldRequestDialogProps {
 // the event, checked live with the booking rules. A hold is possible only when
 // setup starts more than 24 hours from now (AC3).
 function HoldRequestDialog({ open, event, venues, startVenueId, onClose, onRequested }: HoldRequestDialogProps) {
-  const [venueId, setVenueId] = useState<number | null>(startVenueId);
-  const [label, setLabel] = useState(() => venues.find((venue) => venue.venueId === startVenueId)?.name ?? "");
-  const [start, setStart] = useState(() => toSgtInput(event.startDatetime));
-  const [end, setEnd] = useState(() => toSgtInput(event.endDatetime));
-  const [attendance, setAttendance] = useState(event.expectedAttendance ? String(event.expectedAttendance) : "");
-  const [note, setNote] = useState("");
+  const user = useSessionUser();
+  const slot = `connectsphere:recovery:spm190:request:${user?.user_id}:${event.eventId}`;
+  const [saved] = useState(() => {
+    const command = readHoldCommand(slot);
+    try {
+      const input = command ? JSON.parse(command.body) : null;
+      return input && Number.isInteger(input.venueId) && typeof input.label === "string"
+        && typeof input.start === "string" && typeof input.end === "string"
+        && Number.isFinite(Date.parse(input.start)) && Number.isFinite(Date.parse(input.end))
+        && (input.note == null || typeof input.note === "string")
+        && (input.expectedAttendance == null || Number.isInteger(input.expectedAttendance))
+        ? { command, input } : null;
+    } catch { return null; }
+  });
+  const [uncertainBody, setUncertainBody] = useState<string | null>(saved?.command?.body ?? null);
+  const [venueId, setVenueId] = useState<number | null>(saved?.input.venueId ?? startVenueId);
+  const [label, setLabel] = useState(() => saved?.input.label ?? venues.find((venue) => venue.venueId === startVenueId)?.name ?? "");
+  const [start, setStart] = useState(() => toSgtInput(saved?.input.start ?? event.startDatetime));
+  const [end, setEnd] = useState(() => toSgtInput(saved?.input.end ?? event.endDatetime));
+  const [attendance, setAttendance] = useState(saved ? String(saved.input.expectedAttendance ?? "") : event.expectedAttendance ? String(event.expectedAttendance) : "");
+  const [note, setNote] = useState(saved?.input.note ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ message: string; fields: Record<string, string> } | null>(null);
-  const keyRef = useRef<{ body: string; key: string } | null>(null);
+  const keyRef = useRef<{ body: string; key: string } | null>(saved?.command ?? null);
   // Each opening is a fresh form, so its opening time is "now" for the 24-hour cutoff.
   const [openedAt] = useState(() => Date.now());
 
@@ -86,7 +110,9 @@ function HoldRequestDialog({ open, event, venues, startVenueId, onClose, onReque
   const checks = useVenueBookingChecks(event.eventId, items);
   const result = checks.results[0]?.checked ? checks.results[0] : null;
   const tooLate = result?.occupiedStart ? Date.parse(result.occupiedStart) - DAY_MS <= openedAt : false;
-  const blocked = Boolean(result?.blocking.length) || tooLate;
+  const body = JSON.stringify({ venueId, label: label.trim(), start: startIso, end: endIso, expectedAttendance: attendanceValue, note: note.trim() || null });
+  const recovering = uncertainBody === body;
+  const blocked = !recovering && (Boolean(result?.blocking.length) || tooLate);
 
   const submit = async () => {
     if (!venueId || !startIso || !endIso) {
@@ -98,13 +124,21 @@ function HoldRequestDialog({ open, event, venues, startVenueId, onClose, onReque
     // A retry of the same form reuses its key.
     const key = keyRef.current?.body === body ? keyRef.current.key : crypto.randomUUID();
     keyRef.current = { body, key };
+    saveHoldCommand(slot, keyRef.current);
     setSaving(true);
     setError(null);
     try {
       const answer = await requestVenueHold(event.eventId, input, key);
+      saveHoldCommand(slot, null);
       onRequested(answer.holdRequest, answer.message);
     } catch (caught) {
-      if (caught instanceof ApiError && caught.code !== "NETWORK_ERROR") keyRef.current = null;
+      if (keepsIdempotencyKey(caught instanceof ApiError ? caught : null) || (caught instanceof ApiError && caught.status === 401)) {
+        setUncertainBody(body);
+      } else {
+        keyRef.current = null;
+        setUncertainBody(null);
+        saveHoldCommand(slot, null);
+      }
       setError({
         message: caught instanceof Error ? caught.message : "The hold could not be requested.",
         fields: caught instanceof ApiError ? caught.fields : {},
@@ -217,7 +251,8 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
     return () => { alive = false; };
   }, [event.eventId, event.status, attempt]);
 
-  const reload = () => setAttempt((value) => value + 1);
+  const reload = useCallback(() => setAttempt((value) => value + 1), []);
+  const now = useHoldExpiryRefresh(state.status === "ready" ? state.holds : [], reload);
   const act = async (request: VenueHoldRequest, action: "withdraw" | "release") => {
     setBusyId(request.holdRequestId);
     setNotice(null);
@@ -265,10 +300,10 @@ export function EventVenueHolds({ event, isCoordinator, canRequest, venues, form
                 <h4 className="text-sm font-semibold text-on-surface [overflow-wrap:anywhere]">
                   {request.venueName ?? `Venue ${request.venueId}`}{request.label && request.label !== request.venueName ? ` · ${request.label}` : ""}
                 </h4>
-                <BookingStatusChip status={holdChipStatus(request)} label={request.statusLabel} />
+                <BookingStatusChip status={holdChipStatus(request, now)} label={holdChipLabel(request, now)} />
               </div>
-              <HoldSummary request={request} />
-              {isCoordinator && (request.status === "PENDING" || isActiveHold(request)) ? (
+              <HoldSummary request={request} now={now} />
+              {isCoordinator && (request.status === "PENDING" || isActiveHold(request, now)) ? (
                 <div>
                   <Button type="button" variant="quiet" disabled={busyId === request.holdRequestId} onClick={() => void act(request, request.status === "PENDING" ? "withdraw" : "release")}>
                     {request.status === "PENDING" ? "Withdraw request" : "Release hold"}

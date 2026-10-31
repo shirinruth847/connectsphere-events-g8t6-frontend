@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { installConnectSphereMocks, routeVenuePhotos, venueOption as venue } from "./support.mjs";
+import { attachScreenshot, installConnectSphereMocks, routeVenuePhotos, venueOption as venue } from "./support.mjs";
 
 // SPM-190: the coordinator requests a tentative hold from the event's venue
 // section; Venue Staff place or decline it on My Requests, extend it once and
@@ -269,4 +269,110 @@ test("[SPM-190 AC6] Venue Staff extend an active hold once", async ({ page }) =>
   // Extended once: no second extension is offered.
   await expect(card.getByRole("button", { name: "Extend", exact: true })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Release hold" })).toBeVisible();
+});
+
+test('[SPM-190 recovery] an uncertain coordinator request survives reload with its body and key', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'COORDINATOR' });
+  await routeCoordinator(page);
+  const commands = [];
+  await page.route('**/api/events/42/venue-holds', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const body = route.request().postDataJSON();
+    commands.push({ body, key: route.request().headers()['idempotency-key'] });
+    return commands.length === 1
+      ? route.fulfill({ status: 503, json: { error: 'Commit outcome unknown.' } })
+      : route.fulfill({ json: { message: 'Hold requested.', holdRequest: holdRequest(body) } });
+  });
+  await page.goto('/events/42');
+  await holdsRegion(page).getByRole('button', { name: 'Request hold', exact: true }).click();
+  let form = holdForm(page);
+  await form.getByRole('combobox', { name: 'Venue (required)', exact: true }).selectOption('45');
+  await form.getByLabel('Note for Venue Staff').fill('Recover this exact request');
+  await expect(form.getByText('Available', { exact: true })).toBeVisible();
+  await form.getByRole('button', { name: 'Request hold', exact: true }).click();
+  await expect(form.getByText('Commit outcome unknown.')).toBeVisible();
+  await page.reload();
+  await holdsRegion(page).getByRole('button', { name: 'Request hold', exact: true }).click();
+  form = holdForm(page);
+  await expect(form.getByLabel('Note for Venue Staff')).toHaveValue('Recover this exact request');
+  await form.getByRole('button', { name: 'Request hold', exact: true }).click();
+  await expect(form).toBeHidden();
+  expect(commands).toHaveLength(2);
+  expect(commands[1]).toEqual(commands[0]);
+});
+
+test('[SPM-190 recovery] an uncertain placement reuses its key after reload', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'VENUE_STAFF' });
+  const requests = [holdRequest({ preview: preview() })];
+  await routeVenueStaff(page, requests);
+  const keys = [];
+  await page.route('**/api/venues/hold-requests/3/place', async route => {
+    keys.push(route.request().headers()['idempotency-key']);
+    requests[0] = holdRequest({ preview: preview({ availability: 'UNAVAILABLE', blocking: [{ code: 'VENUE_HELD', message: 'Venue already held.' }] }) });
+    return keys.length === 1
+      ? route.fulfill({ status: 503, json: { error: 'Commit outcome unknown.' } })
+      : route.fallback();
+  });
+  await page.goto('/dashboard');
+  await holdCard(page, 3).getByRole('button', { name: 'Place hold', exact: true }).click();
+  await expect(page.getByText('Commit outcome unknown.')).toBeVisible();
+  await expect(holdCard(page, 3).getByText('Venue already held.')).toBeVisible();
+  await expect(holdCard(page, 3).getByRole('button', { name: 'Place hold', exact: true })).toBeEnabled();
+  await page.reload();
+  await holdCard(page, 3).getByRole('button', { name: 'Place hold', exact: true }).click();
+  await expect(page.getByText('No pending hold requests.')).toBeVisible();
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBeTruthy();
+  expect(keys[1]).toBe(keys[0]);
+});
+
+test('[SPM-190 expiry] an open page removes expired actions and refreshes on focus', async ({ page }, testInfo) => {
+  const now = Date.now();
+  await page.clock.install({ time: new Date(now) });
+  await installConnectSphereMocks(page, { role: 'VENUE_STAFF' });
+  const requests = [placed({ hold: { ...placed().hold, expiresAt: new Date(now + 60000).toISOString() } })];
+  const sent = await routeVenueStaff(page, requests);
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  const card = holdCard(page, 3);
+  await expect(card.getByRole('button', { name: 'Extend', exact: true })).toBeVisible();
+  await page.clock.fastForward(120000);
+  await expect(card.getByText('Hold expired', { exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Extend', exact: true })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Release hold', exact: true })).toHaveCount(0);
+  await attachScreenshot(testInfo, page, 'expired-hold-desktop');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await attachScreenshot(testInfo, page, 'expired-hold-mobile');
+  const before = sent.lists.length;
+  requests[0] = { ...requests[0], statusLabel: 'Hold released', hold: { ...requests[0].hold, status: 'RELEASED' } };
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect.poll(() => sent.lists.length).toBeGreaterThan(before);
+  await expect(card.getByText('Hold released', { exact: true })).toBeVisible();
+});
+
+test('[SPM-190 recovery] a definitive conflict ends the saved placement retry', async ({ page }) => {
+  await installConnectSphereMocks(page, { role: 'VENUE_STAFF' });
+  const requests = [holdRequest({ preview: preview() })];
+  await routeVenueStaff(page, requests);
+  const keys = [];
+  await page.route('**/api/venues/hold-requests/3/place', async route => {
+    keys.push(route.request().headers()['idempotency-key']);
+    requests[0] = holdRequest({ preview: preview({ availability: 'UNAVAILABLE', blocking: [{ code: 'VENUE_HELD', message: 'Another event holds this venue.' }] }) });
+    return route.fulfill({ status: keys.length === 1 ? 503 : 409, json: {
+      error: keys.length === 1 ? 'Placement unconfirmed.' : 'Placement rejected: venue conflict.',
+    } });
+  });
+  await page.goto('/dashboard');
+  const place = holdCard(page, 3).getByRole('button', { name: 'Place hold', exact: true });
+  await place.click();
+  await expect(page.getByText('Placement unconfirmed.')).toBeVisible();
+  await expect(holdCard(page, 3).getByText('Another event holds this venue.')).toBeVisible();
+  await place.click();
+  await expect(page.getByText('Placement rejected: venue conflict.')).toBeVisible();
+  await expect(place).toBeDisabled();
+  await page.reload();
+  await expect(holdCard(page, 3).getByRole('button', { name: 'Place hold', exact: true })).toBeDisabled();
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
 });

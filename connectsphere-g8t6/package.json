@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/*.test.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:live": "playwright test -c playwright.live.config.mjs",
     "test:live": "node scripts/verify-live-flows.cjs",
     "test:unit": "vitest run"
   },

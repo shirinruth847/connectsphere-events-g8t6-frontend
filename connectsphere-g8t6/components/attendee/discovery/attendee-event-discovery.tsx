@@ -1,25 +1,48 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRegistration } from "@/components/attendee/registration/use-registration";
 import { PageContent } from "@/components/layout/page-content";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { AlertBanner, Button, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { ROLE_LABELS } from "@/lib/auth";
-import type { AttendeeEventSummary } from "@/lib/api/discovery";
+import { getDiscoveryEvent, type AttendeeEventSummary } from "@/lib/api/discovery";
+import type { AttendeeEventView } from "@/lib/api/my-events";
 import { discoveryErrorMessage } from "./discovery-state";
 import { EventDetailsDialog } from "./event-details-dialog";
 import { EventDiscoveryCard } from "./event-discovery-card";
 import { useDiscoveryEvents } from "./use-discovery-events";
 
 // Attendee Event Discovery at /events (SPM-34), from the "Event Discovery"
-// Figma frame. Render inside DashboardWorkspace. Search, filters, capacity and
-// working registration actions are not built: the backend does not provide
-// them yet.
+// Figma frame. Render inside DashboardWorkspace. Search, filters and capacity
+// are not built: the backend does not provide them yet. Register Now (SPM-134)
+// opens the one registration form from a card or from the event details.
 export function AttendeeEventDiscovery() {
   const discovery = useDiscoveryEvents();
   const [selected, setSelected] = useState<AttendeeEventSummary | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
+  const [detailsRefresh, setDetailsRefresh] = useState(0);
+  const registeringFor = useRef<number | null>(null);
+
+  // After a registration or a refusal, read that event again: its availability
+  // may have changed (full, closed), or it may no longer be shown at all.
+  const refreshEvent = (eventId: number) => {
+    getDiscoveryEvent(eventId)
+      .then(({ event }) => discovery.patchEvent(event))
+      .catch((caught: { status?: number }) => { if (caught?.status === 404) discovery.removeEvent(eventId); });
+    setDetailsRefresh((value) => value + 1);
+  };
+  const registration = useRegistration({
+    onEventChanged: refreshEvent,
+    // Register Now goes once registered; focus that event's details button, or the list.
+    focusFallback: () =>
+      document.querySelector<HTMLElement>(`#discovery-event-${registeringFor.current}-title`)?.closest("article")?.querySelector<HTMLElement>("button") ?? listHeading.current,
+  });
+  const startRegistration = (event: Pick<AttendeeEventView, "eventId" | "title" | "startDatetime" | "endDatetime">, button: HTMLButtonElement) => {
+    registeringFor.current = event.eventId;
+    registration.open({ eventId: event.eventId, title: event.title, startDatetime: event.startDatetime, endDatetime: event.endDatetime }, button);
+  };
   // apiRequest reports a 401 to AuthGate, which sends the attendee to sign in.
   const sessionExpired = discovery.status === "error" && discovery.error?.status === 401;
 
@@ -101,13 +124,30 @@ export function AttendeeEventDiscovery() {
           />
         ) : null}
 
+        {discovery.status === "ready" && registration.error && registration.error.status !== 401 ? (
+          <AlertBanner tone="warning" title="Could not check your registrations">
+            Register Now is hidden until your registrations load, so you are not offered a place you may already hold.
+            <div className="mt-3">
+              <Button variant="secondary" onClick={registration.refresh} className="max-lg:min-h-11">
+                Try again
+              </Button>
+            </div>
+          </AlertBanner>
+        ) : null}
+
         {discovery.status === "ready" ? (
           <>
             {discovery.events.length > 0 ? (
               <ul className="flex flex-col gap-3" aria-labelledby="discovery-list-heading">
                 {discovery.events.map((event) => (
                   <li key={event.eventId}>
-                    <EventDiscoveryCard event={event} onViewDetails={openDetails} />
+                    <EventDiscoveryCard
+                      event={event}
+                      onViewDetails={openDetails}
+                      place={registration.places?.get(event.eventId) ?? null}
+                      placesKnown={registration.places !== null}
+                      onRegister={startRegistration}
+                    />
                   </li>
                 ))}
               </ul>
@@ -151,7 +191,11 @@ export function AttendeeEventDiscovery() {
         onClosed={restoreFocus}
         onLoaded={discovery.patchEvent}
         onNotFound={discovery.removeEvent}
+        places={registration.places}
+        onRegister={startRegistration}
+        refreshKey={detailsRefresh}
       />
+      {registration.dialog}
     </PageContent>
   );
 }

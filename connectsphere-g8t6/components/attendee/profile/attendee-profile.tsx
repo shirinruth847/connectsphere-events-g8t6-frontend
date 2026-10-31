@@ -371,17 +371,21 @@ function SaveFeedback({ save, onLoadLatest }: { save: SaveState; onLoadLatest: (
   }
 }
 
-function PreferenceField({
+// The optional attendee text field (counter, hint, linked error, no truncation),
+// shared with the event registration form (SPM-134), which passes its own hint.
+export function PreferenceField({
   field,
   value,
   error,
   readOnly,
   inputRef,
   onChange,
+  hint,
 }: {
   field: ProfileField;
   value: string;
   error?: string;
+  hint?: string;
   // Read-only (not disabled) while saving, so a field with a backend error can take focus.
   readOnly: boolean;
   inputRef: (element: HTMLTextAreaElement | null) => void;
@@ -399,7 +403,7 @@ function PreferenceField({
   return (
     <div>
       <FormLabel htmlFor={inputId}>{copy.label}</FormLabel>
-      <p id={hintId} className="mb-2 text-xs text-on-surface-variant">{copy.hint}</p>
+      <p id={hintId} className="mb-2 text-xs text-on-surface-variant">{hint ?? copy.hint}</p>
       {/* No maxLength: it would silently cut pasted text. Over-long text is shown as an error instead. */}
       <textarea
         id={inputId}
