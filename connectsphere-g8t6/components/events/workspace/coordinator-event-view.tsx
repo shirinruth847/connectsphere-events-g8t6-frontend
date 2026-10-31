@@ -57,6 +57,7 @@ const significantPill = <PermissionPill tone="read-only">Change request only</Pe
 export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: CoordinatorEventViewProps) {
   const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
   const [statusNotice, setStatusNotice] = useState("");
+  const [identityEditing, setIdentityEditing] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
   const [clarificationKey, setClarificationKey] = useState(0);
   const clarifications = useEventClarifications(event.eventId, clarificationKey);
@@ -145,6 +146,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
           >
             <EventIdentityEditor
               event={event}
+              onEditingChange={setIdentityEditing}
               onSaved={(saved, message) => {
                 onEventChange(saved);
                 setHistoryKey((value) => value + 1);
@@ -201,6 +203,7 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
         <aside className="grid min-w-0 gap-5 xl:col-span-4" aria-label="Coordination and history">
           <LifecyclePanel
             event={event}
+            approvalBlockedReason={identityEditing ? "Save or cancel your event details before approving." : null}
             onEventChange={(updated, message) => {
               onEventChange(updated);
               setHistoryKey((value) => value + 1);
