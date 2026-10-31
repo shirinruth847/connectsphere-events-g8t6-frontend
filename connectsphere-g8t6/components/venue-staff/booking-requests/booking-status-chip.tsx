@@ -8,6 +8,11 @@ const BOOKING_CHIPS: Record<string, string> = {
   EXPIRED: "bg-[#F3F4F6] text-[#4B5563]",
   RELEASED: "bg-[#F3F4F6] text-[#4B5563]",
   CANCELLED: "bg-[#F3F4F6] text-[#4B5563]",
+  // Tentative holds and hold requests (SPM-190).
+  ACTIVE: "bg-[#FEF3C7] text-[#92400E]",
+  CONVERTED: "bg-[#DCFCE7] text-[#166534]",
+  DECLINED: "bg-[#FEE2E2] text-[#991B1B]",
+  WITHDRAWN: "bg-[#F3F4F6] text-[#4B5563]",
 };
 
 export const BOOKING_BORDERS: Record<string, string> = {

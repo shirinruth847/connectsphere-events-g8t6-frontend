@@ -20,6 +20,7 @@ import {
 import { BOOKING_SORT_OPTIONS, MAX_SEARCH_LENGTH, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
 import { BOOKING_BORDERS, BookingStatusChip } from "./booking-status-chip";
 import { useOpenedBookings } from "./use-opened-bookings";
+import { HoldRequestList } from "./hold-request-list";
 
 type ListState =
   | { status: "loading" }
@@ -184,6 +185,8 @@ export function BookingRequestList() {
         ) : null
       }
     >
+      <HoldRequestList />
+      <h2 className="mb-3 text-lg font-semibold text-on-surface">Booking requests</h2>
       <section aria-label="Search, sort and filter booking requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
         {/* Clear is always present (disabled when empty), so typing never resizes the box. */}
         <div className="grid min-w-[14rem] flex-1 gap-1">
