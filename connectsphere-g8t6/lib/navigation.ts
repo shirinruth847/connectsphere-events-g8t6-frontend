@@ -29,6 +29,7 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   VENUE_STAFF: [
     { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
+    { id: "availability", title: "Availability Calendar", icon: "calendar", href: `${ROUTES.venues}?view=availability` },
   ],
   TECH_SUPPORT: [
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
@@ -81,6 +82,7 @@ export function activeNavigationId(role: UserRole, pathname: string, status: str
     return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
+  if (role === "VENUE_STAFF" && pathname === ROUTES.venues && typeof window !== "undefined" && window.location.search.includes("view=availability")) return "availability";
   if (role !== "ORGANISER") return inVenues ? "venues" : "home";
   if (pathname === ROUTES.dashboard && status === "DRAFT") return "requests";
   if (pathname === ROUTES.dashboard && scope !== "MINE") return "home";

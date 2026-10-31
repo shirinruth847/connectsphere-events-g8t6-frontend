@@ -180,11 +180,11 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
     if (!canSuggest || venue.venueId === suggestion?.venueId) return null;
     const blocker = suggestionBlocker(venue);
     if (place === "card") {
-      return <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)} title={blocker ?? undefined}>Select</Button>;
+      return <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)} title={blocker ?? undefined}>Suggest</Button>;
     }
     return (
       <div className="grid gap-1">
-        <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)}><Icon name="check" size={16} />Select this venue</Button>
+        <Button type="button" onClick={() => setConfirming(venue)} disabled={Boolean(blocker)}><Icon name="check" size={16} />Suggest this venue</Button>
         {blocker ? <p className="text-xs text-on-surface-variant">{blocker}</p> : null}
       </div>
     );
