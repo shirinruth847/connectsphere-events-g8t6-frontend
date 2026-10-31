@@ -91,6 +91,23 @@ async function registrationsOn(event) {
   return data;
 }
 
+// Whether the backend's discovery list, read as `accountKey` through every
+// page, includes the event.
+async function listedInDiscovery(accountKey, event) {
+  const account = fixtures.accounts[accountKey];
+  const { session, error } = await signInWithPassword(account.email, account.password);
+  if (error || !session) throw new Error(`Fixture ${accountKey} could not sign in`);
+  let cursor = null;
+  do {
+    const res = await fetch(`${API}/api/events/discovery?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+    if (res.status !== 200) throw new Error(`Discovery list returned ${res.status}`);
+    const body = await res.json();
+    if (body.events.some((item) => item.eventId === event.id)) return true;
+    cursor = body.nextCursor;
+  } while (cursor);
+  return false;
+}
+
 async function savedProfile(accountKey) {
   const { data, error } = await supabase.rpc('get_attendee_profile', { p_user_id: fixtures.accounts[accountKey].userId });
   if (error) throw error;
@@ -315,9 +332,16 @@ test('[SPM-134 TC-REG-002/004 AC5] should_register_by_keyboard_at_390px_on_the_d
   await expect(registerNow(page, event)).toHaveCount(0);
 });
 
+// The attendee-facing lifecycles (Master 5.3, 5.6; SPM-289). PREPARATION is
+// discoverable and takes registrations under the same availability rules as
+// CONFIRMED, so every state below is checked in both; the browser never sees
+// the lifecycle, only the backend's availability.
+const ATTENDEE_LIFECYCLES = ['CONFIRMED', 'PREPARATION'];
+const inLifecycle = (status) => (status === 'CONFIRMED' ? { ids: '', suffix: '' } : { ids: ' / SPM-289', suffix: `_in_${status}` });
+
 // Every state the backend decides, from real event data: the card and the
 // details page show the same disabled control and never Register Now.
-for (const { ids, state, overrides = {}, venueCapacity = 50, label, place = null } of [
+for (const status of ATTENDEE_LIFECYCLES) for (const { ids, state, overrides = {}, venueCapacity = 50, label, place = null } of [
   { ids: 'AC12', state: 'not_yet_open', overrides: { registration_open_at: new Date(Date.now() + DAY).toISOString() }, label: 'Registration Not Yet Open' },
   { ids: 'TC-REG-018 AC13', state: 'closed', overrides: { registration_close_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() }, label: 'Registration Closed' },
   { ids: 'AC13', state: 'unavailable_without_a_primary_venue', venueCapacity: null, label: 'Registration Unavailable' },
@@ -325,8 +349,8 @@ for (const { ids, state, overrides = {}, venueCapacity = 50, label, place = null
   { ids: 'TC-REG-020 AC15', state: 'already_registered', label: 'Registered', place: ['attendee', 'REGISTERED'] },
   { ids: 'AC15', state: 'already_waitlisted', label: 'On the waitlist', place: ['attendee', 'WAITLISTED'] },
 ]) {
-  test(`[SPM-134 ${ids}] should_show_${label.replaceAll(' ', '_')}_and_no_register_now_when_the_event_is_${state}_on_a_fresh_load`, async ({ page }) => {
-    const event = await createEvent(`fresh ${state}`, overrides, { venueCapacity });
+  test(`[SPM-134 ${ids}${inLifecycle(status).ids}] should_show_${label.replaceAll(' ', '_')}_and_no_register_now_when_the_event_is_${state}${inLifecycle(status).suffix}_on_a_fresh_load`, async ({ page }) => {
+    const event = await createEvent(`fresh ${state} ${status}`, { status, ...overrides }, { venueCapacity });
     if (place) await takePlace(event, ...place);
     const seen = watchBackend(page);
     await signIn(page, 'attendee');
@@ -350,13 +374,13 @@ for (const { ids, state, overrides = {}, venueCapacity = 50, label, place = null
 // A full event: SPM-163 replaced SPM-134's disabled "Registration Full" with
 // the real Join Waitlist, the same on the card and the details page. Joining
 // is covered in spm-163-147-waitlist.live.spec.mjs; here nothing is sent.
-for (const { state, overrides, venueCapacity = 50 } of [
+for (const status of ATTENDEE_LIFECYCLES) for (const { state, overrides, venueCapacity = 50 } of [
   { state: 'full', overrides: { registration_capacity: 1 } },
   // No organiser capacity (allowed only with the flag off, which no longer gates registration).
   { state: 'full_at_the_venue_capacity', overrides: { is_registration_enabled: false, registration_capacity: null }, venueCapacity: 1 },
 ]) {
-  test(`[SPM-134 TC-REG-017 AC12 / SPM-163 AC1] should_offer_join_waitlist_and_no_register_now_when_the_event_is_${state}_on_a_fresh_load`, async ({ page }) => {
-    const event = await createEvent(`fresh ${state}`, overrides, { venueCapacity });
+  test(`[SPM-134 TC-REG-017 AC12 / SPM-163 AC1${inLifecycle(status).ids}] should_offer_join_waitlist_and_no_register_now_when_the_event_is_${state}${inLifecycle(status).suffix}_on_a_fresh_load`, async ({ page }) => {
+    const event = await createEvent(`fresh ${state} ${status}`, { status, ...overrides }, { venueCapacity });
     await takePlace(event, 'other');
     const seen = watchBackend(page);
     await signIn(page, 'attendee');
@@ -407,12 +431,49 @@ for (const [state, change, title, after] of [
   });
 }
 
-test('[SPM-134 TC-REG-021 AC16] should_say_the_event_is_unavailable_without_naming_its_lifecycle_when_it_leaves_CONFIRMED_after_the_form_opens', async ({ page }) => {
+// The attendee lifecycle rule (Master 5.3, 5.6; SPM-289): a published event
+// stays in Discovery and takes registrations after moving to PREPARATION, and
+// the frontend shows it on a normal reload. PLANNING and SAFETY_REVIEW hide it
+// again, in the list and by direct link, without naming the state.
+test('[SPM-289] should_keep_a_published_event_discoverable_and_registerable_after_it_moves_from_CONFIRMED_to_PREPARATION_and_hide_it_in_PLANNING_or_SAFETY_REVIEW', async ({ page }) => {
+  const event = await createEvent('confirmed then preparation');
+  const seen = watchBackend(page);
+  await signIn(page, 'attendee');
+  await expect(registerNow(await openDiscoveryCard(page, event), event)).toBeVisible();
+
+  await updateEvent(event, { status: 'PREPARATION' });
+  expect(await listedInDiscovery('attendee', event)).toBe(true);
+  const eventCard = await openDiscoveryCard(page, event);
+  await expect(eventCard).toContainText('Registration Open');
+  await eventCard.getByRole('button', { name: `View event details for ${event.title}`, exact: true }).click();
+  const details = page.getByRole('dialog', { name: event.title, exact: true });
+  await registerNow(details, event).click();
+  const dialog = registrationDialog(page, event);
+  await expect(dietary(dialog)).toHaveValue(PROFILE.dietaryRestrictions);
+  await submit(dialog).click();
+  await expect(registered(dialog)).toBeVisible({ timeout: 30_000 });
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(details.getByText('Registered', { exact: true }).first()).toBeVisible();
+  await expect(registerNow(details, event)).toHaveCount(0);
+  expect(seen.posts).toHaveLength(1);
+  expect((await registrationsOn(event)).map((row) => [row.attendee_id, row.registration_status])).toEqual([[fixtures.accounts.attendee.userId, 'REGISTERED']]);
+
+  for (const hidden of ['PLANNING', 'SAFETY_REVIEW']) {
+    await updateEvent(event, { status: hidden });
+    expect(await listedInDiscovery('attendee', event), hidden).toBe(false);
+    await page.goto(`/events/${event.id}`);
+    await expect(page.getByText('This event is not available', { exact: true })).toBeVisible();
+    await expect(page.locator('main')).not.toContainText(/PREPARATION|Preparation|PLANNING|SAFETY_REVIEW/);
+  }
+});
+
+// PLANNING, not PREPARATION: since SPM-289 PREPARATION stays attendee-facing.
+test('[SPM-134 TC-REG-021 AC16 / SPM-289] should_say_the_event_is_unavailable_without_naming_its_lifecycle_when_it_goes_back_to_PLANNING_after_the_form_opens', async ({ page }) => {
   const event = await createEvent('stale hidden');
   await signIn(page, 'attendee');
   const dialog = await openFormOnDetailsPage(page, event);
   await dietary(dialog).fill('Typed before it was hidden');
-  await updateEvent(event, { status: 'PREPARATION' });
+  await updateEvent(event, { status: 'PLANNING' });
 
   await submit(dialog).click();
   await expect(dialog.getByText('This event is no longer available', { exact: true })).toBeVisible({ timeout: 30_000 });

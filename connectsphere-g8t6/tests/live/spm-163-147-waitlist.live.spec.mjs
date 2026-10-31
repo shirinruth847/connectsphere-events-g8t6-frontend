@@ -29,8 +29,9 @@ const eventIds = [];
 let fixtures;
 let eventCount = 0;
 
-// Trusted setup only: a confirmed, published event with one place.
-async function createEvent(name) {
+// Trusted setup only: a published event with one place, CONFIRMED unless
+// overridden (PREPARATION is attendee-facing too, SPM-289).
+async function createEvent(name, overrides = {}) {
   eventCount += 1;
   const startsAt = Date.now() + (30 + eventCount) * DAY;
   const { data, error } = await supabase.from('event').insert({
@@ -49,6 +50,7 @@ async function createEvent(name) {
     registration_capacity: 1,
     registration_open_at: new Date(Date.now() - DAY).toISOString(),
     registration_close_at: new Date(startsAt - DAY).toISOString(),
+    ...overrides,
   }).select('event_id, title, start_datetime, end_datetime').single();
   if (error) throw new Error(`Fixture event insert failed: ${error.message}`);
   recordFixtureIds(runId, 'eventIds', [data.event_id]);
@@ -376,4 +378,46 @@ test('[SPM-163] should_explain_a_stale_offer_and_remove_its_controls_when_the_ba
     await firstPage.context().close();
   }
   expect(await statusInDatabase('first', event)).toBe('WITHDRAWN');
+});
+
+// SPM-289: in PREPARATION the waitlist and offers work as in CONFIRMED. The
+// attendee joins from the card; the backend offers the freed place, and the
+// attendee accepts it on My Events.
+test('[SPM-289 / SPM-163 AC1-AC6] should_join_the_waitlist_and_accept_a_freed_place_when_the_event_is_in_PREPARATION', async ({ page }) => {
+  const event = await createEvent('preparation waitlist offer', { status: 'PREPARATION' });
+  await takePlace(event, 'holder');
+  await signIn(page, 'joiner');
+
+  const eventCard = await openDiscoveryCard(page, event);
+  await expect(eventCard).toContainText('Full - Waitlist');
+  await joinOn(eventCard, event).click();
+  const confirm = page.getByRole('dialog', { name: 'This event is full. Join the waitlist?', exact: true });
+  const joining = actionResponse(page, event, 'waitlist');
+  await confirm.getByRole('button', { name: 'Join Waitlist', exact: true }).click();
+  const joined = await joining;
+  expect(joined.status()).toBe(201);
+  expect((await joined.json()).registration).toMatchObject({ status: 'WAITLISTED', waitlistPosition: 1 });
+  const success = page.getByRole('dialog', { name: "You're on the waitlist", exact: true });
+  await expect(success.getByText('On the waitlist · Position 1', { exact: true })).toBeVisible();
+  await success.getByRole('button', { name: 'Done', exact: true }).click();
+
+  // The holder withdraws through the backend's route; the backend makes the offer.
+  const { status } = await api('holder', 'POST', `/registrations/mine/${event.id}/withdraw`, {});
+  expect(status).toBe(200);
+  const offered = await placeOf('joiner', event);
+  expect(offered.offer).toMatchObject({ offerId: expect.any(Number), expiresAt: expect.any(String) });
+
+  await openMyEvents(page);
+  const item = myEvent(page, event);
+  await expect(item).toContainText('A place has opened up for you.');
+  await expect(item.getByRole('button', { name: `Decline: ${event.title}`, exact: true })).toBeVisible();
+  await item.getByRole('button', { name: `Accept Slot: ${event.title}`, exact: true }).click();
+  const accepting = actionResponse(page, event, 'offer/accept');
+  await page.getByRole('dialog', { name: 'Accept this place?', exact: true }).getByRole('button', { name: 'Accept Slot', exact: true }).click();
+  const accepted = await accepting;
+  expect(accepted.status()).toBe(200);
+  expect(accepted.request().postDataJSON()).toEqual({ offerId: offered.offer.offerId });
+  await expect(page.getByText(`You're registered for ${event.title}.`, { exact: true })).toBeVisible();
+  await expect(item.getByRole('button', { name: `Withdraw Registration: ${event.title}`, exact: true })).toBeVisible();
+  expect(await statusInDatabase('joiner', event)).toBe('REGISTERED');
 });
