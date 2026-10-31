@@ -58,11 +58,13 @@ function overlaps(first: EventRequest, second: EventRequest) {
 export function EventAssignmentQueue() {
   const loadRevision = useRef(0);
   const inFlight = useRef(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [requests, setRequests] = useState<EventRequest[]>([]);
   const [coordinators, setCoordinators] = useState<LiveCoordinator[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [assignView, setAssignView] = useState<"slots" | "week">("slots");
   const [assignment, setAssignment] = useState<number>();
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
@@ -112,6 +114,18 @@ export function EventAssignmentQueue() {
     void loadData();
     return () => { loadRevision.current += 1; };
   }, [loadData]);
+
+  // showModal() keeps focus inside the assignment dialog; closing returns it
+  // to the control that opened the dialog when that control still exists.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (selectedId === null || !dialog) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!dialog.open) dialog.showModal();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [selectedId]);
 
   if (authState === "loading") {
     return <div className={styles.queue}><Skeleton className="h-48" /></div>;
@@ -175,19 +189,21 @@ export function EventAssignmentQueue() {
       {error && <div className="error-alert" role="alert"><strong>Request failed</strong><span>{error}</span></div>}
       <section className="section-heading"><div><h2>{viewMode === "list" ? "Assignment queue" : "Coordinator availability"}</h2><p>{viewMode === "list" ? "Only submitted requests without an assigned coordinator appear here." : "Review each coordinator's scheduled events before assigning a request."}</p></div><div className="view-toggle" role="group" aria-label="Queue view"><button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>Unassigned requests</button><button className={viewMode === "calendar" ? "active" : ""} onClick={() => setViewMode("calendar")}>Calendar</button></div></section>
       {viewMode === "calendar" ? (
-        <CoordinatorAvailabilityCalendar
-            coordinators={calendarCoordinators}
-            selectedEvent={selected ? toCalendarEvent(selected) : undefined}
-            selectedCoordinatorId={assignment}
-            onSelectCoordinator={(id) => {
-              setAssignment(id);
-              setError("");
-            }}
-        />
-      ) : loading ? <Skeleton className="h-48" /> : unassigned.length === 0 ? <EmptyState title="Queue cleared" description="Every submitted request has an Event Coordinator assigned." /> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.eventId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `Equipment #${item.equipmentId}: ${item.quantity} ${item.quantity === 1 ? "unit" : "units"} requested`).join(" · ") : "None requested"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled={submitting || loading || needsRefresh} onClick={() => { setSelectedId(request.eventId); setAssignment(undefined); setError(""); }}>Assign coordinator</button></footer></article>)}</div>}
+        <CoordinatorAvailabilityCalendar coordinators={calendarCoordinators} />
+      ) : loading ? <Skeleton className="h-48" /> : unassigned.length === 0 ? <EmptyState title="Queue cleared" description="Every submitted request has an Event Coordinator assigned." /> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.eventId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `Equipment #${item.equipmentId}: ${item.quantity} ${item.quantity === 1 ? "unit" : "units"} requested`).join(" · ") : "None requested"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled={submitting || loading || needsRefresh} onClick={() => { setSelectedId(request.eventId); setAssignView("slots"); setAssignment(undefined); setError(""); }}>Assign coordinator</button></footer></article>)}</div>}
       {selected && (
-        <div className="modal-backdrop assignments-modal-backdrop" role="presentation">
-          <section className="modal reassign-modal" role="dialog" aria-modal="true" aria-labelledby="assign-title">
+        <dialog
+          ref={dialogRef}
+          className="modal reassign-modal"
+          aria-labelledby="assign-title"
+          onCancel={(event) => {
+            event.preventDefault();
+            // Escape closes an open calendar entry before the dialog itself.
+            const entryClose = dialogRef.current?.querySelector<HTMLButtonElement>(".cal-popover-close");
+            if (entryClose) entryClose.click();
+            else if (!submitting) setSelectedId(null);
+          }}
+        >
             <header className="modal-header">
               <div>
                 <span className="eyebrow">ASSIGN REQUEST</span>
@@ -229,20 +245,45 @@ export function EventAssignmentQueue() {
                   <span>{error}</span>
                 </div>
               )}
+              <div className="view-toggle assignment-view-toggle" role="group" aria-label="Availability view">
+                <button type="button" className={assignView === "slots" ? "active" : ""} aria-pressed={assignView === "slots"} onClick={() => setAssignView("slots")}>Time slots</button>
+                <button type="button" className={assignView === "week" ? "active" : ""} aria-pressed={assignView === "week"} onClick={() => setAssignView("week")}>Event week</button>
+              </div>
               <form id="assignment-form" onSubmit={submitAssignment}>
-                <fieldset className="coordinator-options">
-                  <legend>Choose an Event Coordinator</legend>
-                  <AvailabilityMatrix
-                    coordinators={coordinators}
-                    requested={selected}
+                {assignView === "slots" && (
+                  <fieldset className="coordinator-options">
+                    <legend>Choose an Event Coordinator</legend>
+                    <AvailabilityMatrix
+                      coordinators={coordinators}
+                      requested={selected}
+                      selectedCoordinatorId={assignment ?? null}
+                      onSelect={(id) => {
+                        setAssignment(id);
+                        setError("");
+                      }}
+                    />
+                  </fieldset>
+                )}
+              </form>
+              {/* Outside the form: the calendar's own buttons are not submit buttons. */}
+              {assignView === "week" && (
+                <>
+                  <p className="assignment-week-hint">
+                    {selectedCoordinator
+                      ? `Selected coordinator: ${selectedCoordinator.name}.`
+                      : "No coordinator selected yet. Open an entry on the calendar and choose under Assign to, or switch to Time slots."}
+                  </p>
+                  <CoordinatorAvailabilityCalendar
+                    coordinators={calendarCoordinators}
+                    selectedEvent={toCalendarEvent(selected)}
                     selectedCoordinatorId={assignment ?? null}
-                    onSelect={(id) => {
+                    onSelectCoordinator={(id) => {
                       setAssignment(id);
                       setError("");
                     }}
                   />
-                </fieldset>
-              </form>
+                </>
+              )}
             </div>
             <footer className="modal-footer">
               <button className="button button-secondary" type="button" disabled={submitting} onClick={() => setSelectedId(null)}>Cancel</button>
@@ -256,8 +297,7 @@ export function EventAssignmentQueue() {
                 {submitting ? "Assigning…" : conflict ? "Conflict detected" : "Confirm assignment"}
               </button>
             </footer>
-          </section>
-        </div>
+        </dialog>
       )}
     </div>
   );

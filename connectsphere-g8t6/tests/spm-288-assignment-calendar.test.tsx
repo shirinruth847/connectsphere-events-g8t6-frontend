@@ -11,17 +11,21 @@ const selectedEvent = (eventId: number, startDatetime: string) => ({
   endDatetime: new Date(Date.parse(startDatetime) + 60 * 60 * 1000).toISOString(),
 });
 
+const title = (container: HTMLElement) => container.querySelector(".calendar-title")?.textContent;
+
 describe("SPM-288 assignment calendar", () => {
+  // Each start is Sunday 01:00 in Singapore but still Saturday in UTC, so
+  // reading the UTC date would open the week before.
   it("opens the selected event week in Singapore time and follows a different selected event", () => {
     const { container, rerender } = render(
-      <CoordinatorAvailabilityCalendar coordinators={coordinators} selectedEvent={selectedEvent(1, "2030-03-10T17:00:00Z")} />,
+      <CoordinatorAvailabilityCalendar coordinators={coordinators} selectedEvent={selectedEvent(1, "2030-03-09T17:00:00Z")} />,
     );
     expect(screen.getByRole("button", { name: "Week" })).toHaveAttribute("aria-pressed", "true");
-    expect(container.querySelector(".calendar-title")).toHaveTextContent("March 2030");
+    expect(title(container)).toBe("Sun 10, March 2030 – Sat 16");
 
-    rerender(<CoordinatorAvailabilityCalendar coordinators={coordinators} selectedEvent={selectedEvent(2, "2031-11-10T17:00:00Z")} />);
+    rerender(<CoordinatorAvailabilityCalendar coordinators={coordinators} selectedEvent={selectedEvent(2, "2031-11-08T17:00:00Z")} />);
     expect(screen.getByRole("button", { name: "Week" })).toHaveAttribute("aria-pressed", "true");
-    expect(container.querySelector(".calendar-title")).toHaveTextContent("November 2031");
+    expect(title(container)).toBe("Sun 9, November 2031 – Sat 15");
   });
 
   it("keeps the standalone calendar on its normal month view", () => {

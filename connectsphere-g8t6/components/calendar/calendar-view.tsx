@@ -1389,6 +1389,7 @@ function EventPopover({
                   value={selectedCoordinatorId ?? ""}
                   onChange={(e) => onSelectCoordinator?.(Number(e.target.value))}
                 >
+                  {selectedCoordinatorId === null && <option value="" disabled>Choose a coordinator</option>}
                   {coordinators.map((c) => (
                     <option key={c.coordinatorId} value={c.coordinatorId}>
                       {nameCounts.get(c.name) && nameCounts.get(c.name)! > 1
