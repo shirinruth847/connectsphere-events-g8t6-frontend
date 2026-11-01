@@ -15,6 +15,7 @@ import {
   type EventFormValues,
   type EventRequest,
 } from "@/lib/events";
+import { layoutLabel } from "./event-detail-rows";
 import { MAX_VENUE_CHOICES, RequestVenueStep } from "@/components/venues/event-venue-options/request-venue-step";
 import { EquipmentRequirementsEditor } from "@/components/events/equipment/equipment-requirements-editor";
 import { useEquipmentAvailability } from "@/components/events/equipment/use-equipment-availability";
@@ -32,7 +33,7 @@ type RequestOptions = {
 // EventView carries the same request fields as EventRequest; only the status type is wider.
 const valuesOf = (event: EventView): EventFormValues => formValuesFromEvent(event as unknown as EventRequest);
 
-const VENUE_FIELDS = ["venuePreferences"] as const;
+const VENUE_FIELDS = ["venuePreferences", "preferredLayoutType"] as const;
 
 // Lets the event page add a suggested venue from its card (developer request,
 // 1 November 2026): the form opens if needed, with the venue added to the choices.
@@ -388,6 +389,15 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
               suggested={suggested.map((item) => ({ venueId: item.venueId, name: item.name ?? venueName(item.venueId) }))}
             />
             <FieldError id={`${id("venuePreferences")}-error`} message={fieldErrors.venuePreferences} />
+            <div>
+              <FormLabel htmlFor={id("preferredLayoutType")} required>Preferred layout</FormLabel>
+              <select id={id("preferredLayoutType")} value={values.preferredLayoutType} onChange={(change) => update("preferredLayoutType", change.target.value)} className={fieldClasses} {...errorProps("preferredLayoutType")}>
+                {[...new Set([...(options?.layouts ?? ["NO_PREFERENCE"]), values.preferredLayoutType])].map((layout) => (
+                  <option key={layout} value={layout}>{layoutLabel(layout)}</option>
+                ))}
+              </select>
+              <FieldError id={`${id("preferredLayoutType")}-error`} message={fieldErrors.preferredLayoutType} />
+            </div>
           </CollapsibleGroup>
 
           <Group title="Accessibility">

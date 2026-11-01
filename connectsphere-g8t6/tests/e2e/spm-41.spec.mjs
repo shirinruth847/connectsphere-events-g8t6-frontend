@@ -475,12 +475,14 @@ test.describe("organiser: reply and amend", () => {
     await form.getByRole("button", { name: "Amend request" }).click();
     await expect(form.getByText("Registration settings cannot be changed while responding to a clarification request.")).toBeVisible();
     await form.getByLabel("Expected attendance").fill("250");
-    await expect(form.getByText("1 detail changed")).toBeVisible();
+    await form.getByRole("button", { name: /^Venues/ }).click();
+    await form.getByLabel("Preferred layout").selectOption("NO_PREFERENCE");
+    await expect(form.getByText("2 details changed")).toBeVisible();
     await form.getByRole("button", { name: "Save amendments" }).click();
 
     await expect(page.getByText("Amendments saved", { exact: true })).toBeVisible();
     expect(state.amendments).toHaveLength(1);
-    expect(state.amendments[0].body).toEqual({ changes: { expectedAttendance: 250 }, version: 3 });
+    expect(state.amendments[0].body).toEqual({ changes: { expectedAttendance: 250, preferredLayoutType: "NO_PREFERENCE" }, version: 3 });
     expect(state.amendments[0].key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
     await expect.poll(() => api.requestLog.filter(({ pathname }) => pathname.endsWith("/arrangements")).length).toBe(2);
     // Still returned: the thread and the amendment form stay available.
@@ -504,9 +506,10 @@ test.describe("organiser: reply and amend", () => {
     await toggle.focus();
     await page.keyboard.press("Enter");
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    // The organiser's venue step (SPM-76), with the choices ranked; there is no layout field.
+    // The organiser's venue step (SPM-76), with the choices ranked, retains the
+    // submission-layout amendment required by SPM-41 AC3.
     await expect(choices.getByText("Ideal venue")).toBeVisible();
-    await expect(form.getByLabel("Preferred layout")).toHaveCount(0);
+    await expect(form.getByLabel("Preferred layout")).toHaveValue("THEATRE");
     await toggle.click();
     await expect(choices).toBeHidden();
   });
