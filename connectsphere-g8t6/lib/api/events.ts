@@ -10,7 +10,7 @@ export type ApiEvent = {
   expectedAttendance: number;
   purpose?: string | null;
   venuePreferences?: number[];
-  equipmentRequirements?: Array<{ equipmentId: number; quantity: number }>;
+  equipmentRequirements?: Array<{ equipmentId: number; name?: string | null; quantity: number }>;
   organisation?: { organisationId: number; name: string } | null;
   createdAt: string;
   submittedAt?: string | null;

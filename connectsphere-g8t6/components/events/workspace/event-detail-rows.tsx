@@ -1,6 +1,7 @@
 import type { KeyValueRow } from "@/components/shared/key-value-panel";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatDuration, formatEventWindow } from "@/lib/datetime";
+import { equipmentLabel } from "@/lib/technical-requests";
 
 // Read-only detail rows shared by the organiser and coordinator views, so both
 // describe an event the same way.
@@ -35,8 +36,8 @@ const humanise = (code: string) => code.charAt(0) + code.slice(1).toLowerCase().
 export const layoutLabel = (layout: string | null) =>
   !layout || layout === "NO_PREFERENCE" ? "No preference" : humanise(layout);
 
-// The event API returns venue and equipment IDs only; names need the venue and
-// equipment catalogues, which are not in SPM-33's scope.
+// The event API returns venue IDs only; names need the venue catalogue, which
+// is not in SPM-33's scope.
 // Names come with the choices (SPM-76); an ID only where a name is missing.
 export const venuePreferenceLabel = (venueIds: number[], choices: EventView["venuePreferenceTimes"] = []) => {
   const names = new Map((choices ?? []).map((choice) => [choice.venueId, choice.venueName]));
@@ -94,4 +95,4 @@ export function RequirementList({ items, empty }: { items: string[]; empty: stri
 }
 
 export const equipmentItems = (event: EventView) =>
-  event.equipmentRequirements.map((item) => `Equipment #${item.equipmentId} × ${item.quantity}`);
+  event.equipmentRequirements.map((item) => `${equipmentLabel(item)} × ${item.quantity}`);

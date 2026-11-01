@@ -40,10 +40,11 @@ export interface VenueRequirement {
 export interface VenueConflict {
   type: "BOOKING" | "HOLD" | "BLOCK";
   label: string;
-  occupiedStart: string;
-  occupiedEnd: string;
-  holdExpiresAt: string | null;
-  reasonLabel: string | null;
+  // Absent for organisers, who see only the kind of entry (SPM-76 AC3).
+  occupiedStart?: string;
+  occupiedEnd?: string;
+  holdExpiresAt?: string | null;
+  reasonLabel?: string | null;
   // SPM-185 AC2: which part of the entry the event's occupied time hits, e.g.
   // "Venue's turnaround period (12:00pm–12:45pm) overlaps with your requested
   // booking, …". Null when the backend does not explain the conflict.
@@ -151,8 +152,8 @@ export const getEventVenueChoices = async (eventId: number): Promise<EventVenueC
 
 // ---------- the organiser's venue step (SPM-76) ----------
 // GET /api/venues/options and /api/venues/options/:venueId/availability: the
-// request's values so far are sent with the filters; the backend says what
-// kind of entry makes a venue unavailable and when, never whose.
+// request's values so far are sent with the filters; the backend says only what
+// kind of entry makes a venue unavailable, never when or whose.
 
 export interface RequestVenueNeeds {
   startDatetime: string | null;
@@ -185,49 +186,37 @@ export const getRequestVenueOptions = async (needs: RequestVenueNeeds, query: Ve
   };
 };
 
-export interface BusyPeriod {
+// What makes a chosen venue unavailable over the organiser's requested time:
+// only the kind of entry, never when it is or whose (SPM-76 AC3, TC-VS-003).
+export interface UnavailableKind {
   type: "BOOKING" | "HOLD" | "BLOCK";
   label: string;
-  occupiedStart: string;
-  occupiedEnd: string;
 }
 
 export interface RequestVenueAvailability {
-  from: string;
-  to: string;
-  venue: {
-    venueId: number;
-    name: string;
-    operatingHours: string | null;
-    setupMinutes: number | null;
-    turnaroundMinutes: number | null;
-    buffersRecorded: boolean;
-    busyPeriods: BusyPeriod[];
-    check: {
-      start: string;
-      end: string;
-      occupiedStart: string;
-      occupiedEnd: string;
-      availability: string;
-      availabilityLabel: string;
-      conflicts: BusyPeriod[];
-      operatingHoursWarning: { message: string } | null;
-    } | null;
+  venueId: number;
+  availability: {
+    status: string;
+    label: string;
+    conflicts: UnavailableKind[];
+    operatingHoursWarning: { message: string } | null;
   };
 }
 
-// from/to and the checked time are ISO 8601 instants.
-export const getRequestVenueAvailability = async (
-  venueId: number,
-  { from, to, check }: { from: string; to: string; check: { start: string; end: string } | null },
-): Promise<RequestVenueAvailability> => {
-  const params = new URLSearchParams({ from, to });
-  if (check) {
-    params.set("checkStart", check.start);
-    params.set("checkEnd", check.end);
-  }
-  const data = await apiRequest<RequestVenueAvailability>(`/venues/options/${venueId}/availability?${params.toString()}`);
-  return { ...data, venue: { ...data.venue, busyPeriods: Array.isArray(data.venue?.busyPeriods) ? data.venue.busyPeriods : [] } };
+// start/end are ISO 8601 instants: the time the organiser wants this venue for.
+export const getRequestVenueAvailability = async (venueId: number, { start, end }: { start: string; end: string }): Promise<RequestVenueAvailability> => {
+  const data = await apiRequest<Partial<RequestVenueAvailability>>(`/venues/options/${venueId}/availability?${new URLSearchParams({ start, end }).toString()}`);
+  const availability = data.availability;
+  if (!availability || typeof availability.label !== "string") throw new Error("Availability could not be checked.");
+  return {
+    venueId,
+    availability: {
+      status: availability.status ?? "NOT_CHECKED",
+      label: availability.label,
+      conflicts: Array.isArray(availability.conflicts) ? availability.conflicts : [],
+      operatingHoursWarning: availability.operatingHoursWarning ?? null,
+    },
+  };
 };
 
 // Read-only photos of an available venue, for organisers, coordinators and Leads.

@@ -3,7 +3,6 @@
 // its occupied range. Pure (type-only imports), so it is unit tested.
 import type { CalendarCoordinator, CalendarEvent, CalendarOverlay, CalendarViewMode } from "../calendar/calendar-view";
 import type { CalendarEntry, VenueAvailability } from "../../lib/api/venues";
-import type { RequestVenueAvailability } from "../../lib/api/event-venues";
 
 export type CalendarEntryRef = { venueId: number; venueName: string; entry: CalendarEntry };
 

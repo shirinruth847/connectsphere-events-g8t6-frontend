@@ -11,6 +11,11 @@ test('[SPM-35 AC1 / SPM-37 Scenario 4] preserve venue, layout and equipment on r
  const payload=toPayload(formValuesFromEvent(event));
  assert.equal(payload.preferredLayoutType,'THEATRE'); assert.deepEqual(payload.venuePreferences,[4,2]);assert.deepEqual(payload.equipmentRequirements,event.equipmentRequirements);assert.deepEqual(payload.accessibilityNeeds,['Custom note']);
 });
+test('[SPM-286] equipment names from a loaded event are not sent back on save', () => {
+ const event={title:'Saved',status:'DRAFT',equipmentRequirements:[{equipmentId:8,name:'Projector',category:'Visual',quantity:3}]};
+ assert.deepEqual(formValuesFromEvent(event).equipmentRequirements,[{equipmentId:8,quantity:3}]);
+ assert.deepEqual(toPayload({...EMPTY_EVENT_FORM,title:'T',equipmentRequirements:[{equipmentId:8,name:'Projector',quantity:3}]}).equipmentRequirements,[{equipmentId:8,quantity:3}]);
+});
 test('[SPM-35 TC-003] exactly 48 hours is valid; earlier is rejected', () => {
  const now=Date.parse('2027-01-01T10:00:00Z');const values={...EMPTY_EVENT_FORM,startDatetime:'2027-01-03T10:00:00Z',endDatetime:'2027-01-03T12:00:00Z',expectedAttendance:'1'};
  assert.deepEqual(validateEventStep(values,1,true,now),{});

@@ -222,7 +222,7 @@ export function useHoldRequests(): {
       onDecline={() => { setDeclining(request); setReason(""); setDeclineError(null); }}
       onExtend={(days) => void run(request, () => extendVenueHold(request.hold?.holdId ?? "", days))}
       onRelease={() => void run(request, () => releaseVenueHold(request.hold?.holdId ?? ""))}
-              onRetry={reload}
+      onRetry={reload}
     />
   );
   const dialog = (

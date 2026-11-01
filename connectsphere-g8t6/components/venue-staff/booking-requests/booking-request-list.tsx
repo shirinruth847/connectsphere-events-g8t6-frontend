@@ -9,6 +9,7 @@ import { OptionDropdown } from "@/components/shared/option-dropdown";
 import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { useDebouncedValue } from "@/components/venues/use-debounced-value";
 import { useVenueOptions } from "@/components/venues/use-venue-options";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { ROLE_LABELS } from "@/lib/auth";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import {
@@ -219,12 +220,16 @@ export function BookingRequestList() {
       eyebrow={ROLE_LABELS.VENUE_STAFF}
       description="Booking and hold requests from event coordinators. A hold keeps a venue for a few days while the coordinator confirms with the organiser; a booking request asks you to approve the venue for the event."
       action={
-        state.status === "ready" ? (
-          <div className="flex flex-wrap gap-2">
-            <CountTile count={pendingCount} label="Pending" />
-            <CountTile count={approvedCount} label="Approved" />
-          </div>
-        ) : null
+        <div className="flex flex-wrap items-center gap-2">
+          {state.status === "ready" ? (
+            <>
+              <CountTile count={pendingCount} label="Pending" />
+              <CountTile count={approvedCount} label="Approved" />
+            </>
+          ) : null}
+          {/* The Updates button and panel shared with the other inbox roles (SPM-286). */}
+          <NotificationsBell />
+        </div>
       }
     >
       <h2 className="mb-3 text-lg font-semibold text-on-surface">Requests</h2>

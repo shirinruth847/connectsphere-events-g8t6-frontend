@@ -953,7 +953,7 @@ test("[SPM-72 AC11] an unexpected venue reply shows no venues and never breaks t
 
   await expect(page.getByText("The organiser did not choose a venue.")).toBeVisible();
   await expect(page.getByRole("heading", { name: /Schedule & attendance/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Suggest" })).toHaveCount(0);
   await openSearch(page);
   await expect(page.getByText("No venues are currently available")).toBeVisible();
 });

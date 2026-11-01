@@ -229,6 +229,7 @@ test("[SPM-190 AC1][AC2] Venue Staff place a pending hold after its checks and s
   // Nothing is pending now; the list shows it held.
   await expect(page.getByText("No pending requests.")).toBeVisible();
   await expect(holdCard(page, 3).getByText("On hold (tentative)", { exact: true })).toBeVisible();
+  await expect(holdCard(page, 3).getByRole("button", { name: "Place hold" })).toHaveCount(0);
 });
 
 test("[SPM-190 AC4] a blocked window cannot be placed; Venue Staff decline it with a reason", async ({ page }) => {

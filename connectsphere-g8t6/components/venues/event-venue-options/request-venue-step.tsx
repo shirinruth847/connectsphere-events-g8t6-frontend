@@ -5,11 +5,11 @@ import { Button } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { formatEventWindow } from "@/lib/datetime";
 import { getRequestVenueAvailability, getRequestVenueOptions, type EventVenueOption, type RequestVenueNeeds, type VenueOptionsQuery, type VenueOptionsResult } from "@/lib/api/event-venues";
-import { localDateTimeToIso, toLocalDateTimeInput, toPayload, type EventFormValues, type VenueTime } from "@/lib/events";
-import { RequestVenueCalendar } from "./request-venue-calendar";
+import { localDateTimeToIso, toPayload, type EventFormValues, type VenueTime } from "@/lib/events";
 import { VenueBrowser } from "./venue-browser";
 import { VenueBadge } from "./venue-option-card";
 import { useDebouncedValue } from "../use-debounced-value";
+import { ORGANISER_VENUE_PAGE_SIZES } from "./venue-option-model";
 
 // The request API accepts up to 20 ranked venue preferences.
 export const MAX_VENUE_CHOICES = 20;
@@ -19,6 +19,7 @@ type Window = { start: string; end: string };
 type ChoiceCheck = { status: "checking" } | { status: "error" } | { status: "ready"; label: string; unavailable: boolean };
 
 const MAX_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
+const ORGANISER_BROWSER = { pageSizes: ORGANISER_VENUE_PAGE_SIZES };
 
 // What the venues are checked against: the request's values so far.
 const requestNeeds = (values: EventFormValues): RequestVenueNeeds => {
@@ -36,7 +37,8 @@ const requestNeeds = (values: EventFormValues): RequestVenueNeeds => {
 };
 
 // Each choice's availability over its own requested time, checked again a
-// moment after a time stops changing.
+// moment after a time stops changing: a status and the kinds of entry in the
+// way, never when they are (SPM-76 AC3, TC-VS-003).
 function useChoiceChecks(windows: Array<{ venueId: number } & Window>) {
   const key = useDebouncedValue(JSON.stringify(windows), 500);
   const [checks, setChecks] = useState<Map<string, ChoiceCheck>>(new Map());
@@ -44,10 +46,9 @@ function useChoiceChecks(windows: Array<{ venueId: number } & Window>) {
     let alive = true;
     for (const item of JSON.parse(key) as Array<{ venueId: number } & Window>) {
       const id = `${item.venueId}|${item.start}|${item.end}`;
-      getRequestVenueAvailability(item.venueId, { from: item.start, to: item.end, check: item })
-        .then((result) => {
-          const check = result.venue.check;
-          if (alive && check) setChecks((current) => new Map(current).set(id, { status: "ready", label: check.availabilityLabel, unavailable: check.conflicts.length > 0 }));
+      getRequestVenueAvailability(item.venueId, { start: item.start, end: item.end })
+        .then(({ availability }) => {
+          if (alive) setChecks((current) => new Map(current).set(id, { status: "ready", label: availability.label, unavailable: availability.conflicts.length > 0 }));
         })
         .catch(() => { if (alive) setChecks((current) => new Map(current).set(id, { status: "error" })); });
     }
@@ -71,9 +72,10 @@ interface RequestVenueStepProps {
 // SPM-76: the organiser explores venues with the coordinator's search
 // (filters, details, photos, comparison) inside the request form, and ranks up
 // to 20 choices. Each choice is wanted for the whole event unless the
-// organiser narrows it, by typing or by dragging the yellow block on the
-// venue's calendar; several venues may be wanted at the same or different
-// times. Choosing never holds or books a venue.
+// organiser types a narrower start and end; several venues may be wanted at
+// the same or different times. There is no availability calendar: a choice
+// shows only whether the venue is free then (TC-VS-001, TC-VS-003). Choosing
+// never holds or books a venue.
 export function RequestVenueStep({ values, knownNames, onChange, save, suggested = [] }: RequestVenueStepProps) {
   const [learnedNames, setLearnedNames] = useState<Map<number, string>>(new Map());
   const [openId, setOpenId] = useState<number | null>(null);
@@ -120,13 +122,6 @@ export function RequestVenueStep({ values, knownNames, onChange, save, suggested
     if (openId === venueId) setOpenId(null);
     onChange({ venuePreferences: chosen.filter((id) => id !== venueId), venueTimes: withoutTime(venueId) });
   };
-  // A time equal to the whole event is stored as "whole event", so it follows the event's dates.
-  const setTime = useCallback((venueId: number, next: Window) => {
-    const whole = eventWindow && Date.parse(next.start) === Date.parse(eventWindow.start) && Date.parse(next.end) === Date.parse(eventWindow.end);
-    const others = Object.fromEntries(Object.entries(values.venueTimes).filter(([id]) => Number(id) !== venueId));
-    const venueTimes: Record<string, VenueTime> = whole ? others : { ...others, [venueId]: { start: toLocalDateTimeInput(next.start), end: toLocalDateTimeInput(next.end) } };
-    onChange({ venuePreferences: chosen, venueTimes });
-  }, [chosen, eventWindow, onChange, values.venueTimes]);
   const typeTime = (venueId: number, edge: keyof VenueTime, text: string) => {
     const current = values.venueTimes[venueId] ?? { start: values.startDatetime, end: values.endDatetime };
     onChange({ venuePreferences: chosen, venueTimes: { ...values.venueTimes, [venueId]: { ...current, [edge]: text } } });
@@ -148,8 +143,6 @@ export function RequestVenueStep({ values, knownNames, onChange, save, suggested
     : <Button type="button" onClick={() => add(venue.venueId)} disabled={full} title={full ? `You can choose up to ${MAX_VENUE_CHOICES} venues.` : undefined}>{chosen.length ? "Add as a choice" : "Choose as ideal venue"}</Button>;
 
   const openVenue = openId !== null && chosen.includes(openId) ? openId : null;
-  const openWindow = openVenue !== null ? windowOf(openVenue) : null;
-  const onCalendarChange = useCallback((next: Window) => { if (openVenue !== null) setTime(openVenue, next); }, [openVenue, setTime]);
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
@@ -214,7 +207,7 @@ export function RequestVenueStep({ values, knownNames, onChange, save, suggested
                     ) : null}
                     {narrowed ? <Button type="button" variant="quiet" onClick={() => onChange({ venuePreferences: chosen, venueTimes: withoutTime(venueId) })}>Use whole event</Button> : null}
                   </div>
-                  {openVenue === venueId && openWindow && eventWindow ? (
+                  {openVenue === venueId && eventWindow ? (
                     <div className="grid gap-3 border-t border-outline-variant pt-3">
                       <div className="grid gap-2 sm:grid-cols-2">
                         <label className="grid gap-1 text-xs font-semibold text-on-surface-variant">
@@ -248,7 +241,7 @@ export function RequestVenueStep({ values, knownNames, onChange, save, suggested
         <p className="text-xs text-on-surface-variant">Each venue is wanted for the whole event unless you set a time; venues can share a time or have different ones. Choosing does not book or hold a venue; your coordinator arranges the bookings.</p>
       </section>
 
-      <VenueBrowser load={load} reloadKey={needsKey} onLoaded={remember} badge={badge} action={action} />
+      <VenueBrowser load={load} reloadKey={needsKey} onLoaded={remember} badge={badge} action={action} organiser={ORGANISER_BROWSER} />
     </div>
   );
 }

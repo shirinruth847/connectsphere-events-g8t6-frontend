@@ -5,13 +5,17 @@ import { apiRequest } from "@/lib/api";
 // relationship has ended (AC6). Field names match the backend response.
 
 // TECHNICAL_REQUESTS: Technical Support review the request from their dashboard (SPM-287).
-export type NotificationTargetPage = "MY_EVENTS" | "EVENT_WORKSPACE" | "TECHNICAL_REQUESTS";
+export type NotificationTargetPage = "MY_EVENTS" | "EVENT_WORKSPACE" | "TECHNICAL_REQUESTS" | "VENUE_BOOKING_REQUESTS";
 
 export interface NotificationTarget {
   // Kept as string so a page the backend adds later renders without a link
   // rather than breaking the inbox.
   page: NotificationTargetPage | (string & {});
   event_id: number;
+  // TECHNICAL_REQUESTS only: the request the notice is about (SPM-196).
+  technical_request_id?: number;
+  // VENUE_BOOKING_REQUESTS only: the booking a new booking request notice is about (SPM-286).
+  booking_id?: number;
 }
 
 export interface NotificationItem {
