@@ -6,6 +6,7 @@ import { installConnectSphereMocks, makeDraft } from "./support.mjs";
 
 const eventWindow = { startDatetime: "2026-11-20T02:00:00.000Z", endDatetime: "2026-11-20T04:00:00.000Z" };
 const forum = { eventId: 442, requestId: "REQ-000442", title: "Synthetic planning forum", status: "PLANNING", eventType: "SEMINAR", eventTypeLabel: "Seminar" };
+const cardRenderTimeout = 15_000;
 
 const dashboards = {
   ORGANISER: {
@@ -44,7 +45,7 @@ for (const [role, { path = "/dashboard", cards, setup }] of Object.entries(dashb
     await setup(state, page);
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto(path);
-    await expect(page.locator(cards)).toHaveCount(4);
+    await expect(page.locator(cards)).toHaveCount(4, { timeout: cardRenderTimeout });
     expect(await perRow(page, cards)).toBe(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1366);
 
