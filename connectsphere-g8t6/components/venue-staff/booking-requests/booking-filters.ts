@@ -26,7 +26,6 @@ export interface VenueBookingFilters {
   sort?: BookingSort;
   order?: SortOrder;
 }
-
 const SGT_OFFSET = "+08:00";
 
 const nextDay = (date: string) => {
@@ -160,4 +159,3 @@ export function groupBookingsByEvent<T extends GroupableBooking>(bookings: T[]):
     };
   });
 }
-

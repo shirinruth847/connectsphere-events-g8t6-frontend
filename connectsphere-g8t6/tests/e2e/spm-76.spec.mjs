@@ -50,7 +50,6 @@ async function openVenueStep(page) {
   await expect(search.getByRole('article')).toHaveCount(12);
   return { state, search, optionQueries, availabilityQueries };
 }
-
 // Developer request of 1 November 2026: 12 venues first and a typed "Show"
 // number, as in the coordinator's search; no required-facilities box.
 test('[SPM-76 AC2][TC-VS-001/002] 12 venues first, a typed page size, the request layout checks them, and Enter never submits', async ({ page }) => {
@@ -152,4 +151,3 @@ test('[developer request] the step circles open their step, and there is no Add 
   await expect(page.getByRole('heading', { name: 'Venue & Layout Requirements' })).toBeVisible();
   // Submit still checks every step, so skipping ahead never sends an incomplete request.
 });
-

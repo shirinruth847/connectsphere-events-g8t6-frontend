@@ -14,7 +14,6 @@ const venue = (venueId, name) => ({
   roomLayoutType: "Theater",
   roomCapacity: 200,
 });
-
 const summary = (bookingId, status, venueId, venueName, overrides = {}) => ({
   bookingId,
   label: null,
@@ -421,4 +420,3 @@ test("[developer request 1 Nov 2026] three venues booked for one event are one r
   await expect(only.getByText("Pending", { exact: true })).toBeVisible();
   await expect(only.getByRole("link", { name: "Review", exact: true })).toHaveAttribute("href", "/events/442?booking=130");
 });
-
