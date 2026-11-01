@@ -21,18 +21,15 @@ type OptionsState<T> =
 // Search and capacity are typed; layout, facility and accessibility are
 // multi-selects of the values the venues carry (developer request of 25
 // October 2026); a venue matches with any of the chosen values.
-// Required facilities (organisers only) rank and highlight venues but never
-// hide one, so they do not count as narrowing the list.
-type Filters = { search: string; minCapacity: string; layout: string[]; facility: string[]; accessibility: string[]; requiredFacilities: string };
-type TextField = { key: "search" | "minCapacity" | "requiredFacilities"; label: string; placeholder: string; inputMode?: "numeric" };
+type Filters = { search: string; minCapacity: string; layout: string[]; facility: string[]; accessibility: string[] };
+type TextField = { key: "search" | "minCapacity"; label: string; placeholder: string; inputMode?: "numeric" };
 
-const EMPTY_FILTERS: Filters = { search: "", minCapacity: "", layout: [], facility: [], accessibility: [], requiredFacilities: "" };
+const EMPTY_FILTERS: Filters = { search: "", minCapacity: "", layout: [], facility: [], accessibility: [] };
 const hasValue = (filters: Filters) => Object.values(filters).some((value) => (Array.isArray(value) ? value.length > 0 : Boolean(value.trim())));
-const narrows = (filters: Filters) => hasValue({ ...filters, requiredFacilities: "" });
+const narrows = hasValue;
 // Search and capacity share the first line; the detail filters the second.
 const SEARCH_FIELD: TextField = { key: "search", label: "Search", placeholder: "Search by venue name or location" };
 const CAPACITY_FIELD: TextField = { key: "minCapacity", label: "Minimum capacity", placeholder: "Min. capacity", inputMode: "numeric" };
-const REQUIRED_FACILITIES_FIELD: TextField = { key: "requiredFacilities", label: "Required facilities", placeholder: "Required facilities, separated by commas" };
 // The shared field style without its full width, for the toolbar selects.
 const compactSelect = `${fieldClasses.replace("w-full", "w-auto")} py-2`;
 
@@ -51,10 +48,10 @@ interface VenueBrowserProps<T extends VenueOptionsResult> {
   alternativeCapacity?: number | null;
   // Opens already filtered to alternativeCapacity, from a card's button.
   startWithAlternatives?: boolean;
-  // The organiser's venue step (SPM-76): a typed required-facilities box,
-  // "Show" as a choice of these page sizes (the first is the default) and the
-  // details coordinators leave out. Without it: the coordinator's search.
-  organiser?: { pageSizes: readonly number[] };
+  // The organiser's venue step (SPM-76): adds the details coordinators leave
+  // out. The filters and "Show" are the coordinator's (developer request of
+  // 1 November 2026: no required-facilities box, 12 venues by default).
+  organiser?: boolean;
 }
 
 const alternativesFilter = (capacity: number): Filters => ({ ...EMPTY_FILTERS, minCapacity: String(capacity) });
@@ -65,15 +62,14 @@ const alternativesFilter = (capacity: number): Filters => ({ ...EMPTY_FILTERS, m
 // the backend. The cards scroll inside a window two rows of three tall
 // (developer request of 23 October 2026); the event page opens this in a popup.
 export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, onLoaded, calendar, badge, action, alternativeCapacity, startWithAlternatives, organiser }: VenueBrowserProps<T>) {
-  const firstPageSize = organiser?.pageSizes[0] ?? DEFAULT_VENUE_PAGE_SIZE;
   const startFilters = startWithAlternatives && alternativeCapacity ? alternativesFilter(alternativeCapacity) : EMPTY_FILTERS;
   const [draft, setDraft] = useState<Filters>(startFilters);
   const [applied, setApplied] = useState<Filters>(startFilters);
   const [sort, setSort] = useState<VenueOptionSort>("match");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
-  const [pageSize, setPageSize] = useState(firstPageSize);
-  const [pageSizeText, setPageSizeText] = useState(String(firstPageSize));
-  const [shown, setShown] = useState(firstPageSize);
+  const [pageSize, setPageSize] = useState(DEFAULT_VENUE_PAGE_SIZE);
+  const [pageSizeText, setPageSizeText] = useState(String(DEFAULT_VENUE_PAGE_SIZE));
+  const [shown, setShown] = useState(DEFAULT_VENUE_PAGE_SIZE);
   const [state, setState] = useState<OptionsState<T>>({ status: "loading" });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const lastReady = useRef<Extract<OptionsState<T>, { status: "ready" }> | null>(null);
@@ -211,7 +207,6 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
         <div className="flex flex-wrap gap-2">
           {input(SEARCH_FIELD, "min-w-0 flex-[3_1_14rem]")}
           {input(CAPACITY_FIELD, "min-w-0 flex-[1_1_8rem]")}
-          {organiser ? input(REQUIRED_FACILITIES_FIELD, "min-w-0 flex-[2_1_12rem]") : null}
           <div className="flex gap-2">
             <Button type="button" onClick={apply}><Icon name="check" size={16} />Apply filters</Button>
             <Button type="button" variant="quiet" onClick={clear} disabled={!filtered && !hasValue(draft)}>Clear filters</Button>
@@ -239,46 +234,28 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
             {VENUE_OPTION_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <SortOrderToggle order={order} onChange={(next) => reload({ order: next })} />
-          {/* "Show x results": the organiser picks 10, 20, 50 or 100 (SPM-76 AC2);
-              the coordinator types a number from 1 to 100, and an unfinished
-              or invalid entry keeps the last size and is put back on blur. */}
+          {/* "Show x results": a typed number from 1 to 100; an unfinished or
+              invalid entry keeps the last size and is put back on blur. */}
           <label htmlFor="venue-option-page-size" className="text-xs font-semibold text-on-surface-variant">Show</label>
-          {organiser ? (
-            <select
-              id="venue-option-page-size"
-              className={compactSelect}
-              value={pageSize}
-              aria-describedby="venue-option-page-size-unit"
-              onChange={(changeEvent) => {
-                const size = Number(changeEvent.target.value);
-                setPageSize(size);
-                setPageSizeText(String(size));
-                setShown(size);
-              }}
-            >
-              {organiser.pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
-          ) : (
-            <input
-              id="venue-option-page-size"
-              type="number"
-              min={1}
-              max={MAX_VENUE_PAGE_SIZE}
-              step={1}
-              inputMode="numeric"
-              className={`${fieldClasses.replace("w-full", "w-20")} py-2`}
-              value={pageSizeText}
-              aria-describedby="venue-option-page-size-unit"
-              onChange={(changeEvent) => {
-                setPageSizeText(changeEvent.target.value);
-                const size = parsePageSize(changeEvent.target.value);
-                if (size === null) return;
-                setPageSize(size);
-                setShown(size);
-              }}
-              onBlur={() => setPageSizeText(String(pageSize))}
-            />
-          )}
+          <input
+            id="venue-option-page-size"
+            type="number"
+            min={1}
+            max={MAX_VENUE_PAGE_SIZE}
+            step={1}
+            inputMode="numeric"
+            className={`${fieldClasses.replace("w-full", "w-20")} py-2`}
+            value={pageSizeText}
+            aria-describedby="venue-option-page-size-unit"
+            onChange={(changeEvent) => {
+              setPageSizeText(changeEvent.target.value);
+              const size = parsePageSize(changeEvent.target.value);
+              if (size === null) return;
+              setPageSize(size);
+              setShown(size);
+            }}
+            onBlur={() => setPageSizeText(String(pageSize))}
+          />
           <span id="venue-option-page-size-unit" className="text-xs font-semibold text-on-surface-variant">results</span>
           {state.status === "ready" && venues.length ? (
             <Button type="button" variant="secondary" aria-pressed={compareOpen} onClick={() => { setCompareOpen((open) => !open); if (compareOpen) setCompareId(null); }}>
@@ -302,7 +279,7 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                 onOpenVenue={openVenue}
                 onFindAlternatives={findAlternatives}
                 calendar={calendar}
-                organiser={Boolean(organiser)}
+                organiser={organiser}
                 badge={viewing ? badge?.(viewing) : undefined}
                 action={viewing ? action?.(viewing, "panel") : undefined}
               />
@@ -317,7 +294,7 @@ export function VenueBrowser<T extends VenueOptionsResult>({ load, reloadKey, on
                   onOpenVenue={(venueId) => (venues.some((venue) => venue.venueId === venueId) ? setCompareId(venueId) : openVenue(venueId))}
                   onFindAlternatives={findAlternatives}
                   calendar={calendar}
-                  organiser={Boolean(organiser)}
+                  organiser={organiser}
                   badge={comparing ? badge?.(comparing) : undefined}
                   action={comparing ? action?.(comparing, "panel") : undefined}
                 />

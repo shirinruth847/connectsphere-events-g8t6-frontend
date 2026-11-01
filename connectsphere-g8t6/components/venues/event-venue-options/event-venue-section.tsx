@@ -26,8 +26,6 @@ import { eventCalendarCheck, suggestionBlocker, venueById } from "./venue-option
 import { EventVenueBookings, type BookingListState } from "./event-venue-bookings";
 import { VenueBookingRequestDialog } from "./venue-booking-request-dialog";
 import { bookedVenueIds } from "./venue-booking-form-model";
-import { EventVenueHolds } from "./event-venue-holds";
-import type { VenueHoldRequest } from "@/lib/api/venue-holds";
 
 type ChoicesState =
   | { status: "loading" }
@@ -99,11 +97,8 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   const [bookings, setBookings] = useState<BookingListState>({ status: "loading" });
   const [bookingsAttempt, setBookingsAttempt] = useState(0);
   // Each opening of the request form gets a new key, so it starts fresh.
-  // fromHold: the form confirms that hold (SPM-188 AC9).
-  const [request, setRequest] = useState<{ open: boolean; key: number; startVenueId: number | null; fromHold: VenueHoldRequest | null } | null>(null);
+  const [request, setRequest] = useState<{ open: boolean; key: number; startVenueId: number | null } | null>(null);
   const [requested, setRequested] = useState<VenueBookingRequestResult | null>(null);
-  // The hold request form (SPM-190), keyed like the booking form.
-  const [holdForm, setHoldForm] = useState<{ open: boolean; key: number; venueId: number | null } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -156,12 +151,11 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
   // The organiser's choices and any outside suggestion, for the form's venue list.
   const requestVenues = [...allVenues, ...[...preferredOptions, ...suggestedOptions].filter((option, index, list) => !venueById(allVenues, option.venueId) && list.findIndex((item) => item.venueId === option.venueId) === index)];
   const featuredVenueIds = [...new Set([...sentIds, ...preferred.map((choice) => choice.venueId)])];
-  const openRequest = (startVenueId: number | null, fromHold: VenueHoldRequest | null = null) => {
+  const openRequest = (startVenueId: number | null) => {
     if (!canRequest) return;
     setRequested(null);
-    setRequest((current) => ({ open: true, key: (current?.key ?? 0) + 1, startVenueId, fromHold }));
+    setRequest((current) => ({ open: true, key: (current?.key ?? 0) + 1, startVenueId }));
   };
-  const confirmHold = (hold: VenueHoldRequest) => openRequest(hold.venueId, hold);
   const closeRequest = () => setRequest((current) => (current ? { ...current, open: false } : current));
   const bookingsRequested = (result: VenueBookingRequestResult) => {
     closeRequest();
@@ -216,19 +210,10 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
       </div>
     );
   };
-  const openHoldForm = (venueId: number | null) => {
-    if (!canRequest) return;
-    setSearchOpen(false);
-    setRelatedId(null);
-    setHoldForm((current) => ({ open: true, key: (current?.key ?? 0) + 1, venueId }));
-  };
-  // "Request hold" (SPM-190) keeps a venue for a while before booking it.
-  const holdAction = (venue: EventVenueOption) => {
-    if (!canRequest || booked.has(venue.venueId)) return null;
-    return <Button type="button" variant="quiet" aria-haspopup="dialog" onClick={() => openHoldForm(venue.venueId)}>Request hold</Button>;
-  };
+  // A booking request is the venue's hold until Venue Staff decide (SPM-190),
+  // so there is no separate "Request hold".
   const action = (venue: EventVenueOption, place: "card" | "panel") => {
-    const buttons = [suggestAction(venue, place), requestAction(venue, place), holdAction(venue)].filter(Boolean);
+    const buttons = [suggestAction(venue, place), requestAction(venue, place)].filter(Boolean);
     if (buttons.length <= 1) return buttons[0] ?? null;
     return <div className="flex flex-wrap items-start gap-2">{buttons}</div>;
   };
@@ -307,18 +292,6 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
         canRequest={canRequest}
         onRequest={() => openRequest(null)}
         onRetry={() => { setBookings({ status: "loading" }); setBookingsAttempt((value) => value + 1); }}
-      />
-      <EventVenueHolds
-        event={event}
-        isCoordinator={isCoordinator}
-        canRequest={canRequest}
-        venues={requestVenues}
-        form={holdForm}
-        onOpenForm={openHoldForm}
-        onCloseForm={() => setHoldForm((current) => (current ? { ...current, open: false } : current))}
-        onConfirm={canRequest ? confirmHold : undefined}
-        bookedVenueIds={booked}
-        reloadKey={bookingsAttempt}
       />
       {canSuggest || sent.length ? (
         <section aria-labelledby={`venue-list-${event.eventId}`} className="grid gap-3 rounded-panel border border-outline-variant bg-surface-container-low p-4">
@@ -498,7 +471,6 @@ export function EventVenueSection({ event, onSuggested, onStale, onBookingsReque
           requestedTimes={requestedTimes}
           bookings={bookingList}
           startVenueId={request.startVenueId}
-          fromHold={request.fromHold}
           onClose={closeRequest}
           onSubmitted={bookingsRequested}
           onStale={() => { closeRequest(); onStale?.(); }}

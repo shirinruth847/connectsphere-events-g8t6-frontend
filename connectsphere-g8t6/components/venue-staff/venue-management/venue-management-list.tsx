@@ -15,7 +15,6 @@ import {
   VENUE_STATUS_LABELS,
   createVenue,
   listManagedVenues,
-  updateVenueDetails,
   type ManagedVenue,
   type ManagedVenueFilters,
   type VenueStatus,
@@ -63,13 +62,13 @@ function CreateVenueDialog({ open, onClose, onCreated }: {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const found = validateVenueForm(values);
+    const found = validateVenueForm(values, { requireBuffers: true });
     setErrors(found);
     setFormError("");
     if (Object.keys(found).length) return;
     setSaving(true);
     try {
-      const { venue } = await createVenue({
+      const { venue, warning } = await createVenue({
         name: values.name,
         address: values.address,
         maxCapacity: values.maxCapacity,
@@ -78,21 +77,11 @@ function CreateVenueDialog({ open, onClose, onCreated }: {
         contactNumber: values.contactNumber,
         status: values.status as VenueStatus,
         ...(values.status === "ACTIVE" ? {} : { statusReason: values.statusReason }),
+        setupMinutes: Number(values.setupMinutes),
+        turnaroundMinutes: Number(values.turnaroundMinutes),
       });
-      let warning: string | null = null;
-      if (values.setupMinutes.trim() || values.turnaroundMinutes.trim()) {
-        try {
-          await updateVenueDetails(venue.venueId, {
-            version: 0,
-            ...(values.setupMinutes.trim() ? { setupMinutes: Number(values.setupMinutes) } : {}),
-            ...(values.turnaroundMinutes.trim() ? { turnaroundMinutes: Number(values.turnaroundMinutes) } : {}),
-          });
-        } catch {
-          warning = "The venue was created, but its setup and turnaround times could not be saved. Add them on the venue page.";
-        }
-      }
       reset();
-      onCreated(venue, warning);
+      onCreated(venue, warning ?? null);
     } catch (caught) {
       if (caught instanceof ApiError && Object.keys(caught.fields).length) setErrors(caught.fields);
       setFormError(caught instanceof Error ? caught.message : "The venue could not be created.");
@@ -131,8 +120,7 @@ function CreateVenueDialog({ open, onClose, onCreated }: {
             </Field>
           ) : null}
         </div>
-        <BufferFields idPrefix="create-venue" values={values} errors={errors} onChange={change} disabled={saving} />
-        <p className="text-xs text-on-surface-variant">Setup and turnaround times are needed before the venue can receive holds or bookings.</p>
+        <BufferFields idPrefix="create-venue" values={values} errors={errors} onChange={change} disabled={saving} required />
       </form>
     </Dialog>
   );
@@ -160,7 +148,7 @@ function ManagedVenueRow({ venue }: { venue: ManagedVenue }) {
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Link href={`/venues?view=availability&venueId=${venue.venueId}`} aria-label={`Open availability calendar for ${venue.name}`} className={buttonClasses("secondary")}>
+        <Link href={`/venues/availability?venueId=${venue.venueId}`} aria-label={`Open availability calendar for ${venue.name}`} className={buttonClasses("secondary")}>
           <Icon name="calendar" size={16} />Calendar
         </Link>
         <Link href={`/venues/${venue.venueId}`} className={buttonClasses("secondary")}>

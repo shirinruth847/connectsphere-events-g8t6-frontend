@@ -27,9 +27,6 @@ export async function findBookingConflicts(
   venueName: (venueId: number) => string,
 ): Promise<BookingConflict[]> {
   const results = await Promise.all(drafts.map(async (draft, index): Promise<BookingConflict | null> => {
-    // Hold conversions use the exact-ISO booking checks and the locked save.
-    // This calendar check accepts only minutes and could invent a boundary clash.
-    if (draft.holdId) return null;
     const inputs = periodCheckInputs(draft.start, draft.end);
     if (draft.venueId == null || !inputs) return null;
     try {

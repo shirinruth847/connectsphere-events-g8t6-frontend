@@ -8,9 +8,10 @@ export type { VenueBookingFilters };
 // Venue Staff booking review (SPM-181). Labels come from the backend; the
 // frontend never maps booking states itself.
 
-export type VenueBookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+// EXPIRED: a pending request not decided in time, so the venue was released (SPM-190).
+export type VenueBookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED";
 
-export const VENUE_BOOKING_STATUSES: VenueBookingStatus[] = ["PENDING", "APPROVED", "REJECTED", "CANCELLED"];
+export const VENUE_BOOKING_STATUSES: VenueBookingStatus[] = ["PENDING", "APPROVED", "REJECTED", "CANCELLED", "EXPIRED"];
 
 export interface VenueBookingSummary {
   bookingId: number;
@@ -26,6 +27,8 @@ export interface VenueBookingSummary {
   updatedAt?: string;
   // Requested by confirming a tentative hold (SPM-188).
   fromHold?: boolean;
+  // A pending request must be decided by then, or the venue is released (SPM-190).
+  decideBy?: string | null;
 }
 
 export interface VenueBookingListItem extends VenueBookingSummary {
@@ -34,6 +37,9 @@ export interface VenueBookingListItem extends VenueBookingSummary {
     requestId: string;
     title: string;
     status: string;
+    // The whole event's time, shown on its My Requests card.
+    startDatetime?: string | null;
+    endDatetime?: string | null;
     eventType: string | null;
     eventTypeLabel: string | null;
   };

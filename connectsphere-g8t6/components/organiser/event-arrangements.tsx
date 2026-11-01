@@ -16,7 +16,8 @@ export type VenueCardsContext = Omit<OrganiserVenueCardsProps, "eventId" | "refr
 const LABELS: Record<string, string> = {
   PENDING: "Pending approval", APPROVED: "Approved", REJECTED: "Rejected",
   CANCELLED: "Cancelled", RELEASED: "Released", SUPERSEDED: "Superseded",
-  ACTIVE: "Tentative hold", EXPIRED: "Expired hold", CONVERTED: "Converted to booking request",
+  // A booking request that Venue Staff did not decide in time (SPM-190).
+  EXPIRED: "Expired",
   NOT_REQUIRED: "Not required", OPEN: "Under safety review", CHANGES_REQUESTED: "Changes requested",
   PARTIALLY_FULFILLED: "Partially fulfilled — not approved",
 };
@@ -25,8 +26,8 @@ const statusLabel = (status: string) => LABELS[status] ?? "Status unavailable";
 // explicit so an approved resource cannot be mistaken for a confirmed event.
 const CHIP_STATES: Record<string, string> = {
   PENDING: "SUBMITTED", APPROVED: "CONFIRMED", REJECTED: "REJECTED", CANCELLED: "CANCELLED",
-  RELEASED: "CANCELLED", SUPERSEDED: "CANCELLED", ACTIVE: "PLANNING", EXPIRED: "CANCELLED",
-  CONVERTED: "SUBMITTED", NOT_REQUIRED: "COMPLETED", OPEN: "SAFETY_REVIEW", CHANGES_REQUESTED: "AWAITING_CLARIFICATION",
+  RELEASED: "CANCELLED", SUPERSEDED: "CANCELLED", EXPIRED: "CANCELLED",
+  NOT_REQUIRED: "COMPLETED", OPEN: "SAFETY_REVIEW", CHANGES_REQUESTED: "AWAITING_CLARIFICATION",
   PARTIALLY_FULFILLED: "AWAITING_CLARIFICATION",
 };
 function ArrangementStatus({ status }: { status: string }) {
@@ -65,7 +66,7 @@ function Equipment({ items }: { items: EquipmentItem[] }) {
 function ArrangementDetails({ data, eventId, refreshKey, venueCards }: { data: OrganiserArrangements; eventId: number; refreshKey: number; venueCards?: VenueCardsContext }) {
   const { venues, technical, safety } = data;
   return <>
-    <ArrangementSection id="venue-arrangements-heading" title="Venue arrangements" description="The venues you asked for, and the bookings and tentative holds your coordinator has arranged.">
+    <ArrangementSection id="venue-arrangements-heading" title="Venue arrangements" description="The venues you asked for, and the bookings your coordinator has arranged.">
       {venueCards ? <>
         <OrganiserVenueCards eventId={eventId} refreshKey={refreshKey} {...venueCards} />
         <h3 className="text-sm font-semibold text-on-surface">Venue bookings</h3>
@@ -83,19 +84,6 @@ function ArrangementDetails({ data, eventId, refreshKey, venueCards }: { data: O
           </li>)}
         </ul>}
         {venues.bookings.length && venues.primaryVenueStatus === "NOT_DESIGNATED" ? <Empty>Primary venue has not been designated.</Empty> : null}
-        <h3 className="text-sm font-semibold text-on-surface">Tentative holds</h3>
-        {venues.holdsStatus === "UNAVAILABLE" ? <Unavailable>Tentative holds could not be checked. Try refreshing arrangements.</Unavailable> : !venues.holds.length ? <Empty>No tentative venue holds.</Empty> : <ul className="grid gap-3">
-          {venues.holds.map((hold) => <li key={hold.holdId} className={panelClass}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <h4 className="min-w-0 text-sm font-semibold text-on-surface">{hold.venueName}{hold.label ? ` · ${hold.label}` : ""}</h4>
-              <ArrangementStatus status={hold.status} />
-            </div>
-            <p className="text-sm text-on-surface-variant">{formatEventWindow(hold.startDatetime, hold.endDatetime)}</p>
-            <p className="text-xs text-on-surface-variant">Hold expiry: {formatTimestamp(hold.holdExpiresAt)}</p>
-            <p className="text-xs text-on-surface-variant">{hold.status === "ACTIVE" ? "A tentative hold is not an approved booking." : "This hold is no longer active."}</p>
-            <Impact impact={hold.impact} />
-          </li>)}
-        </ul>}
         {venues.availabilityStatus === "UNAVAILABLE" ? <Unavailable>Venue unavailability and next actions could not be fully verified. Contact your coordinator or try refreshing arrangements.</Unavailable> : null}
       </>}
     </ArrangementSection>
@@ -132,7 +120,6 @@ type State = { status: "loading" } | { status: "ready"; data: OrganiserArrangeme
 
 // refreshKey changes when the organiser selects Refresh on the event page.
 export function EventArrangements({ eventId, refreshKey = 0, venueCards }: { eventId: number; refreshKey?: number; venueCards?: VenueCardsContext }) {
-  const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     let alive = true;
@@ -143,19 +130,7 @@ export function EventArrangements({ eventId, refreshKey = 0, venueCards }: { eve
         changed: error instanceof ApiError && error.code === "ARRANGEMENTS_CHANGED" });
     });
     return () => { alive = false; };
-  }, [eventId, attempt, refreshKey]);
-
-  // Refresh an active hold at expiry even when the page remains open; the
-  // backend determines expiry from the clock rather than the expiry job.
-  useEffect(() => {
-    if (state.status !== "ready" || state.data.venues.status !== "READY") return;
-    const expiries = state.data.venues.holds.filter((hold) => hold.status === "ACTIVE" && hold.holdExpiresAt)
-      .map((hold) => new Date(hold.holdExpiresAt!).getTime()).filter(Number.isFinite);
-    if (!expiries.length) return;
-    const timer = setTimeout(() => { setState({ status: "loading" }); setAttempt((value) => value + 1); },
-      Math.min(2_147_483_647, Math.max(1000, Math.min(...expiries) - Date.now() + 100)));
-    return () => clearTimeout(timer);
-  }, [state]);
+  }, [eventId, refreshKey]);
 
   // One header for the three arrangement sections; Refresh is at the top of the page.
   return <section className="grid min-w-0 gap-5" aria-labelledby="arrangements-heading">

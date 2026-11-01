@@ -7,8 +7,10 @@ import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 export type SortOrder = "asc" | "desc";
 export type FilterOption = { value: string; label: string };
 
-// Fields in a toolbar row keep their own width instead of filling it.
-export const compactField = fieldClasses.replace("w-full", "");
+// Fields in a toolbar row keep their own width instead of filling it, and
+// every select, date and dropdown in a row is the same height with the same
+// padding (developer request of 1 November 2026).
+export const compactField = `${fieldClasses.replace("w-full", "").replace("py-2.5", "py-0")} h-11`;
 
 export function FilterSelect({ id, label, value, options, allLabel, width, onChange }: {
   id: string;
@@ -52,7 +54,7 @@ export function ListToolbar({ id, label, search, onSearch, placeholder, sort, ch
         <input
           id={`${id}-search`}
           type="search"
-          className={fieldClasses}
+          className={`${fieldClasses.replace("py-2.5", "py-0")} h-11`}
           placeholder={placeholder}
           maxLength={200}
           value={search}

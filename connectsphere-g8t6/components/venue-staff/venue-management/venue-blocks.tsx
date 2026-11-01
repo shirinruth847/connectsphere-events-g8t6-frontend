@@ -194,7 +194,7 @@ function RecordBlockDialog({ venueId, venueName, onClose, onSaved }: {
         {formError ? <AlertBanner tone="error">{formError}</AlertBanner> : null}
         {command ? <p className="text-sm">This request needs confirmation. Retry the same request to avoid recording a duplicate block.</p> : null}
         <AlertBanner tone="info" live={false}>
-          A block is never refused because of bookings. Bookings and holds whose time, including setup and turnaround, overlaps it are kept and marked affected; their coordinators are told.
+          A block is never refused because of bookings. Bookings whose time, including setup and turnaround, overlaps it are kept and marked affected; their coordinators are told.
         </AlertBanner>
         <Field id={`${id}-reason`} label="Reason" required error={errors.reason}>
           <select
@@ -318,13 +318,13 @@ function BlockIncidents({ block, onRestored, onRefused }: {
   if (!block.incidents.length) {
     return (
       <p className="text-xs text-on-surface-variant">
-        No upcoming bookings or holds were affected.{closedNote ? ` ${closedNote}` : ""}
+        No upcoming bookings were affected.{closedNote ? ` ${closedNote}` : ""}
       </p>
     );
   }
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-label text-on-surface-variant">Affected bookings and holds</h4>
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-label text-on-surface-variant">Affected bookings</h4>
       {closedNote ? <p className="mb-2 text-xs text-on-surface-variant">{closedNote}</p> : null}
       <ul className="grid gap-2">
         {block.incidents.map((incident) => (
@@ -338,7 +338,7 @@ function BlockIncidents({ block, onRestored, onRefused }: {
                 </span>
               </div>
               <p className="text-xs text-on-surface-variant">
-                {incident.bookingId ? `Booking #${incident.bookingId}` : "Tentative hold"}
+                {incident.bookingId ? `Booking #${incident.bookingId}` : "Earlier reservation"}
                 {incident.occupiedStart && incident.occupiedEnd ? ` · occupied ${formatEventWindow(incident.occupiedStart, incident.occupiedEnd)}` : ""}
               </p>
               <RestoreStatus incident={incident} />
@@ -412,7 +412,7 @@ export function VenueBlocksSection({ venueId, venueName }: { venueId: number; ve
       <SectionHeading
         step={4}
         title="Operational blocks"
-        description="Periods when this venue cannot be used. Overlapping bookings and holds are kept and marked affected; restore each one once it is free."
+        description="Periods when this venue cannot be used. Overlapping bookings are kept and marked affected; restore each one once it is free."
         action={<Button variant="secondary" onClick={() => { setNotice(null); setRecording(true); }} aria-haspopup="dialog"><Icon name="add" size={16} />Record a block</Button>}
       />
       <div aria-live="polite">

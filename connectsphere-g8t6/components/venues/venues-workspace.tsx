@@ -8,10 +8,11 @@ import { AlertBanner } from "@/components/shared/primitives";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { BackButton } from "@/components/shared/back-button";
 import { VenueManagementList } from "@/components/venue-staff/venue-management/venue-management-list";
-import { ROLE_LABELS, type UserRole } from "@/lib/auth";
+import { ROLE_LABELS, ROUTES, type UserRole } from "@/lib/auth";
 import { VenueAvailabilityCalendar } from "./venue-availability";
 
-type View = "manage" | "availability";
+export type VenuesView = "manage" | "availability";
+type View = VenuesView;
 
 // Venue Staff only. Coordinators and Leads browse venues, details and
 // availability inside each event's venue section (SPM-72/74).
@@ -21,12 +22,13 @@ const VIEWS: Partial<Record<UserRole, { id: View; label: string }[]>> = {
 
 const TITLES: Record<View, { title: string; description: string }> = {
   manage: { title: "My Venues", description: "Manage venue records, status, details and setup/turnaround times." },
-  availability: { title: "Venue Availability", description: "Bookings, active holds, operational blocks and setup/turnaround time for the venues and dates you choose." },
+  availability: { title: "Venue Availability", description: "Bookings, operational blocks and setup/turnaround time for the venues and dates you choose." },
 };
 
-// /venues: what each role may do with venues. Navigation is presentation only;
-// every API enforces the same roles.
-export function VenuesWorkspace() {
+// /venues (manage) and /venues/availability: what each role may do with
+// venues. Each view is its own path, so the navigation panel follows it.
+// Navigation is presentation only; every API enforces the same roles.
+export function VenuesWorkspace({ view }: { view: View }) {
   const user = useSessionUser();
   const searchParams = useSearchParams();
   const views = user ? VIEWS[user.role] : undefined;
@@ -40,15 +42,13 @@ export function VenuesWorkspace() {
     );
   }
 
-  const requested = searchParams.get("view");
-  const view = views.find((item) => item.id === requested)?.id ?? views[0].id;
   const rawVenueId = searchParams.get("venueId");
   const venueId = rawVenueId && /^[1-9]\d{0,9}$/.test(rawVenueId) ? rawVenueId : null;
   // Opened from a venue's page: "Manage venues" goes back to that venue (SPM-186).
   const fromVenue = searchParams.get("from") === "venue" && venueId !== null;
   const hrefFor = (id: View) => {
-    if (id === views[0].id) return fromVenue ? `/venues/${venueId}` : "/venues";
-    return `/venues?view=${id}${venueId ? `&venueId=${venueId}` : ""}${fromVenue ? "&from=venue" : ""}`;
+    if (id === "manage") return fromVenue ? `/venues/${venueId}` : ROUTES.venues;
+    return `${ROUTES.venueAvailability}${venueId ? `?venueId=${venueId}` : ""}${venueId && fromVenue ? "&from=venue" : ""}`;
   };
 
   return (

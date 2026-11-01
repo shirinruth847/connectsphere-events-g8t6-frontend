@@ -216,11 +216,12 @@ test("[SPM-72 TC-VC-002][TC-VC-004][AC3][AC11] filters, required facilities and 
   await page.getByRole("button", { name: "Facility", exact: true }).click();
   expect(await page.getByRole("group", { name: "Facility" }).getByRole("checkbox").evaluateAll((items) => items.map((item) => item.closest("label").textContent))).toEqual(["Projector", "Stage"]);
   await page.keyboard.press("Escape");
-  await pick("Layout", ["THEATRE"]);
+  await pick("Layout", ["Theatre"]);
   await pick("Facility", ["Projector", "Stage"]);
   await expect(page.getByRole("button", { name: "Facility: Projector, Stage" })).toBeVisible();
   await page.getByRole("button", { name: "Apply filters" }).click();
-  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", layout: "THEATRE", facility: ["Projector", "Stage"] });
+  // Every spelling of the theatre layout is offered as "Theatre"; the backend matches either.
+  await expect.poll(() => sent.options.at(-1)).toEqual({ search: "Hall", minCapacity: "200", layout: "Theatre", facility: ["Projector", "Stage"] });
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect.poll(() => sent.options.at(-1)).toEqual({});
 
@@ -996,4 +997,26 @@ test("[SPM-75 regression] rejected filters retain results and comparison with fi
   await page.getByRole("button", { name: "Clear filters", exact: true }).click();
   await expect(page.getByLabel("Minimum capacity")).toHaveAttribute("aria-invalid", "false");
   await expect(search(page).getByRole("article")).toHaveCount(3);
+});
+
+// SPM-190 (1 November 2026): a booking request is the venue's hold until Venue
+// Staff decide; the coordinator has no "Request hold" and no holds section.
+test("[SPM-190] the coordinator requests bookings only, and sees until when a pending request keeps the venue", async ({ page }) => {
+  await installConnectSphereMocks(page, { role: "COORDINATOR" });
+  await routeVenueSection(page);
+  const pending = {
+    bookingId: 501, venueId: 45, venueName: "Synthetic Grand Hall", label: "Plenary", status: "PENDING", statusLabel: "Pending",
+    isPrimary: true, start: "2026-11-20T02:00:00.000Z", end: "2026-11-20T04:00:00.000Z", occupiedStart: null, occupiedEnd: null,
+    expectedAttendance: 150, layout: null, requiredFacilities: [], accessibilityNeeds: [], specialRequirements: null,
+    rejectionReason: null, requestedAt: "2026-11-01T02:00:00.000Z", decideBy: "2026-11-08T02:00:00.000Z",
+  };
+  await page.route((url) => url.pathname === "/api/events/42/venue-bookings", (route) => (route.request().method() === "GET"
+    ? route.fulfill({ json: { eventId: 42, requestId: "REQ-000042", eventType: null, eventTypeLabel: null, canRequestVenueBookings: true, bookings: [pending] } })
+    : route.fallback()));
+  await page.goto("/events/42");
+
+  await expect(page.getByText(/The venue is kept for this event until Venue Staff decide, or until 8 Nov 2026/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Tentative holds/ })).toHaveCount(0);
+  await openSearch(page);
+  await expect(popup(page).getByRole("button", { name: "Request hold" })).toHaveCount(0);
 });

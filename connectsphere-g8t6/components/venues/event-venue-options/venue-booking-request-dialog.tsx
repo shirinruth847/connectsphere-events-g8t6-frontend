@@ -15,7 +15,6 @@ import {
   type VenueBookingRequestResult,
 } from "@/lib/api/event-venues";
 import type { EventView } from "@/lib/api/event-workspace";
-import type { VenueHoldRequest } from "@/lib/api/venue-holds";
 import { calendarDate } from "@/lib/coordinator-calendar";
 import { eventCalendarCheck, venueFilterChoices } from "./venue-option-model";
 import {
@@ -28,7 +27,6 @@ import {
   hasPrimaryVenue,
   needsPrimaryChoice,
   newDraft,
-  holdDraft,
   sectionErrors,
   shiftErrorsAfterRemoval,
   toRequestItems,
@@ -54,9 +52,6 @@ interface VenueBookingRequestDialogProps {
   bookings: EventVenueBookingList;
   // A venue card's "Request booking" starts the form with that venue.
   startVenueId: number | null;
-  // "Confirm as booking" on an active hold (SPM-188 AC9): one section with the
-  // hold's venue and times, which cannot be changed.
-  fromHold?: VenueHoldRequest | null;
   onClose: () => void;
   onSubmitted: (result: VenueBookingRequestResult) => void;
   // The event left planning or the coordinator changed: reload the event.
@@ -80,7 +75,6 @@ export function VenueBookingRequestDialog({
   requestedTimes,
   bookings,
   startVenueId,
-  fromHold = null,
   onClose,
   onSubmitted,
   onStale,
@@ -103,10 +97,6 @@ export function VenueBookingRequestDialog({
     return { start: toSgtInput(time?.start ?? event.startDatetime), end: toSgtInput(time?.end ?? event.endDatetime) };
   };
   const [initial] = useState<BookingDraft[]>(() => {
-    if (fromHold) {
-      const venue = venues.find((option) => option.venueId === fromHold.venueId) ?? null;
-      return [holdDraft(nextKey(), context, fromHold, venue)];
-    }
     const venueId = firstVenueId([startVenueId, ...featuredVenueIds], venues, booked);
     const venue = venues.find((option) => option.venueId === venueId) ?? null;
     return [{ ...newDraft(nextKey(), context, venue), ...timesFor(venueId) }];
@@ -176,7 +166,7 @@ export function VenueBookingRequestDialog({
       // Choosing another venue moves untouched times to that venue's requested time.
       const before = timesFor(draft.venueId);
       const untouched = draft.start === before.start && draft.end === before.end;
-      return "venueId" in patch && !draft.holdId && untouched ? { ...draft, ...patch, ...timesFor(patch.venueId ?? null) } : { ...draft, ...patch };
+      return "venueId" in patch && untouched ? { ...draft, ...patch, ...timesFor(patch.venueId ?? null) } : { ...draft, ...patch };
     }));
     // A corrected field drops its error; the rest stay until the next send.
     setErrors((current) => {
@@ -283,7 +273,7 @@ export function VenueBookingRequestDialog({
       <Dialog
         open={open}
         onClose={close}
-        title={fromHold ? "Confirm held venue as a booking" : "Request venue bookings"}
+        title="Request venue bookings"
         size="wide"
         footer={(
           <>
@@ -356,18 +346,12 @@ export function VenueBookingRequestDialog({
               />
             ))}
 
-            {fromHold ? (
-              <p className="text-xs leading-relaxed text-on-surface-variant">
-                Sending this turns the hold into a pending booking request for Venue Staff to approve or reject. The hold must still be active when you send it.
-              </p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <Button type="button" variant="secondary" disabled={saving || drafts.length >= MAX_BOOKING_SECTIONS} onClick={addSection}>
-                  <Icon name="add" size={16} />Add another venue
-                </Button>
-                <span className="text-xs text-on-surface-variant">{drafts.length} of {MAX_BOOKING_SECTIONS} venues</span>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="secondary" disabled={saving || drafts.length >= MAX_BOOKING_SECTIONS} onClick={addSection}>
+                <Icon name="add" size={16} />Add another venue
+              </Button>
+              <span className="text-xs text-on-surface-variant">{drafts.length} of {MAX_BOOKING_SECTIONS} venues</span>
+            </div>
           </div>
         </div>
       </Dialog>

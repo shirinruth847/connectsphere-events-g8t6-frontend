@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { activeNavigationId, navigationForRole } from "@/lib/navigation";
 
 describe("Venue Staff navigation", () => {
-  it("marks Availability Calendar current from the venues page's availability view, and My Venues otherwise", () => {
-    expect(activeNavigationId("VENUE_STAFF", "/venues", "view=availability")).toBe("availability");
-    expect(activeNavigationId("VENUE_STAFF", "/venues", "view=availability&venueId=4&from=venue")).toBe("availability");
-    expect(activeNavigationId("VENUE_STAFF", "/venues", "")).toBe("venues");
+  it("marks Availability Calendar current on its own page, and My Venues on the venue pages", () => {
+    expect(navigationForRole("VENUE_STAFF")[0].items.find((item) => item.id === "availability")?.href).toBe("/venues/availability");
+    expect(activeNavigationId("VENUE_STAFF", "/venues/availability")).toBe("availability");
+    expect(activeNavigationId("VENUE_STAFF", "/venues")).toBe("venues");
     expect(activeNavigationId("VENUE_STAFF", "/venues/4")).toBe("venues");
     expect(activeNavigationId("VENUE_STAFF", "/dashboard")).toBe("home");
   });

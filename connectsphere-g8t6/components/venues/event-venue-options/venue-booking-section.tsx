@@ -81,10 +81,8 @@ export function VenueBookingSection({
   const id = useId();
   const ids = (name: string) => ({ input: `${id}-${name}`, error: `${id}-${name}-error` });
   const ready = draft.venueId != null && Boolean(draft.start) && Boolean(draft.end);
-  // A confirmed hold keeps its venue and times (SPM-188 AC9).
-  const held = Boolean(draft.holdId);
-  // Another event's tentative hold is in the way (SPM-188 AC3, AC4): offer the
-  // ways forward next to the check that says so.
+  // Another event has the venue reserved (SPM-188 AC3, AC4): offer the ways
+  // forward next to the check that says so.
   const heldElsewhere = !checking && Boolean(checks?.blocking.some((check) => check.code === "VENUE_HELD"));
   const { button: calendarButton, panel: calendarPanel } = useVenueCalendar(heldElsewhere ? calendar : null, draft.venueId ?? 0);
   const focusField = (name: string) => document.getElementById(ids(name).input)?.focus();
@@ -158,7 +156,7 @@ export function VenueBookingSection({
             id={ids("venueId").input}
             className={`${fieldClasses} ${invalidClass(errors.venueId)}`}
             value={draft.venueId ?? ""}
-            disabled={disabled || held}
+            disabled={disabled}
             onChange={(event) => chooseVenue(event.target.value)}
             {...describe("venueId")}
           >
@@ -167,12 +165,6 @@ export function VenueBookingSection({
             <optgroup label="All available venues">{venueGroups.others.map(option)}</optgroup>
           </select>
           <FieldError id={ids("venueId").error} message={errors.venueId} />
-          {held ? (
-            <p className="mt-1.5 flex items-start gap-1.5 text-xs text-on-surface-variant">
-              <Icon name="lock" size={16} className="shrink-0" />
-              This confirms your tentative hold, so the venue and times stay as held.
-            </p>
-          ) : null}
           {venue ? (
             <p className="mt-1.5 text-xs text-on-surface-variant">
               Capacity {venue.maxCapacity.toLocaleString()} people
@@ -220,8 +212,6 @@ export function VenueBookingSection({
             className={`${fieldClasses} ${invalidClass(errors.start)}`}
             value={draft.start}
             disabled={disabled}
-            readOnly={held}
-            step={held ? "any" : undefined}
             onChange={(event) => onChange({ start: event.target.value })}
             {...describe("start")}
           />
@@ -236,8 +226,6 @@ export function VenueBookingSection({
             className={`${fieldClasses} ${invalidClass(errors.end)}`}
             value={draft.end}
             disabled={disabled}
-            readOnly={held}
-            step={held ? "any" : undefined}
             onChange={(event) => onChange({ end: event.target.value })}
             {...describe("end")}
           />
@@ -318,13 +306,13 @@ export function VenueBookingSection({
           ) : null}
           {heldElsewhere ? (
             <div role="group" aria-label="Ways forward" className="mt-1 grid gap-2 rounded-control bg-[#FEF3C7] p-3 text-sm text-[#92400E]">
-              <p className="font-semibold">This venue is tentatively held for another event at this time.</p>
+              <p className="font-semibold">This venue is reserved for another event at this time.</p>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" disabled={held} onClick={() => focusField("start")}>Choose a different date or time</Button>
-                <Button type="button" variant="secondary" disabled={held} onClick={() => focusField("venueId")}>Try a different venue</Button>
+                <Button type="button" variant="secondary" onClick={() => focusField("start")}>Choose a different date or time</Button>
+                <Button type="button" variant="secondary" onClick={() => focusField("venueId")}>Try a different venue</Button>
                 {calendarButton}
               </div>
-              <p className="text-xs">To ask whether the hold will be released, contact Venue Staff. The hold&apos;s expiry is shown above.</p>
+              <p className="text-xs">To ask whether it will be released, contact Venue Staff.</p>
               {calendarPanel}
             </div>
           ) : null}

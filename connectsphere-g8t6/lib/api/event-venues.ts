@@ -274,6 +274,9 @@ export interface EventVenueBooking {
   specialRequirements: string | null;
   rejectionReason: string | null;
   requestedAt: string | null;
+  // A pending request keeps the venue until Venue Staff decide or this time
+  // passes; then it expires and the venue is released (SPM-190).
+  decideBy?: string | null;
   // SPM-195: the open incident, otherwise the latest resolved one.
   incident?: VenueIncident | null;
 }
@@ -310,7 +313,7 @@ export interface VenueBookingRequestResult {
   eventId: number;
   requestId: string;
   arrangementVersion: number;
-  bookings: Array<Omit<EventVenueBooking, "rejectionReason" | "requestedAt"> & { index: number }>;
+  bookings: Array<Omit<EventVenueBooking, "rejectionReason" | "requestedAt" | "decideBy"> & { index: number }>;
   // Advisory only (Master 5.4): Venue Staff decide.
   warnings: Array<{ index: number; venueId: number; messages: string[] }>;
   replayed?: boolean;

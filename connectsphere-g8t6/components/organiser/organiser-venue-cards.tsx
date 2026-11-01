@@ -122,7 +122,7 @@ export function OrganiserVenueCards({ eventId, eventStart, eventEnd, refreshKey,
           })}
         </>
       ) : null}
-      <p className="text-xs text-on-surface-variant">Your coordinator arranges holds and bookings from these venues; each appears below once it is requested.</p>
+      <p className="text-xs text-on-surface-variant">Your coordinator requests bookings from these venues; each appears below once it is requested.</p>
     </div>
   );
 }

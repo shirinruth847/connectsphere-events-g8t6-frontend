@@ -32,10 +32,12 @@ const summary = (bookingId, status, venueId, venueName, overrides = {}) => ({
 
 const event = { eventId: 442, requestId: "REQ-000442", title: "Synthetic planning forum", status: "PLANNING", eventType: "SEMINAR", eventTypeLabel: "Seminar" };
 
+// My Requests shows one card per event (developer request of 1 November
+// 2026), so these three bookings belong to three events.
 const listItems = [
   { ...summary(110, "PENDING", 45, "Synthetic Hall", { label: "Plenary hall" }), event },
-  { ...summary(111, "PENDING", 46, "Synthetic Room B"), event },
-  { ...summary(112, "REJECTED", 47, "Synthetic Room C"), event },
+  { ...summary(111, "PENDING", 46, "Synthetic Room B"), event: { ...event, eventId: 443, requestId: "REQ-000443", title: "Synthetic board meeting" } },
+  { ...summary(112, "REJECTED", 47, "Synthetic Room C"), event: { ...event, eventId: 444, requestId: "REQ-000444", title: "Synthetic workshop day" } },
 ];
 
 const detail = (item, extra = {}) => ({
@@ -71,10 +73,10 @@ const eventBookings = {
 async function routeBookings(page, requests = [], items = listItems) {
   await page.route("**/api/venues/bookings**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/venues/bookings/events/442") {
+    if (/^\/api\/venues\/bookings\/events\/44[234]$/.test(url.pathname)) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(eventBookings) });
     }
-    if (url.pathname === "/api/venues/bookings/events/442/history") {
+    if (/^\/api\/venues\/bookings\/events\/44[234]\/history$/.test(url.pathname)) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ history: [], nextCursor: null }) });
     }
     if (url.pathname !== "/api/venues/bookings") return route.fallback();
@@ -110,9 +112,11 @@ test("[SPM-181 AC1][AC5] Venue Staff see every booking request on My Requests an
 
   const first = card(page, 110);
   await expect(first.getByRole("heading", { level: 3 })).toHaveText("Synthetic planning forum");
-  for (const text of ["Synthetic Hall · Plenary hall", "REQ-000442", "120 people", "Pending"]) {
+  // The event title heads the card; then its venues, the event's time and the status. No capacity.
+  for (const text of ["Synthetic Hall", "Pending"]) {
     await expect(first.getByText(text, { exact: false }).first()).toBeVisible();
   }
+  await expect(first.getByText(/people|Attendance/)).toHaveCount(0);
   await expect(page.getByRole("article")).toHaveCount(3);
   await expect(page.getByText("2 pending requests awaiting review")).toBeVisible();
 
@@ -232,7 +236,7 @@ test("[TC-VENUE-181-52] the search runs as you type, without pressing Enter", as
 for (const [label, sort, order] of [
   ["Date/time", "date", "asc"],
   ["Venue attendance", "attendance", "desc"],
-  ["Alphabetical (event)", "alphabetical", "asc"],
+  ["Alphabetical", "alphabetical", "asc"],
 ]) {
   test(`[TC-VENUE-181-53] sorting by ${label} asks the backend in both directions`, async ({ page }) => {
     const requests = [];
@@ -259,7 +263,7 @@ test("[TC-VENUE-181-54] should_sort_by_last_accessed_when_opened_or_edited_most_
   });
   await page.goto("/dashboard");
 
-  await expect(page.getByLabel("Sort by").locator("option")).toHaveText(["Request status", "Date/time", "Venue attendance", "Last accessed", "Alphabetical (event)"]);
+  await expect(page.getByLabel("Sort by").locator("option")).toHaveText(["Request status", "Date/time", "Venue attendance", "Last accessed", "Alphabetical"]);
   await page.getByLabel("Sort by").selectOption({ label: "Last accessed" });
   const order = () => page.getByRole("article").evaluateAll((cards) => cards.map((node) => node.getAttribute("data-booking-id")));
   await expect.poll(order).toEqual(["110", "112", "111"]);
@@ -378,3 +382,43 @@ test("[SPM-186-AC11] the request status sort runs in either direction", async ({
   await page.getByRole("button", { name: "Ascending order. Switch to descending" }).click();
   await expect.poll(() => requests.at(-1)).toEqual({ order: "desc" });
 });
+
+// SPM-190 (1 November 2026): a pending request is the venue's hold, handled
+// by the backend; Venue Staff see no hold requests, filter or count, only when
+// to respond by. Filter labels are short so every filter is the same size.
+test("[SPM-190] My Requests lists booking requests only, with short status labels and a respond-by time", async ({ page }) => {
+  const items = listItems.map((item) => (item.bookingId === 110 ? { ...item, decideBy: "2026-11-05T02:00:00.000Z" } : item));
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeBookings(page, [], items);
+  await page.goto("/dashboard");
+
+  await expect(card(page, 110).getByText(/^Respond by 5 Nov 2026/)).toBeVisible();
+  await expect(page.getByLabel("Type", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Status", { exact: true }).locator("option")).toHaveText(["All statuses", "Pending", "Approved", "Rejected", "Cancelled", "Expired"]);
+  await expect(page.getByText(/hold/i)).toHaveCount(0);
+  const heights = await page.getByRole("region", { name: "Search, sort and filter requests" }).locator("input, select, button[aria-haspopup]").evaluateAll(
+    (nodes) => [...new Set(nodes.filter((node) => node.offsetParent).map((node) => Math.round(node.getBoundingClientRect().height)))],
+  );
+  expect(heights).toEqual([44]);
+});
+
+test("[developer request 1 Nov 2026] three venues booked for one event are one request card", async ({ page }) => {
+  const items = [
+    { ...summary(130, "PENDING", 45, "Synthetic Hall", { decideBy: "2026-11-03T02:00:00.000Z" }), event: { ...event, startDatetime: "2026-11-04T00:00:00.000Z", endDatetime: "2026-11-04T08:00:00.000Z" } },
+    { ...summary(131, "PENDING", 46, "Synthetic Room B", { decideBy: "2026-11-02T02:00:00.000Z" }), event: { ...event, startDatetime: "2026-11-04T00:00:00.000Z", endDatetime: "2026-11-04T08:00:00.000Z" } },
+    { ...summary(132, "APPROVED", 47, "Synthetic Room C"), event: { ...event, startDatetime: "2026-11-04T00:00:00.000Z", endDatetime: "2026-11-04T08:00:00.000Z" } },
+  ];
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeBookings(page, [], items);
+  await page.goto("/dashboard");
+
+  await expect(page.getByRole("article")).toHaveCount(1);
+  const only = page.getByRole("article");
+  await expect(only.getByRole("heading", { level: 3 })).toHaveText("Synthetic planning forum");
+  await expect(only.getByText("Synthetic Hall, Synthetic Room B, Synthetic Room C")).toBeVisible();
+  // The earliest respond-by time of its pending bookings.
+  await expect(only.getByText(/^Respond by 2 Nov 2026/)).toBeVisible();
+  await expect(only.getByText("Pending", { exact: true })).toBeVisible();
+  await expect(only.getByRole("link", { name: "Review", exact: true })).toHaveAttribute("href", "/events/442?booking=130");
+});
+

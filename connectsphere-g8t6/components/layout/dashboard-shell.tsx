@@ -2,7 +2,7 @@
 
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSessionUser } from "@/components/auth/auth-gate";
 import { homeForRole, ROLE_LABELS, ROUTES } from "@/lib/auth";
 import { activeNavigationId, navigationForRole, type NavigationIcon } from "@/lib/navigation";
@@ -10,7 +10,7 @@ import { signOut } from "@/lib/session";
 import { useNavigationGuard } from "@/components/shared/navigation-guard";
 import "@/components/layout/coordinator-shell.css";
 
-type NavIconName = NavigationIcon | "logout" | "plus" | "menu" | "close" | "assignments" | "calendar";
+type NavIconName = NavigationIcon | "logout" | "menu" | "close" | "assignments" | "calendar";
 
 function NavIcon({ name, className = "" }: { name: NavIconName; className?: string }) {
   const common = { className, width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true as const };
@@ -25,7 +25,6 @@ function NavIcon({ name, className = "" }: { name: NavIconName; className?: stri
     equipment: <><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M12 17v4" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.8-.7a7 7 0 0 1-1.7 1l-.3 1.9h-2.8l-.3-1.9a7 7 0 0 1-1.7-1l-1.8.7-1.4-2.4 1.5-1.2a7 7 0 0 1 0-2l-1.5-1.2 1.4-2.4 1.8.7a7 7 0 0 1 1.7-1l.3-1.9h2.8l.3 1.9a7 7 0 0 1 1.7 1l1.8-.7 1.4 2.4-1.5 1.2a7 7 0 0 1 0 2Z" transform="translate(-1 -1) scale(1.08)" /></>,
     logout: <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></>,
-    plus: <path d="M12 5v14M5 12h14" />,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     close: <><path d="m6 6 12 12M18 6 6 18" /></>,
   };
@@ -37,7 +36,6 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
   const profile = useSessionUser();
   const guard = useNavigationGuard();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const logout = async () => {
     try { await signOut(); router.replace(ROUTES.login); }
@@ -51,7 +49,7 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
   }, [open]);
   if (!profile) return null;
   const groups = navigationForRole(profile.role);
-  const activeId = activeNavigationId(profile.role, pathname, searchParams.toString());
+  const activeId = activeNavigationId(profile.role, pathname);
   const home = homeForRole(profile.role);
   const closeMenu = () => setOpen(false);
   const identity = <>
@@ -71,10 +69,6 @@ function DashboardShellContent({ children }: { children: ReactNode }) {
       <span className="grid h-9 w-9 place-items-center rounded-xl border border-white/30 bg-white/10"><span className="h-3.5 w-3.5 rounded-full border-[3px] border-white" /></span>
       <span className="text-[21px] font-extrabold tracking-tight">ConnectSphere</span>
     </Link>
-    {profile.role === "ORGANISER" && <Link href={ROUTES.newEvent} onClick={closeMenu} className="mb-7 flex min-h-[76px] items-center gap-3 rounded-xl border border-white/20 bg-white/10 px-3.5 transition hover:bg-white/15">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15"><NavIcon name="plus" /></span>
-      <span><span className="block text-sm font-semibold">Add Quick Event</span><span className="mt-0.5 block text-xs text-white/70">Events</span></span>
-    </Link>}
     {groups.map((group) => <section key={group.title} className="mb-5 border-b border-white/15 pb-4 last:border-0">
       <h2 className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">{group.title}</h2>
       <nav aria-label={group.title} className="space-y-1">

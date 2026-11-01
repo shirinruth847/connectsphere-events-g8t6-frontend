@@ -11,7 +11,7 @@ export const BOOKING_SORT_OPTIONS: { value: BookingSort; label: string }[] = [
   { value: "date", label: "Date/time" },
   { value: "attendance", label: "Venue attendance" },
   { value: "lastAccessed", label: "Last accessed" },
-  { value: "alphabetical", label: "Alphabetical (event)" },
+  { value: "alphabetical", label: "Alphabetical" },
 ];
 
 // The backend refuses a longer search (GET /api/venues/bookings `q`).
@@ -106,3 +106,58 @@ export const sortByLastAccessed = <T extends { bookingId: number; updatedAt?: st
       return (order === "asc" ? a.time - b.time : b.time - a.time) || a.index - b.index;
     })
     .map(({ item }) => item);
+
+// ---------- one My Requests card per event (developer request, 1 November 2026) ----------
+
+type GroupableBooking = {
+  bookingId: number;
+  status: string;
+  statusLabel: string;
+  venueName: string;
+  label: string | null;
+  startDatetime: string;
+  endDatetime: string;
+  decideBy?: string | null;
+  event: { eventId: number; startDatetime?: string | null; endDatetime?: string | null };
+};
+
+// The status a card shows: pending first, as the one that needs Venue Staff.
+const CARD_STATUS_ORDER = ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CANCELLED"];
+
+export interface EventRequestGroup<T extends GroupableBooking> {
+  event: T["event"];
+  bookings: T[];
+  // The booking whose status the card shows, and that Review opens.
+  lead: T;
+  venues: string[];
+  start: string;
+  end: string;
+  // The earliest respond-by time among the pending bookings.
+  decideBy: string | null;
+}
+
+// Bookings of one event become one card, in the order the first of them
+// arrived, so the chosen sort still orders the cards.
+export function groupBookingsByEvent<T extends GroupableBooking>(bookings: T[]): EventRequestGroup<T>[] {
+  const groups = new Map<number, T[]>();
+  for (const booking of bookings) groups.set(booking.event.eventId, [...(groups.get(booking.event.eventId) ?? []), booking]);
+  return [...groups.values()].map((items) => {
+    const rank = (status: string) => {
+      const index = CARD_STATUS_ORDER.indexOf(status);
+      return index === -1 ? CARD_STATUS_ORDER.length : index;
+    };
+    const lead = [...items].sort((a, b) => rank(a.status) - rank(b.status))[0];
+    const deadlines = items.filter((item) => item.status === "PENDING" && item.decideBy).map((item) => item.decideBy as string);
+    const event = items[0].event;
+    return {
+      event,
+      bookings: items,
+      lead,
+      venues: [...new Set(items.map((item) => item.venueName))],
+      start: event.startDatetime ?? items.map((item) => item.startDatetime).sort()[0],
+      end: event.endDatetime ?? items.map((item) => item.endDatetime).sort().at(-1)!,
+      decideBy: deadlines.length ? deadlines.sort((a, b) => Date.parse(a) - Date.parse(b))[0] : null,
+    };
+  });
+}
+

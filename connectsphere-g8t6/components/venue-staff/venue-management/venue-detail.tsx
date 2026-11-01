@@ -310,7 +310,7 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
       <form noValidate onSubmit={submit} className="grid gap-4">
         {message ? <AlertBanner tone={message.tone}>{message.text}</AlertBanner> : null}
         {detailStatus === "NOT_AVAILABLE" ? (
-          <AlertBanner tone="info" live={false}>No details are recorded for this venue yet. Setup and turnaround times are needed before it can receive holds or bookings.</AlertBanner>
+          <AlertBanner tone="info" live={false}>No details are recorded for this venue yet. Setup and turnaround times are needed before it can receive bookings.</AlertBanner>
         ) : null}
         <BufferFields idPrefix="details" values={values} errors={errors} onChange={change} disabled={saving} locked={locked} />
         <Field id="details-description" label="Description" error={errors.description}>
@@ -428,7 +428,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
       />
       <div className="-mt-2 flex flex-wrap items-center gap-3">
         <ReferenceIdTag value={`VENUE-${venue.venueId}`} />
-        <Link href={`/venues?view=availability&venueId=${venue.venueId}&from=venue`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+        <Link href={`/venues/availability?venueId=${venue.venueId}&from=venue`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
           <Icon name="calendar" size={16} />View availability
         </Link>
         <Button variant="quiet" onClick={reload}><Icon name="refresh" size={16} />Reload venue</Button>

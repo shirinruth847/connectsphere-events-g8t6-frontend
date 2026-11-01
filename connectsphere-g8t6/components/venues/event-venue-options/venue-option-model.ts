@@ -30,8 +30,6 @@ export function suggestionBlocker(venue: EventVenueOption): string | null {
 // twelve, four rows of three).
 export const DEFAULT_VENUE_PAGE_SIZE = 12;
 export const MAX_VENUE_PAGE_SIZE = 100;
-// The organiser's venue step: 10 by default, or 20, 50 or 100 (SPM-76 AC2).
-export const ORGANISER_VENUE_PAGE_SIZES = [10, 20, 50, 100] as const;
 
 // The typed "Show" number, or null while it is not a whole number from 1 to 100.
 export function parsePageSize(value: string): number | null {
@@ -56,10 +54,15 @@ export interface VenueFilterChoices {
 
 export const EMPTY_FILTER_CHOICES: VenueFilterChoices = { layouts: [], facilities: [], accessibility: [] };
 
-const mergeChoices = (current: string[], values: Array<string | null | undefined>) => {
+// Venue data spells one layout "Theater" and "THEATRE"; every layout list and
+// label shows it as "Theatre" (developer request of 1 November 2026). The
+// backend matches either spelling.
+export const canonicalLayout = (value: string) => (/^theat(re|er)$/i.test(value.trim()) ? "Theatre" : value);
+
+const mergeChoices = (current: string[], values: Array<string | null | undefined>, canonical: (value: string) => string = (value) => value) => {
   const seen = new Map(current.map((value) => [value.toLowerCase(), value]));
   for (const value of values) {
-    const trimmed = value?.trim();
+    const trimmed = value == null ? undefined : canonical(value).trim();
     if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
   }
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
@@ -67,7 +70,7 @@ const mergeChoices = (current: string[], values: Array<string | null | undefined
 
 export function venueFilterChoices(venues: EventVenueOption[], previous: VenueFilterChoices = EMPTY_FILTER_CHOICES): VenueFilterChoices {
   return {
-    layouts: mergeChoices(previous.layouts, venues.flatMap((venue) => [...(venue.supportedLayouts ?? []), ...venue.rooms.map((room) => room.layoutType)])),
+    layouts: mergeChoices(previous.layouts, venues.flatMap((venue) => [...(venue.supportedLayouts ?? []), ...venue.rooms.map((room) => room.layoutType)]), canonicalLayout),
     facilities: mergeChoices(previous.facilities, venues.flatMap((venue) => venue.facilities ?? [])),
     accessibility: mergeChoices(previous.accessibility, venues.flatMap((venue) => venue.accessibilityFeatures ?? [])),
   };

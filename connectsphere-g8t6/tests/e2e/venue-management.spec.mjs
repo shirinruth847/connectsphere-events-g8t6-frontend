@@ -167,6 +167,9 @@ test("[SPM-73 TC1][TC11] Venue Staff list, search, filter and create venues from
   await dialog.getByRole("button", { name: "Save venue" }).click();
   await expect(dialog.getByText("Venue name is required")).toBeVisible();
   await expect(dialog.getByText("Capacity is required")).toBeVisible();
+  // Setup and turnaround are required on create (developer request of 1 November 2026).
+  await expect(dialog.getByText("Setup time is required")).toBeVisible();
+  await expect(dialog.getByText("Turnaround time is required")).toBeVisible();
   expect(state.requests.filter((item) => item.method === "POST")).toHaveLength(0);
 
   await dialog.getByLabel("Venue name").fill("Harbour Pavilion");
@@ -182,7 +185,9 @@ test("[SPM-73 TC1][TC11] Venue Staff list, search, filter and create venues from
   await dialog.getByRole("button", { name: "Save venue" }).click();
 
   await expect(page.getByText("Venue “Harbour Pavilion” created with Active status.")).toBeVisible();
-  expect(state.requests.find((item) => item.path === "/api/venues/900/details").body).toEqual({ version: 0, setupMinutes: 30, turnaroundMinutes: 45 });
+  // The times go with the venue in one request; there is no separate details save.
+  expect(state.requests.find((item) => item.method === "POST" && item.path === "/api/venues").body).toEqual(expect.objectContaining({ setupMinutes: 30, turnaroundMinutes: 45 }));
+  expect(state.requests.find((item) => item.path === "/api/venues/900/details")).toBeUndefined();
   await expect(page.getByRole("list", { name: "Venues" }).getByRole("listitem")).toHaveCount(3);
 });
 
@@ -198,6 +203,8 @@ test("[SPM-73 TC5] a duplicate name is refused with the backend message", async 
   await dialog.getByLabel("Capacity").fill("100");
   await dialog.getByLabel("Contact person").fill("Alex Tan");
   await dialog.getByLabel("Contact number").fill("+65 6123 4567");
+  await dialog.getByLabel("Setup time (minutes)").fill("0");
+  await dialog.getByLabel("Turnaround time (minutes)").fill("15");
   await dialog.getByRole("button", { name: "Save venue" }).click();
 
   await expect(dialog.getByText("A venue with this name already exists").first()).toBeVisible();
@@ -402,10 +409,12 @@ test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active an
   await pinClock(page);
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   const requests = await routeAvailability(page);
-  await page.goto("/venues?view=availability");
+  await page.goto("/venues/availability");
 
   await expect(page.getByRole("heading", { name: "Venue Availability", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Availability", exact: true })).toHaveAttribute("aria-current", "page");
+  // The calendar is its own page, so the navigation panel follows it (developer request of 1 November 2026).
+  await expect(page.getByRole("navigation", { name: "Main Navigation", exact: true }).getByRole("link", { name: "Availability Calendar", exact: true })).toHaveAttribute("aria-current", "page");
   // Venues are chosen in a dropdown (SPM-186).
   await page.getByRole("button", { name: /^Venues:/ }).click();
   await page.getByLabel("Synthetic Grand Hall").check();
@@ -426,13 +435,13 @@ test("[SPM-74 AC][TC2][TC6][TC7] the calendar timeline shows bookings, active an
   await details.getByRole("button", { name: "Close dialog" }).click();
 
   await calendarRegion(page).getByLabel(/^18:00–20:00: Active hold · REQ-000002/).click();
-  await expect(details.getByText(/Hold expires 27 Oct 2026/)).toBeVisible();
+  await expect(details.getByText(/Expires 27 Oct 2026/)).toBeVisible();
   await expect(details.getByText(/outside operating hours/)).toBeVisible();
   await details.getByRole("button", { name: "Close dialog" }).click();
 
   await calendarRegion(page).getByRole("button", { name: "Next" }).click();
   await calendarRegion(page).getByLabel(/^10:00–12:00: Expired hold · REQ-000001/).click();
-  await expect(details.getByText(/Hold expired 19 Oct 2026/)).toBeVisible();
+  await expect(details.getByText(/Expired 19 Oct 2026/)).toBeVisible();
   await details.getByRole("button", { name: "Close dialog" }).click();
 
   // Check a requested period: the fields are always shown (SPM-186).
@@ -453,7 +462,7 @@ test("[SPM-74] the calendar's year view loads the whole year and its legend name
   await pinClock(page);
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   const requests = await routeAvailability(page);
-  await page.goto("/venues?view=availability&venueId=45");
+  await page.goto("/venues/availability?venueId=45");
 
   await expect(calendarRegion(page)).toBeVisible();
   // The page picks the venues, so the calendar has no second venue filter (SPM-186).
@@ -485,7 +494,7 @@ test("[SPM-74 TC8][TC14] blocks show reason and note; an empty range says the ve
       ],
     },
   });
-  await page.goto("/venues?view=availability");
+  await page.goto("/venues/availability");
   await page.getByRole("button", { name: /^Venues:/ }).click();
   await page.getByLabel("Synthetic Grand Hall").check();
   await page.getByLabel("Synthetic Seminar Centre").check();
@@ -506,7 +515,7 @@ test("[SPM-74 TC13] a failed load shows an error and no calendar, with retry", a
   await pinClock(page);
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeAvailability(page, { status: 503, body: { error: "Venue availability cannot be loaded right now, so no venue is shown as available. Try again shortly.", code: "AVAILABILITY_UNAVAILABLE" } });
-  await page.goto("/venues?view=availability&venueId=45");
+  await page.goto("/venues/availability?venueId=45");
 
   await expect(page.getByText("Availability could not be loaded")).toBeVisible();
   await expect(page.getByText(/No venue is shown as available until availability loads/)).toBeVisible();
@@ -518,7 +527,7 @@ test("[SPM-74 TC13] a failed load shows an error and no calendar, with retry", a
 test("[SPM-74 TC11] Coordinator Leads have no availability view", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR_LEAD" });
   await routeAvailability(page);
-  await page.goto("/venues?view=availability");
+  await page.goto("/venues/availability");
 
   await expect(page.getByText("This page is not available for your role.")).toBeVisible();
   await expect(calendarRegion(page)).toHaveCount(0);
@@ -530,7 +539,7 @@ test("[SPM-74] the availability calendar works at mobile width", async ({ page }
   await page.setViewportSize({ width: 390, height: 844 });
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeAvailability(page);
-  await page.goto("/venues?view=availability&venueId=45");
+  await page.goto("/venues/availability?venueId=45");
 
   await expect(calendarRegion(page)).toBeVisible();
   await openDay(page, 4);
@@ -895,9 +904,23 @@ test("[SPM-186] from a venue's availability, Manage venues returns to that venue
   await routeAvailability(page);
   await page.goto("/venues/7");
 
+  const nav = page.getByRole("navigation", { name: "Main Navigation", exact: true });
   await page.getByRole("link", { name: "View availability" }).click();
-  await expect(page).toHaveURL(/view=availability&venueId=7&from=venue$/);
+  await expect(page).toHaveURL(/\/venues\/availability\?venueId=7&from=venue$/);
+  await expect(nav.getByRole("link", { name: "Availability Calendar", exact: true })).toHaveAttribute("aria-current", "page");
   await page.getByRole("link", { name: "Manage venues", exact: true }).click();
   await expect(page).toHaveURL(/\/venues\/7$/);
+  await expect(nav.getByRole("link", { name: "My Venues", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { name: "Marina Conference Hall", exact: true })).toBeVisible();
+});
+
+test("[developer request 1 Nov 2026] the old calendar link still opens the calendar page", async ({ page }) => {
+  const state = managementState();
+  await pinClock(page);
+  await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
+  await routeManagement(page, state);
+  await routeAvailability(page);
+  await page.goto("/venues?view=availability&venueId=45");
+  await expect(page).toHaveURL(/\/venues\/availability\?venueId=45$/);
+  await expect(page.getByRole("navigation", { name: "Main Navigation", exact: true }).getByRole("link", { name: "Availability Calendar", exact: true })).toHaveAttribute("aria-current", "page");
 });

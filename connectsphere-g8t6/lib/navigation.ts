@@ -27,7 +27,7 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   VENUE_STAFF: [
     { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
-    { id: "availability", title: "Availability Calendar", icon: "calendar", href: `${ROUTES.venues}?view=availability` },
+    { id: "availability", title: "Availability Calendar", icon: "calendar", href: ROUTES.venueAvailability },
     // Booking and hold requests and safety notices (SPM-286); the Updates panel's See more leads here too.
     { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
@@ -56,9 +56,7 @@ export function navigationForRole(role: UserRole): NavigationGroup[] {
   return [{ title: "Main Navigation", items: mainItems[role] }];
 }
 
-// `search` is the URL's query string, so a tab chosen within a page (e.g.
-// /venues?view=availability) is the current tab too.
-export function activeNavigationId(role: UserRole, pathname: string, search = "") {
+export function activeNavigationId(role: UserRole, pathname: string) {
   if (role === "COORDINATOR_LEAD") {
     if (pathname === "/events") return "unassigned";
     if (pathname === "/assignments") return "assignments";
@@ -81,7 +79,7 @@ export function activeNavigationId(role: UserRole, pathname: string, search = ""
     if (pathname === ROUTES.equipmentSchedule) return "schedule";
     return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
+  if (role === "VENUE_STAFF" && pathname === ROUTES.venueAvailability) return "availability";
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
-  if (role === "VENUE_STAFF" && pathname === ROUTES.venues && typeof window !== "undefined" && window.location.search.includes("view=availability")) return "availability";
   return role !== "ORGANISER" && inVenues ? "venues" : "home";
 }

@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EMPTY_EVENT_FORM, toPayload, formValuesFromEvent, validateEventStep, amendedFields } from '../lib/events.ts';
-import { ORGANISER_VENUE_PAGE_SIZES, showMoreCount } from '../components/venues/event-venue-options/venue-option-model.ts';
+import { requestCalendar, resizeWithin } from '../components/venues/availability-calendar-model.ts';
+import { DEFAULT_VENUE_PAGE_SIZE, parsePageSize, showMoreCount } from '../components/venues/event-venue-options/venue-option-model.ts';
 
+const at = (time, day = '2026-12-01') => new Date(`${day}T${time}:00+08:00`).toISOString();
 const form = (overrides = {}) => ({
   ...EMPTY_EVENT_FORM,
   title: 'Forum',
@@ -56,50 +58,38 @@ test('[SPM-76 AC4] a dragged edge stays inside the event and at least 15 minutes
   assert.deepEqual(resizeWithin(current, bounds, 'end', Date.parse(at('14:00'))), { start: current.start, end: at('14:00') });
 });
 
-test('[SPM-76 AC3][TC3] the organiser calendar is coloured blocks only: busy time, the edited time, red only where checked overlaps', () => {
-  const data = {
-    from: at('00:00'), to: at('00:00', '2026-12-02'),
-    venue: {
-      venueId: 7, name: 'Hall', operatingHours: '08:00-22:00', setupMinutes: 30, turnaroundMinutes: 30, buffersRecorded: true,
-      busyPeriods: [{ type: 'BOOKING', label: 'Unavailable – booking', occupiedStart: at('09:30'), occupiedEnd: at('12:30') }],
-      check: {
-        start: at('11:00'), end: at('13:00'), occupiedStart: at('10:30'), occupiedEnd: at('13:30'),
-        availability: 'UNAVAILABLE_BOOKING', availabilityLabel: 'Unavailable – booking',
-        conflicts: [{ type: 'BOOKING', label: 'Unavailable – booking', occupiedStart: at('09:30'), occupiedEnd: at('12:30') }],
-        operatingHoursWarning: null,
-      },
-    },
-  };
+test("[SPM-76 AC3][TC-VS-003] the organiser calendar shows only the organiser's own times, red when the venue is unavailable then", () => {
+  const venue = { venueId: 7, name: 'Hall', operatingHours: '08:00-22:00' };
   const range = { date: '2026-12-01', days: 1 };
-  const checked = requestCalendar(data, range, { requested: { start: at('11:00'), end: at('13:00') } });
-  assert.equal(checked.lanes[0].events.length, 0);
-  const busy = checked.overlays.find((overlay) => overlay.tone === 'busy');
-  assert.deepEqual([busy.start, busy.end], [at('09:30'), at('12:30')]);
-  const conflict = checked.overlays.find((overlay) => overlay.tone === 'conflict');
-  assert.deepEqual([conflict.start, conflict.end], [at('10:30'), at('12:30')]);
-  assert.ok(checked.overlays.every((overlay) => !overlay.label && !overlay.detail));
+  const free = requestCalendar(venue, range, { requested: { start: at('11:00'), end: at('13:00') } });
+  assert.equal(free.lanes[0].events.length, 0);
+  const request = free.overlays.find((overlay) => overlay.tone === 'request');
+  assert.deepEqual([request.start, request.end], [at('11:00'), at('13:00')]);
+  assert.equal(free.overlays.some((overlay) => overlay.tone === 'conflict' || overlay.tone === 'busy'), false);
+  assert.ok(free.overlays.every((overlay) => !overlay.label && !overlay.detail));
 
-  const dragged = requestCalendar(data, range, { requested: { start: at('14:00'), end: at('16:00') } });
-  const request = dragged.overlays.find((overlay) => overlay.tone === 'request');
-  assert.deepEqual([request.start, request.end], [at('14:00'), at('16:00')]);
-  assert.equal(dragged.overlays.some((overlay) => overlay.tone === 'conflict'), false);
+  const clash = requestCalendar(venue, range, { requested: { start: at('11:00'), end: at('13:00') }, unavailable: true });
+  const conflict = clash.overlays.find((overlay) => overlay.tone === 'conflict');
+  // Only the requested time turns red: nothing says when the other entry is.
+  assert.deepEqual([conflict.start, conflict.end], [at('11:00'), at('13:00')]);
+  assert.equal(clash.overlays.some((overlay) => overlay.tone === 'busy'), false);
 });
 
 test("[SPM-76] the organiser's other venues' times sit behind in their own colour", () => {
-  const data = {
-    from: at('00:00'), to: at('00:00', '2026-12-02'),
-    venue: { venueId: 7, name: 'Hall', operatingHours: null, setupMinutes: 0, turnaroundMinutes: 0, buffersRecorded: true, busyPeriods: [], check: null },
-  };
-  const { lanes, overlays } = requestCalendar(data, { date: '2026-12-01', days: 1 }, {
+  const { lanes, overlays } = requestCalendar({ venueId: 7, name: 'Hall', operatingHours: null }, { date: '2026-12-01', days: 1 }, {
     requested: { start: at('09:00'), end: at('18:00') },
     otherChoices: [{ start: at('13:00'), end: at('15:00') }],
   });
   assert.equal(lanes.length, 1);
   const other = overlays.find((overlay) => overlay.tone === 'other');
   assert.deepEqual([other.start, other.end], [at('13:00'), at('15:00')]);
-test('[SPM-76 AC2][TC2] the organiser list shows 10 at first, or 20, 50 or 100, and Show more adds a page', () => {
-  assert.deepEqual([...ORGANISER_VENUE_PAGE_SIZES], [10, 20, 50, 100]);
-  assert.equal(showMoreCount(10, 21, 10), 10);
-  assert.equal(showMoreCount(20, 21, 20), 1);
-  assert.equal(showMoreCount(21, 21, 20), 0);
+});
+
+test('[SPM-76 AC2] the organiser list shows 12 at first, Show takes a typed number, and Show more adds a page', () => {
+  assert.equal(DEFAULT_VENUE_PAGE_SIZE, 12);
+  assert.equal(parsePageSize('24'), 24);
+  assert.equal(parsePageSize('0'), null);
+  assert.equal(parsePageSize('101'), null);
+  assert.equal(showMoreCount(12, 21, 12), 9);
+  assert.equal(showMoreCount(21, 21, 12), 0);
 });

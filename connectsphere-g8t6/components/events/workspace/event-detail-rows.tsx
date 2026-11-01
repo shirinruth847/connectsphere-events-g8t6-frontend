@@ -1,3 +1,4 @@
+import { canonicalLayout } from "@/components/venues/event-venue-options/venue-option-model";
 import type { KeyValueRow } from "@/components/shared/key-value-panel";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatDuration, formatEventWindow } from "@/lib/datetime";
@@ -34,7 +35,7 @@ export const fieldLabel = (field: string) => FIELD_LABELS[field] ?? field;
 const humanise = (code: string) => code.charAt(0) + code.slice(1).toLowerCase().replaceAll("_", " ");
 
 export const layoutLabel = (layout: string | null) =>
-  !layout || layout === "NO_PREFERENCE" ? "No preference" : humanise(layout);
+  !layout || layout === "NO_PREFERENCE" ? "No preference" : canonicalLayout(humanise(layout));
 
 // The event API returns venue IDs only; names need the venue catalogue, which
 // is not in SPM-33's scope.
