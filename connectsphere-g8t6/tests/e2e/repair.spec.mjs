@@ -28,7 +28,8 @@ test("[SPM-35 UI] organiser sidebar and filters retain the shree layout", async 
       }),
     );
   const panel = await page.locator("aside").boundingBox();
-  expect(rows).toHaveLength(3);
+  // Home and Notifications; Registrations left the organiser's navigation (1 November 2026).
+  expect(rows).toHaveLength(2);
   for (let index = 0; index < rows.length; index++) {
     expect(rows[index].x).toBeGreaterThanOrEqual(panel.x);
     expect(rows[index].right).toBeLessThanOrEqual(panel.x + panel.width);

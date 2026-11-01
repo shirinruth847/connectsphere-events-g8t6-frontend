@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
-import { AlertBanner, buttonClasses, PageHeader, ReferenceIdTag, StatusChip } from "@/components/shared/primitives";
+import { useRef, useState, type ReactNode } from "react";
+import { AlertBanner, Button, buttonClasses, PageHeader, ReferenceIdTag, StatusChip } from "@/components/shared/primitives";
 import { CapacityBar } from "@/components/shared/capacity-bar";
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
@@ -11,7 +11,7 @@ import { SectionHeading } from "@/components/shared/section-heading";
 import { EventHistoryPanel } from "@/components/events/workspace/event-history-panel";
 import { EventArrangements } from "@/components/organiser/event-arrangements";
 import { ClarificationPanel } from "@/components/events/workspace/clarification-panel";
-import { ClarificationAmendmentForm } from "@/components/events/workspace/clarification-amendment-form";
+import { ClarificationAmendmentForm, type AmendmentFormHandle } from "@/components/events/workspace/clarification-amendment-form";
 import { useEventClarifications } from "@/components/events/workspace/use-event-clarifications";
 import {
   equipmentItems,
@@ -49,7 +49,7 @@ function AccessNotice({ event }: { event: EventView }) {
       <div className="grid gap-3">
         {rejected ? <RejectionNotice event={event} /> : null}
         <AlertBanner tone="info" title="Viewing as a member of your organisation">
-          You can see this request because it belongs to {event.organisation?.name ?? "your organisation"}. Only its owner can ask for changes.
+          You can see this request because it belongs to {event.organisation?.name ?? "your organisation"}.
         </AlertBanner>
       </div>
     );
@@ -67,11 +67,7 @@ function AccessNotice({ event }: { event: EventView }) {
       </AlertBanner>
     );
   }
-  return (
-    <AlertBanner tone="info" title="Submitted requests are not edited directly">
-      To change any details, request a change; your coordinator reviews it. Your coordinator may also correct the title, purpose and description, and every change appears in the history.
-    </AlertBanner>
-  );
+  return null;
 }
 
 // The organiser's event view: the owner (draft or submitted) or a member of the
@@ -86,6 +82,11 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
   const [historyKey, setHistoryKey] = useState(0);
   const [clarificationKey, setClarificationKey] = useState(0);
   const [saved, setSaved] = useState<string | null>(null);
+  // Refresh reloads the arrangements and venue cards.
+  const [refreshKey, setRefreshKey] = useState(0);
+  // A suggested venue added from its card goes into the amendment form.
+  const amendForm = useRef<AmendmentFormHandle>(null);
+  const [amendVenueIds, setAmendVenueIds] = useState<number[] | null>(null);
   const clarifications = useEventClarifications(event.eventId, clarificationKey);
   // The owner of a returned request, who replies from the clarification list and amends here.
   const responding = canPostClarificationMessage(event.permissions);
@@ -132,12 +133,17 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
             <Icon name="schedule" size={16} />{event.statusNote}
           </span>
         ) : null}
+        {!isDraftEvent(event) ? (
+          <Button variant="quiet" aria-label="Refresh arrangements" onClick={() => setRefreshKey((value) => value + 1)}>
+            <Icon name="refresh" size={16} />Refresh
+          </Button>
+        ) : null}
         {isMember ? (
           <PermissionPill tone="read-only">Organisation-wide • Read-only</PermissionPill>
         ) : isDraftEvent(event) ? (
           <PermissionPill tone="edit">Owner • Editable while draft</PermissionPill>
         ) : (
-          <PermissionPill tone="read-only">Owner • Changes by request</PermissionPill>
+          <PermissionPill tone="read-only">Owner • Read-only</PermissionPill>
         )}
       </div>
 
@@ -160,7 +166,9 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
           ) : null}
           {canSaveAmendments(event.permissions) ? (
             <ClarificationAmendmentForm
+              ref={amendForm}
               event={event}
+              onVenueChoicesChange={setAmendVenueIds}
               onSaved={(updated, message) => {
                 setSaved(message);
                 onEventChange?.(updated);
@@ -193,20 +201,6 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
             ) : null}
           </Card>
 
-          {event.venueSuggestion ? (
-            <Card labelledBy="suggested-venue-heading">
-              <SectionHeading id="suggested-venue-heading" title="Suggested venue" description="Your event coordinator suggests this venue. It is not booked yet; the coordinator arranges the booking with Venue Staff." />
-              <KeyValuePanel
-                rows={[
-                  { icon: "venue", label: "Venue", value: event.venueSuggestion.name ?? "Not available" },
-                  { icon: "organisation", label: "Address", value: event.venueSuggestion.address ?? "Not available" },
-                  { icon: "attendees", label: "Capacity", value: event.venueSuggestion.maxCapacity != null ? `${event.venueSuggestion.maxCapacity.toLocaleString()} people` : "Not available" },
-                  { icon: "history", label: "Suggested", value: `${formatTimestamp(event.venueSuggestion.suggestedAt)}${event.venueSuggestion.suggestedBy ? ` by ${event.venueSuggestion.suggestedBy}` : ""}` },
-                ]}
-              />
-            </Card>
-          ) : null}
-
           <Card labelledBy="requirements-heading">
             <SectionHeading id="requirements-heading" title="Requirements" />
             <div className="grid gap-5 md:grid-cols-2">
@@ -226,7 +220,13 @@ export function EventRequestDetails({ event, onEventChange, onAccessChanged }: {
             <EventArrangements
               key={`${event.eventId}:${event.version}`}
               eventId={event.eventId}
-              venueChoices={{ choices: event.venuePreferenceTimes ?? event.venuePreferences.map((venueId) => ({ venueId, requestedStart: null, requestedEnd: null })), eventStart: event.startDatetime, eventEnd: event.endDatetime }}
+              refreshKey={refreshKey}
+              venueCards={{
+                eventStart: event.startDatetime,
+                eventEnd: event.endDatetime,
+                onAddChoice: canSaveAmendments(event.permissions) ? (venueId) => amendForm.current?.addVenue(venueId) : undefined,
+                chosenIds: amendVenueIds ?? event.venuePreferences,
+              }}
             />
           ) : null}
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type FormEvent, type ReactNode, type Ref } from "react";
 import { AlertBanner, Button, FormLabel, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { SectionHeading } from "@/components/shared/section-heading";
@@ -15,7 +15,7 @@ import {
   type EventFormValues,
   type EventRequest,
 } from "@/lib/events";
-import { layoutLabel } from "./event-detail-rows";
+import { MAX_VENUE_CHOICES, RequestVenueStep } from "@/components/venues/event-venue-options/request-venue-step";
 import { EquipmentRequirementsEditor } from "@/components/events/equipment/equipment-requirements-editor";
 import { useEquipmentAvailability } from "@/components/events/equipment/use-equipment-availability";
 import { equipmentAvailabilityErrors } from "@/lib/technical-requests";
@@ -32,7 +32,13 @@ type RequestOptions = {
 // EventView carries the same request fields as EventRequest; only the status type is wider.
 const valuesOf = (event: EventView): EventFormValues => formValuesFromEvent(event as unknown as EventRequest);
 
-const VENUE_FIELDS = ["venuePreferences", "preferredLayoutType"] as const;
+const VENUE_FIELDS = ["venuePreferences"] as const;
+
+// Lets the event page add a suggested venue from its card (developer request,
+// 1 November 2026): the form opens if needed, with the venue added to the choices.
+export interface AmendmentFormHandle {
+  addVenue: (venueId: number) => void;
+}
 
 function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -90,13 +96,16 @@ interface ClarificationAmendmentFormProps {
   onEventReplaced: (event: EventView) => void;
   // The backend refused because the event is no longer waiting for this owner.
   onAccessChanged: () => void;
+  ref?: Ref<AmendmentFormHandle>;
+  // The venue choices being amended, or null while the form is closed.
+  onVenueChoicesChange?: (venueIds: number[] | null) => void;
 }
 
 // SPM-41 v2 AC3/TC4: while a clarification thread is open the owner amends any
 // submission field; the request stays with the coordinator, who marks the
 // thread complete. Registration settings and the organisation are not
 // amendable here. Saving needs at least one changed field.
-export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, onAccessChanged }: ClarificationAmendmentFormProps) {
+export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, onAccessChanged, ref, onVenueChoicesChange }: ClarificationAmendmentFormProps) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<EventFormValues>(() => valuesOf(event));
   const [original, setOriginal] = useState<EventFormValues>(() => valuesOf(event));
@@ -135,6 +144,7 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
     setBanner(null);
     setVenueExpanded(false);
     setOpen(true);
+    onVenueChoicesChange?.(current.venuePreferences);
   };
 
   const cancel = () => {
@@ -142,7 +152,33 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
     setFieldErrors({});
     setBanner(null);
     setOpen(false);
+    onVenueChoicesChange?.(null);
   };
+
+  const setVenueChoices = (next: Pick<EventFormValues, "venuePreferences" | "venueTimes">) => {
+    setValues((current) => ({ ...current, ...next }));
+    clearError("venuePreferences");
+    onVenueChoicesChange?.(next.venuePreferences);
+  };
+
+  useImperativeHandle(ref, () => ({
+    addVenue: (venueId: number) => {
+      const base = open ? values : valuesOf(event);
+      if (!open) {
+        setOriginal(valuesOf(event));
+        setFieldErrors({});
+        setBanner(null);
+        setOpen(true);
+      }
+      const venuePreferences = base.venuePreferences.includes(venueId) || base.venuePreferences.length >= MAX_VENUE_CHOICES
+        ? base.venuePreferences
+        : [...base.venuePreferences, venueId];
+      setValues({ ...base, venuePreferences });
+      onVenueChoicesChange?.(venuePreferences);
+      setVenueExpanded(true);
+      requestAnimationFrame(() => document.getElementById(id("venue-layout"))?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    },
+  }));
 
   // A collapsed section opens when one of its fields needs attention.
   const showErrors = (errors: Record<string, string>) => {
@@ -197,6 +233,7 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
       const result = await saveAmendments(event.eventId, changes, event.version, attempt.key);
       pendingKey.current = null;
       setOpen(false);
+      onVenueChoicesChange?.(null);
       onSaved(result.event, result.message);
     } catch (caught) {
       handleError(caught);
@@ -262,13 +299,17 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
     }
   };
 
-  const venueName = (venueId: number) => options?.venues.find((venue) => venue.venueId === venueId)?.name ?? `Venue #${venueId}`;
-  const venueSummary = [
-    values.venuePreferences.length
-      ? values.venuePreferences.map((venueId, index) => `${index + 1}. ${venueName(venueId)}`).join(", ")
-      : "No venue preference",
-    `Layout: ${layoutLabel(values.preferredLayoutType)}`,
-  ].join(" · ");
+  // Names for choices the venue list has not shown yet.
+  const knownNames = new Map<number, string>([
+    ...(options?.venues ?? []).map((venue) => [venue.venueId, venue.name] as [number, string]),
+    ...(event.venuePreferenceTimes ?? []).flatMap((choice) => (choice.venueName ? [[choice.venueId, choice.venueName] as [number, string]] : [])),
+    ...(event.venueSuggestions ?? []).flatMap((item) => (item.name ? [[item.venueId, item.name] as [number, string]] : [])),
+  ]);
+  const venueName = (venueId: number) => knownNames.get(venueId) ?? `Venue #${venueId}`;
+  const venueSummary = values.venuePreferences.length
+    ? values.venuePreferences.map((venueId, index) => `${index + 1}. ${venueName(venueId)}`).join(", ")
+    : "No venue preference";
+  const suggested = (event.venueSuggestions ?? []).filter((item) => !item.fromOrganiserChoices);
 
   const errorProps = (field: string) => ({
     "aria-invalid": fieldErrors[field] ? true : undefined,
@@ -332,45 +373,19 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
 
           <CollapsibleGroup
             id={id("venue-layout")}
-            title="Venue & layout"
+            title="Venues"
             summary={venueSummary}
             expanded={venueExpanded}
             onToggle={() => setVenueExpanded((value) => !value)}
           >
-            <p className="text-xs text-on-surface-variant">Preferences do not reserve or hold a venue.</p>
             {optionsError ? <AlertBanner tone="warning">{optionsError}</AlertBanner> : null}
-            {options?.venues.length ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {options.venues.map((venue) => {
-                  const rank = values.venuePreferences.indexOf(venue.venueId);
-                  return (
-                    <label key={venue.venueId} className="flex min-h-11 items-center gap-3 rounded-control border border-outline-variant p-3 text-sm text-on-surface">
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-primary"
-                        checked={rank >= 0}
-                        disabled={rank < 0 && values.venuePreferences.length >= 20}
-                        onChange={(change) => update("venuePreferences", change.target.checked ? [...values.venuePreferences, venue.venueId] : values.venuePreferences.filter((venueId) => venueId !== venue.venueId))}
-                      />
-                      <span className="min-w-0 flex-1">{venue.name}</span>
-                      {rank >= 0 ? <span className="text-xs font-semibold text-primary">Preference {rank + 1}</span> : null}
-                    </label>
-                  );
-                })}
-              </div>
-            ) : !optionsError ? (
-              <p className="text-sm text-on-surface-variant">{options ? "No venues are currently listed." : "Loading venue choices…"}</p>
-            ) : null}
+            <RequestVenueStep
+              values={values}
+              knownNames={knownNames}
+              onChange={setVenueChoices}
+              suggested={suggested.map((item) => ({ venueId: item.venueId, name: item.name ?? venueName(item.venueId) }))}
+            />
             <FieldError id={`${id("venuePreferences")}-error`} message={fieldErrors.venuePreferences} />
-            <div>
-              <FormLabel htmlFor={id("preferredLayoutType")} required>Preferred layout</FormLabel>
-              <select id={id("preferredLayoutType")} value={values.preferredLayoutType} onChange={(change) => update("preferredLayoutType", change.target.value)} className={fieldClasses} {...errorProps("preferredLayoutType")}>
-                {[...new Set([...(options?.layouts ?? ["NO_PREFERENCE"]), values.preferredLayoutType])].map((layout) => (
-                  <option key={layout} value={layout}>{layout === "NO_PREFERENCE" ? "No preference" : layout.replaceAll("_", " ")}</option>
-                ))}
-              </select>
-              <FieldError id={`${id("preferredLayoutType")}-error`} message={fieldErrors.preferredLayoutType} />
-            </div>
           </CollapsibleGroup>
 
           <Group title="Accessibility">

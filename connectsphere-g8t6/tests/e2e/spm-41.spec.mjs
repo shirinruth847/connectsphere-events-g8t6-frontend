@@ -488,25 +488,27 @@ test.describe("organiser: reply and amend", () => {
     await expect((await openThread(page, 2)).getByLabel("Your message")).toBeVisible();
   });
 
-  test("[SPM-41] Venue & layout starts collapsed with a summary and opens from its header", async ({ page }) => {
+  test("[SPM-41] Venues starts collapsed with a summary and opens from its header", async ({ page }) => {
     await installConnectSphereMocks(page, { role: "ORGANISER" });
     await routeClarifications(page, { event: returnedForOwner(), rounds: [openRound] });
     await page.goto("/events/42");
 
     const form = page.getByRole("region", { name: "Amend your request" });
     await form.getByRole("button", { name: "Amend request" }).click();
-    const toggle = form.getByRole("button", { name: /^Venue & layout/ });
+    const toggle = form.getByRole("button", { name: /^Venues/ });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(toggle).toContainText("1. Main Hall · Layout: Theatre");
-    await expect(form.getByLabel("Preferred layout")).toBeHidden();
+    await expect(toggle).toContainText("1. Main Hall");
+    const choices = form.getByRole("region", { name: "Your venue choices" });
+    await expect(choices).toBeHidden();
 
     await toggle.focus();
     await page.keyboard.press("Enter");
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(form.getByLabel("Preferred layout")).toBeVisible();
-    await expect(form.getByText("Preference 1")).toBeVisible();
+    // The organiser's venue step (SPM-76), with the choices ranked; there is no layout field.
+    await expect(choices.getByText("Ideal venue")).toBeVisible();
+    await expect(form.getByLabel("Preferred layout")).toHaveCount(0);
     await toggle.click();
-    await expect(form.getByLabel("Preferred layout")).toBeHidden();
+    await expect(choices).toBeHidden();
   });
 
   test("[SPM-41] a coordinator schedule clash is explained and the owner's changes are kept", async ({ page }) => {

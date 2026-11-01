@@ -160,7 +160,6 @@ function ManagedVenueRow({ venue }: { venue: ManagedVenue }) {
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Link href={`/venues?view=availability&venueId=${venue.venueId}`} className={buttonClasses("quiet")}>Availability</Link>
         <Link href={`/venues?view=availability&venueId=${venue.venueId}`} aria-label={`Open availability calendar for ${venue.name}`} className={buttonClasses("secondary")}>
           <Icon name="calendar" size={16} />Calendar
         </Link>

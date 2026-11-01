@@ -27,7 +27,7 @@ for (const width of [1440, 390]) {
     expect(state.submitDraftRequests[0].title).toBe("Tech Conference 2026");
     await page.getByRole("link", { name: /Track submission/ }).click();
     await expect(page.getByText("Unassigned", { exact: true })).toBeVisible();
-    await expect(page.getByText("Submitted requests are not edited directly", { exact: true })).toBeVisible();
+    await expect(page.getByText("Owner • Read-only", { exact: true })).toBeVisible();
     await expect(page.locator("dl > div").filter({ has: page.locator("dt").getByText("Submitted", { exact: true }) })).toContainText("13 Oct 2026, 20:00 SGT");
     await expect(page.getByRole("textbox")).toHaveCount(0);
     await page.reload();

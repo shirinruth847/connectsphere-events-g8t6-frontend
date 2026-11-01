@@ -209,8 +209,9 @@ export function BookingRequestList() {
     return [...pendingHolds, ...bookingItems, ...holdItems.filter((item) => !pendingHolds.includes(item))];
   })();
   // Both kinds count: a placed hold counts as approved.
-  const pendingCount = (state.status === "ready" ? state.pendingCount : 0) + holdRequests.filter((item) => item.status === "PENDING").length;
-  const approvedCount = (state.status === "ready" ? state.approvedCount : 0) + holdRequests.filter((item) => item.status === "PLACED").length;
+  // A reply without a count counts as none, never NaN.
+  const pendingCount = (state.status === "ready" ? state.pendingCount ?? 0 : 0) + holdRequests.filter((item) => item.status === "PENDING").length;
+  const approvedCount = (state.status === "ready" ? state.approvedCount ?? 0 : 0) + holdRequests.filter((item) => item.status === "PLACED").length;
 
   return (
     <PageContent
@@ -227,9 +228,9 @@ export function BookingRequestList() {
       }
     >
       <h2 className="mb-3 text-lg font-semibold text-on-surface">Requests</h2>
-      <section aria-label="Search, sort and filter requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
+      <section aria-label="Search, sort and filter requests" className="mb-5 flex flex-wrap items-end gap-x-2 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
         {/* Clear is always present (disabled when empty), so typing never resizes the box. */}
-        <div className="grid min-w-[14rem] flex-1 gap-1">
+        <div className="grid min-w-[10rem] flex-1 gap-1">
           <label htmlFor="booking-search" className="text-xs font-semibold text-on-surface-variant">Search</label>
           <input
             id="booking-search"
@@ -243,20 +244,20 @@ export function BookingRequestList() {
           />
           <span id="booking-search-hint" className="sr-only">Results update as you type.</span>
         </div>
-        <FilterSelect id="request-type" label="Type" value={filters.type} allLabel="All requests" width="w-[10.5rem]"
+        <FilterSelect id="request-type" label="Type" value={filters.type} allLabel="All requests" width="w-[8.5rem]"
           options={TYPE_OPTIONS} onChange={(value) => setFilters((current) => ({ ...current, type: value as RequestType }))} />
-        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[12rem]"
+        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[10rem]"
           options={VENUE_BOOKING_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] ?? value }))} onChange={update("status")} />
         <div className="grid gap-1">
           <label htmlFor="booking-venue" className="text-xs font-semibold text-on-surface-variant">Venue</label>
-          <OptionDropdown id="booking-venue" label="Venue" allLabel="All venues" className="w-[13rem]" value={filters.venueId} options={venueChoices} onChange={update("venueId")} />
+          <OptionDropdown id="booking-venue" label="Venue" allLabel="All venues" className="w-[10.5rem]" value={filters.venueId} options={venueChoices} onChange={update("venueId")} />
         </div>
         <div className="grid gap-1">
           <label htmlFor="booking-date" className="text-xs font-semibold text-on-surface-variant">Date (SGT)</label>
-          <input id="booking-date" type="date" className={`${compactField} w-[10.5rem]`} value={filters.date} onChange={(event) => update("date")(event.target.value)} />
+          <input id="booking-date" type="date" className={`${compactField} w-[9.5rem]`} value={filters.date} onChange={(event) => update("date")(event.target.value)} />
         </div>
         <div className="flex items-end gap-1">
-          <FilterSelect id="booking-sort" label="Sort by" value={sort} options={BOOKING_SORT_OPTIONS} width="w-[11.5rem]"
+          <FilterSelect id="booking-sort" label="Sort by" value={sort} options={BOOKING_SORT_OPTIONS} width="w-[10rem]"
             onChange={(value) => { setSort(value as BookingSort); setOrder(DEFAULT_ORDER[value as BookingSort]); }} />
           <SortOrderToggle order={order} onChange={setOrder} />
         </div>

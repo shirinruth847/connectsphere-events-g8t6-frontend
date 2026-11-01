@@ -39,7 +39,7 @@ const eventView = (overrides = {}) => ({
   coordinatorId: 11,
   coordinatorName: "Synthetic Coordinator",
   organiser: { userId: 5, name: "Synthetic Organiser" },
-  venueSuggestion: null,
+  venueSuggestions: [],
   ...overrides,
 });
 

@@ -18,7 +18,7 @@ const eventView = (overrides = {}) => ({
   isRegistrationEnabled: false, registrationCapacity: null, createdAt: "2026-10-10T09:00:00.000Z", updatedAt: "2026-10-12T09:00:00.000Z", version: 3,
   organisation: { organisationId: 1, name: "Synthetic Org A" }, isAssignedToCoordinator: true, isOwner: false, viewerRelationship: "ASSIGNED_COORDINATOR",
   permissions: { canEdit: true, editableFields: [], canViewDraftHistory: false, canViewStaffHistory: true, canSuggestVenue: true },
-  coordinatorId: 11, coordinatorName: "Synthetic Coordinator", organiser: { userId: 5, name: "Synthetic Organiser" }, venueSuggestion: null,
+  coordinatorId: 11, coordinatorName: "Synthetic Coordinator", organiser: { userId: 5, name: "Synthetic Organiser" }, venueSuggestions: [],
   ...overrides,
 });
 const hall = venue();
@@ -215,7 +215,8 @@ test("[SPM-190 AC1][AC2] Venue Staff place a pending hold after its checks and s
   const sent = await routeVenueStaff(page, [holdRequest({ preview: preview() })]);
   await page.goto("/dashboard");
 
-  await expect(page.getByRole("heading", { name: "Hold requests (1 pending)" })).toBeVisible();
+  // Hold and booking requests share one list (developer request of 1 November 2026).
+  await expect(page.getByText("1 pending request awaiting review")).toBeVisible();
   const card = holdCard(page, 3);
   await expect(card.getByRole("heading", { name: "Synthetic Planning Forum" })).toBeVisible();
   await expect(card.getByTestId("booking-checks").getByText("All checks passed.")).toBeVisible();
@@ -225,9 +226,8 @@ test("[SPM-190 AC1][AC2] Venue Staff place a pending hold after its checks and s
   await expect(page.getByText("Hold placed. The coordinator has been told when it expires.")).toBeVisible();
   expect(sent.placed).toHaveLength(1);
   expect(sent.placed[0].key).toBeTruthy();
-  // The pending view no longer lists it; All shows it held.
-  await expect(page.getByText("No pending hold requests.")).toBeVisible();
-  await page.getByRole("button", { name: "All", exact: true }).click();
+  // Nothing is pending now; the list shows it held.
+  await expect(page.getByText("No pending requests.")).toBeVisible();
   await expect(holdCard(page, 3).getByText("On hold (tentative)", { exact: true })).toBeVisible();
 });
 
@@ -258,7 +258,6 @@ test("[SPM-190 AC6] Venue Staff extend an active hold once", async ({ page }) =>
   const sent = await routeVenueStaff(page, [placed()]);
   await page.goto("/dashboard");
 
-  await page.getByRole("button", { name: "All", exact: true }).click();
   const card = holdCard(page, 3);
   await card.getByLabel("Extend by").selectOption("3");
   await card.getByRole("button", { name: "Extend", exact: true }).click();
@@ -320,7 +319,7 @@ test('[SPM-190 recovery] an uncertain placement reuses its key after reload', as
   await expect(holdCard(page, 3).getByRole('button', { name: 'Place hold', exact: true })).toBeEnabled();
   await page.reload();
   await holdCard(page, 3).getByRole('button', { name: 'Place hold', exact: true }).click();
-  await expect(page.getByText('No pending hold requests.')).toBeVisible();
+  await expect(page.getByText('No pending requests.')).toBeVisible();
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBeTruthy();
   expect(keys[1]).toBe(keys[0]);
@@ -333,7 +332,6 @@ test('[SPM-190 expiry] an open page removes expired actions and refreshes on foc
   const requests = [placed({ hold: { ...placed().hold, expiresAt: new Date(now + 60000).toISOString() } })];
   const sent = await routeVenueStaff(page, requests);
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'All', exact: true }).click();
   const card = holdCard(page, 3);
   await expect(card.getByRole('button', { name: 'Extend', exact: true })).toBeVisible();
   await page.clock.fastForward(120000);
