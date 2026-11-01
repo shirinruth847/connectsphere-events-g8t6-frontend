@@ -28,7 +28,7 @@ const dashboards = {
   VENUE_STAFF: {
     cards: "main article",
     setup: (state) => {
-      state.venueBookings = { bookings: Array.from({ length: 4 }, (_, index) => ({ bookingId: 110 + index, label: null, status: "PENDING", statusLabel: "Pending", venueId: 45, venueName: `Synthetic Hall ${index}`, expectedAttendance: 120, submittedAt: "2026-10-07T13:32:08.000Z", updatedAt: "2026-10-08T02:00:00.000Z", event: forum, ...eventWindow })), hasMore: false, pendingCount: 4 };
+      state.venueBookings = { bookings: Array.from({ length: 4 }, (_, index) => ({ bookingId: 110 + index, label: null, status: "PENDING", statusLabel: "Pending", venueId: 45, venueName: `Synthetic Hall ${index}`, expectedAttendance: 120, submittedAt: "2026-10-07T13:32:08.000Z", updatedAt: "2026-10-08T02:00:00.000Z", event: { ...forum, eventId: forum.eventId + index, requestId: `REQ-000${forum.eventId + index}` }, ...eventWindow })), hasMore: false, pendingCount: 4 };
     },
   },
 };

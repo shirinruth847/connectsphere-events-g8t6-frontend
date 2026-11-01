@@ -245,7 +245,7 @@ export async function enterCompleteRequestThroughSubmit(page, { startHours = 168
   await page.getByLabel("Event End Date & Time").fill(localDateTimeInput(end));
   if (attendance !== null) await page.getByLabel("Targeted In-Person Headcount").fill(attendance);
   await next();
-  await expect(page.getByRole("heading", { name: "Venue Requirements" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Venue & Layout Requirements" })).toBeVisible();
   await next();
   await expect(page.getByRole("heading", { name: "Accessibility & Special Needs" })).toBeVisible();
   await next();

@@ -110,14 +110,14 @@ test('[SPM-155 TC-08] the confirmed read state replaces only that notification',
   assert.deepEqual([updated[1].is_read, updated[1].read_at], [true, '2026-10-21T04:00:00Z']);
 });
 
-test('[SPM-155 TC-12 / SPM-192 / SPM-193 / SPM-287] attendees, organisers, coordinators and Technical Support return to /notifications after login; other roles do not yet', () => {
+test('[SPM-155 TC-12 / SPM-192 / SPM-193 / SPM-287 / SPM-286] attendees, organisers, coordinators, Technical Support and Venue Staff return to /notifications after login; other roles do not yet', () => {
   assert.equal(ROUTES.notifications, '/notifications');
-  for (const role of ['ATTENDEE', 'ORGANISER', 'COORDINATOR', 'TECH_SUPPORT']) {
+  for (const role of ['ATTENDEE', 'ORGANISER', 'COORDINATOR', 'TECH_SUPPORT', 'VENUE_STAFF']) {
     assert.equal(canViewPath(role, '/notifications'), true, role);
     assert.equal(postLoginPath({ user_id: 1, name: 'A', email: 'a@example.com', role }, '/notifications'), '/notifications', role);
   }
   // The Coordinator Lead is out of SPM-193's scope.
-  for (const role of ['COORDINATOR_LEAD', 'VENUE_STAFF', 'SAFETY_OFFICER']) {
+  for (const role of ['COORDINATOR_LEAD', 'SAFETY_OFFICER']) {
     assert.equal(canViewPath(role, '/notifications'), false, role);
   }
 });
@@ -125,6 +125,13 @@ test('[SPM-155 TC-12 / SPM-192 / SPM-193 / SPM-287] attendees, organisers, coord
 test('[SPM-193 TC-11] a coordinator\'s notification opens the event workspace', () => {
   assert.equal(notificationTargetHref({ page: 'EVENT_WORKSPACE', event_id: 81 }), '/events/81');
   assert.equal(canViewPath('COORDINATOR', '/events/81'), true);
+});
+
+test('[SPM-286] a Venue Staff notification opens the booking request, else the booking requests of its event', () => {
+  assert.equal(notificationTargetHref({ page: 'VENUE_BOOKING_REQUESTS', event_id: 42, booking_id: 7 }), '/events/42?booking=7');
+  assert.equal(notificationTargetHref({ page: 'VENUE_BOOKING_REQUESTS', event_id: 42 }), '/events/42');
+  assert.equal(canViewPath('VENUE_STAFF', '/events/42'), true);
+  assert.match(emptyInboxText('VENUE_STAFF'), /booking and hold requests/);
 });
 
 test('[SPM-287] a Technical Support notification opens the technical request dashboard', () => {

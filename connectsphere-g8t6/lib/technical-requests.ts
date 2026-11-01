@@ -105,8 +105,23 @@ export function unavailableItems(details: Record<string, unknown>): UnavailableI
     : [];
 }
 
-export const itemsSummary = (items: Array<{ name?: string | null; equipmentId: number; quantity: number }>) =>
-  items.length ? items.map((item) => `${item.name ?? `Equipment #${item.equipmentId}`} × ${item.quantity}`).join(", ") : "No equipment";
+// An event's equipment line as the event API returns it. GET /api/events/:id
+// names the item; save, submit and amendment responses leave name null.
+export type EquipmentRequirement = EquipmentLine & { name?: string | null; category?: string | null };
+
+type NamedEquipment = { equipmentId: number; name?: string | null };
+
+export const equipmentLabel = (item: NamedEquipment) => item.name ?? `Equipment #${item.equipmentId}`;
+
+// Fills the names a response left null from items already known by ID: the
+// event shown before the save, or the equipment options. Earlier sources win.
+export function withEquipmentNames<T extends NamedEquipment>(items: T[], ...known: NamedEquipment[][]): T[] {
+  const names = new Map(known.flat().filter((item) => item.name).reverse().map((item) => [item.equipmentId, item.name]));
+  return items.map((item) => (item.name || !names.has(item.equipmentId) ? item : { ...item, name: names.get(item.equipmentId) }));
+}
+
+export const itemsSummary = (items: Array<NamedEquipment & { quantity: number }>) =>
+  items.length ? items.map((item) => `${equipmentLabel(item)} × ${item.quantity}`).join(", ") : "No equipment";
 
 export type TechnicalRequestFilters = { status?: string; search?: string };
 

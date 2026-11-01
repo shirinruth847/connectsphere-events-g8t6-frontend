@@ -6,6 +6,8 @@ import {
   equipmentAvailabilityErrors,
   itemFieldErrors,
   itemsSummary,
+  equipmentLabel,
+  withEquipmentNames,
   lineQuantityProblems,
   rejectionReasonProblem,
   technicalRequestQuery,
@@ -48,6 +50,14 @@ test('[SPM-286 AC6][AC7] refusals name the line and the quantity still available
   assert.deepEqual(unavailableItems({ items: [{ equipmentId: 1, name: 'Projector', requested: 4, available: 3 }, null] }), [{ equipmentId: 1, name: 'Projector', requested: 4, available: 3 }]);
   assert.deepEqual(unavailableItems({}), []);
   assert.equal(itemsSummary([{ equipmentId: 1, name: 'Projector', quantity: 2 }, { equipmentId: 5, quantity: 1 }]), 'Projector × 2, Equipment #5 × 1');
+});
+
+test('[SPM-286] a save response with null equipment names takes the names already known', () => {
+  const saved = [{ equipmentId: 1, name: null, category: null, quantity: 2 }, { equipmentId: 2, name: null, quantity: 1 }, { equipmentId: 9, name: null, quantity: 1 }];
+  const named = withEquipmentNames(saved, [{ equipmentId: 1, name: 'Old projector' }], [projector, microphone]);
+  assert.deepEqual(named.map(equipmentLabel), ['Old projector', 'Microphone', 'Equipment #9']);
+  assert.equal(named[0].quantity, 2);
+  assert.equal(withEquipmentNames([{ equipmentId: 1, name: 'Kept', quantity: 1 }], [projector])[0].name, 'Kept');
 });
 
 test('[SPM-287 AC1][AC2] the dashboard query drops empty filters and pages by offset', () => {

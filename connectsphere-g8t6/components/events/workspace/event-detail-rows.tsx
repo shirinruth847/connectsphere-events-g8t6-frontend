@@ -1,6 +1,7 @@
 import type { KeyValueRow } from "@/components/shared/key-value-panel";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatDuration, formatEventWindow } from "@/lib/datetime";
+import { equipmentLabel } from "@/lib/technical-requests";
 
 // Read-only detail rows shared by the organiser and coordinator views, so both
 // describe an event the same way.
@@ -94,4 +95,4 @@ export function RequirementList({ items, empty }: { items: string[]; empty: stri
 }
 
 export const equipmentItems = (event: EventView) =>
-  event.equipmentRequirements.map((item) => `Equipment #${item.equipmentId} × ${item.quantity}`);
+  event.equipmentRequirements.map((item) => `${equipmentLabel(item)} × ${item.quantity}`);

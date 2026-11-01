@@ -18,7 +18,7 @@ import {
 import { layoutLabel } from "./event-detail-rows";
 import { EquipmentRequirementsEditor } from "@/components/events/equipment/equipment-requirements-editor";
 import { useEquipmentAvailability } from "@/components/events/equipment/use-equipment-availability";
-import { equipmentAvailabilityErrors } from "@/lib/technical-requests";
+import { equipmentAvailabilityErrors, withEquipmentNames } from "@/lib/technical-requests";
 
 // Same limits as the SPM-33 editor and the request form; the backend's answer wins.
 const TEXT_LIMITS = { title: 200, purpose: 2000, description: 5000 } as const;
@@ -197,7 +197,9 @@ export function ClarificationAmendmentForm({ event, onSaved, onEventReplaced, on
       const result = await saveAmendments(event.eventId, changes, event.version, attempt.key);
       pendingKey.current = null;
       setOpen(false);
-      onSaved(result.event, result.message);
+      // The response leaves equipment names null; name the lines from the options chosen from.
+      const options = availability.state.data?.equipment ?? [];
+      onSaved({ ...result.event, equipmentRequirements: withEquipmentNames(result.event.equipmentRequirements ?? [], options, event.equipmentRequirements) }, result.message);
     } catch (caught) {
       handleError(caught);
     } finally {

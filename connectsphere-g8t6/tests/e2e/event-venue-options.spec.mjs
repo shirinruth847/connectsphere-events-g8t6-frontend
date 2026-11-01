@@ -346,8 +346,8 @@ test("[SPM-72 TC-VC-008][TC-VC-009][AC8] selecting a venue suggests it to the or
   await page.goto("/events/42");
   await openSearch(page);
 
-  await expect(card(page, "Synthetic Seminar Room").getByRole("button", { name: "Select" })).toBeDisabled();
-  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "Select" }).click();
+  await expect(card(page, "Synthetic Seminar Room").getByRole("button", { name: "Suggest" })).toBeDisabled();
+  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "Suggest" }).click();
   const dialog = page.getByRole("dialog", { name: "Suggest this venue?" });
   await expect(dialog).toContainText("This does not hold or book the venue");
   await dialog.getByRole("button", { name: "Suggest venue" }).click();
@@ -366,7 +366,7 @@ test("[SPM-72 TC-VC-008][AC8] the coordinator can select one of the organiser's 
   const sent = await routeVenueSection(page);
   await page.goto("/events/42");
 
-  await choices(page).getByRole("article", { name: "Synthetic Grand Hall" }).getByRole("button", { name: "Select" }).click();
+  await choices(page).getByRole("article", { name: "Synthetic Grand Hall" }).getByRole("button", { name: "Suggest" }).click();
   await page.getByRole("dialog", { name: "Suggest this venue?" }).getByRole("button", { name: "Suggest venue" }).click();
   await expect.poll(() => sent.suggestions.length).toBe(1);
 });
@@ -380,7 +380,7 @@ test("[SPM-72 TC-VC-010][AC10] a suggestion changed elsewhere is refused with a 
   await page.goto("/events/42");
   await openSearch(page);
 
-  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "Select" }).click();
+  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "Suggest" }).click();
   const dialog = page.getByRole("dialog", { name: "Suggest this venue?" });
   await dialog.getByRole("button", { name: "Suggest venue" }).click();
   await expect(dialog.getByText("The suggested venue was changed after you loaded it.")).toBeVisible();
@@ -429,11 +429,11 @@ test("[SPM-72 TC-VC-012][AC2] the supervising Lead browses and compares but cann
   await expect(page.getByText("Supervising Lead • Read-only")).toBeVisible();
   await expect(page.getByText("Read-only: only the assigned coordinator can select a venue.")).toBeVisible();
   await openSearch(page);
-  await expect(page.getByRole("button", { name: "Select" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Suggest" })).toHaveCount(0);
   await card(page, "Synthetic Grand Hall").getByRole("button", { name: "View details" }).click();
   await page.getByRole("button", { name: "Show comparison view" }).click();
   await expect(page.getByRole("region", { name: "Compare with" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select this venue" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Suggest this venue" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Show availability calendar" })).toHaveCount(0);
   await expect(page.locator('a[aria-current="page"]')).toHaveText(/Assignments/);
 });
@@ -782,7 +782,7 @@ test("[SPM-72 AC4] related venues link a hall and its rooms both ways", async ({
   await first.getByRole("list", { name: "Related venues" }).getByRole("button", { name: "Synthetic Rooftop" }).click();
   const related = page.getByRole("dialog", { name: "Venue details" });
   await expect(related.getByRole("heading", { name: "Synthetic Rooftop" })).toBeVisible();
-  await expect(related.getByRole("button", { name: "Select this venue" })).toBeVisible();
+  await expect(related.getByRole("button", { name: "Suggest this venue" })).toBeVisible();
   await related.getByRole("list", { name: "Related venues" }).getByRole("button", { name: "Synthetic Grand Hall" }).click();
   await expect(related.getByRole("heading", { name: "Synthetic Grand Hall" })).toBeVisible();
   await related.getByRole("button", { name: "Close dialog" }).click();
@@ -924,7 +924,7 @@ test("[SPM-72 AC11] an unexpected venue reply shows no venues and never breaks t
 
   await expect(page.getByText("The organiser did not choose a venue.")).toBeVisible();
   await expect(page.getByRole("heading", { name: /Schedule & attendance/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Suggest" })).toHaveCount(0);
   await openSearch(page);
   await expect(page.getByText("No venues are currently available")).toBeVisible();
 });

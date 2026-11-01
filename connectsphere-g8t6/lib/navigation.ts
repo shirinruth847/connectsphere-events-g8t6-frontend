@@ -28,6 +28,8 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
     { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
     { id: "availability", title: "Availability Calendar", icon: "calendar", href: `${ROUTES.venues}?view=availability` },
+    // Booking and hold requests and safety notices (SPM-286); the Updates panel's See more leads here too.
+    { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
   TECH_SUPPORT: [
     { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },

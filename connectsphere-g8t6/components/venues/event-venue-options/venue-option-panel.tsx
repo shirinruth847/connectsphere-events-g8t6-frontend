@@ -22,12 +22,14 @@ interface VenueOptionPanelProps {
   onFindAlternatives?: () => void;
   // The coordinator's calendar for the event window; null for the Lead.
   calendar?: VenueCalendarWindow | null;
+  // The organiser's venue step (SPM-76 AC4).
+  organiser?: boolean;
 }
 
 // One venue's details in the venue search (SPM-72 AC4), with a search box to
 // switch venue. Two of these sit side by side when venues are compared
 // (SPM-72 AC7).
-export function VenueOptionPanel({ label, venue, venues, onChoose, onClose, excludeId, badge, action, onOpenVenue, onFindAlternatives, calendar }: VenueOptionPanelProps) {
+export function VenueOptionPanel({ label, venue, venues, onChoose, onClose, excludeId, badge, action, onOpenVenue, onFindAlternatives, calendar, organiser }: VenueOptionPanelProps) {
   return (
     <section aria-label={label} className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3 rounded-panel border border-outline-variant bg-surface-container-lowest p-4">
       <div className="flex items-end gap-2">
@@ -38,7 +40,7 @@ export function VenueOptionPanel({ label, venue, venues, onChoose, onClose, excl
       {!venue ? (
         <p className="rounded-control bg-surface-container-low p-4 text-sm text-on-surface-variant">Search for a venue above, or choose one from the list, to see its details.</p>
       ) : (
-        <VenueDetails key={venue.venueId} venue={venue} badge={badge} action={action} onOpenVenue={onOpenVenue} onFindAlternatives={onFindAlternatives} calendar={calendar} />
+        <VenueDetails key={venue.venueId} venue={venue} badge={badge} action={action} onOpenVenue={onOpenVenue} onFindAlternatives={onFindAlternatives} calendar={calendar} organiser={organiser} />
       )}
     </section>
   );
