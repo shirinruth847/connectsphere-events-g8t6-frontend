@@ -35,6 +35,8 @@ export interface EventPermissions {
 
 // The coordinator's suggested venue (SPM-72/74). Advice to the organiser, not
 // a hold or booking.
+// A venue on the coordinator's list for the organiser: one of the organiser's
+// own choices is "selected", any other venue is "suggested".
 export interface VenueSuggestion {
   venueId: number;
   name: string | null;
@@ -42,7 +44,7 @@ export interface VenueSuggestion {
   maxCapacity: number | null;
   suggestedAt: string;
   suggestedBy: string | null;
-  version: number;
+  fromOrganiserChoices: boolean;
 }
 
 export interface EventView {
@@ -67,6 +69,8 @@ export interface EventView {
   preferredLayoutType: string | null;
   accessibilityNeeds: string[];
   venuePreferences: number[];
+  // SPM-76: each choice's venue and requested time; null times mean the whole event.
+  venuePreferenceTimes?: VenuePreferenceTime[];
   equipmentRequirements: EquipmentRequirement[];
   isRegistrationEnabled: boolean | null;
   registrationCapacity: number | null;
@@ -91,7 +95,7 @@ export interface EventView {
   // and the review round to open (null when none is in their scope).
   registeredCount?: number;
   safetyReviewId?: number | null;
-  venueSuggestion?: VenueSuggestion | null;
+  venueSuggestions?: VenueSuggestion[];
 }
 
 export interface EventHistoryChange {
@@ -268,6 +272,13 @@ export interface ClarificationRound {
   // Messages from the other party since this viewer last opened the thread;
   // null for viewers whose reads are not tracked (same-organisation organisers).
   unreadCount: number | null;
+}
+
+export interface VenuePreferenceTime {
+  venueId: number;
+  venueName?: string | null;
+  requestedStart: string | null;
+  requestedEnd: string | null;
 }
 
 // The submission fields an owner may amend while a thread is open

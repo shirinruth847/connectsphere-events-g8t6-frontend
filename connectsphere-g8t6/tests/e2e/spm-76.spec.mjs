@@ -47,37 +47,36 @@ async function openVenueStep(page) {
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Venue & Layout Requirements' })).toBeVisible();
   const search = page.getByRole('region', { name: 'Venue search' });
-  await expect(search.getByRole('article')).toHaveCount(10);
+  await expect(search.getByRole('article')).toHaveCount(12);
   return { state, search, optionQueries, availabilityQueries };
 }
-
-test('[SPM-76 AC2][TC-VS-001/002] 10 venues first, the request layout and required facilities check them, and Enter never submits', async ({ page }) => {
+// Developer request of 1 November 2026: 12 venues first and a typed "Show"
+// number, as in the coordinator's search; no required-facilities box.
+test('[SPM-76 AC2][TC-VS-001/002] 12 venues first, a typed page size, the request layout checks them, and Enter never submits', async ({ page }) => {
   const { state, search, optionQueries } = await openVenueStep(page);
-  await expect(search.getByRole('button', { name: 'Show more venues (10 more)' })).toBeVisible();
-  await search.getByLabel('Show', { exact: true }).selectOption('20');
+  await expect(search.getByRole('button', { name: 'Show more venues (9 more)' })).toBeVisible();
+  await search.getByLabel('Show', { exact: true }).fill('20');
   await expect(search.getByRole('article')).toHaveCount(20);
   await expect(search.getByRole('button', { name: 'Show more venues (1 more)' })).toBeVisible();
+  await expect(search.getByLabel('Required facilities')).toHaveCount(0);
 
   // The request's own layout, not just a search filter (AC3).
   await page.getByLabel('Preferred Seating & Room Geometry').selectOption('THEATRE');
   await expect.poll(() => optionQueries.at(-1)?.get('preferredLayoutType')).toBe('THEATRE');
 
-  await search.getByLabel('Required facilities').fill('Stage, Projector');
-  await search.getByLabel('Required facilities').press('Enter');
-  await expect.poll(() => optionQueries.at(-1)?.get('requiredFacilities')).toBe('Stage,Projector');
-  // Required facilities rank venues; they never hide one.
-  await expect(search.getByText('21 venues available')).toBeVisible();
+  await search.getByLabel('Search', { exact: true }).fill('Hall');
+  await search.getByLabel('Search', { exact: true }).press('Enter');
+  await expect.poll(() => optionQueries.at(-1)?.get('search')).toBe('Hall');
   await expect(page.getByRole('heading', { name: 'Venue & Layout Requirements' })).toBeVisible();
   expect(state.draftCreateRequests).toHaveLength(0);
   expect(state.createEventRequests).toHaveLength(0);
-  // No availability calendar for organisers (TC-VS-001).
-  await expect(page.getByRole('button', { name: /calendar/i })).toHaveCount(0);
+  // The calendar button belongs to each chosen venue; none is chosen yet.
+  await expect(page.getByRole('button', { name: 'Set time on calendar' })).toHaveCount(0);
 });
 
 test('[SPM-76 AC3/AC4][TC-VS-003/004] details show every organiser field, and an unavailable venue only says why by kind', async ({ page }) => {
   const { search } = await openVenueStep(page);
-  await search.getByRole('button', { name: 'Show more venues (10 more)' }).click();
-  await search.getByRole('button', { name: 'Show more venues (1 more)' }).click();
+  await search.getByRole('button', { name: 'Show more venues (9 more)' }).click();
   await search.getByRole('article', { name: 'Synthetic Booked Hall' }).getByRole('button', { name: 'View details' }).click();
   const panel = search.getByRole('region', { name: 'Venue details' });
   for (const [term, value] of [['Emergency access', 'Two exits on the north side'], ['Known restrictions', 'No open flames'], ['Description', 'Main hall with a stage.']]) {
@@ -124,4 +123,31 @@ test('[SPM-76 AC6][TC-VS-006] choices are ranked, checked over their time, saved
   expect(state.submitDraftRequests.at(-1).venuePreferences).toEqual([101, 102]);
   // Choosing never holds or books a venue.
   expect(state.requestLog.some((entry) => /holds|venue-bookings/.test(entry.pathname))).toBe(false);
+});
+
+// Developer requests of 1 November 2026.
+test('[SPM-76] Set time on calendar is a clear button on each choice and shows only the organiser\'s own time', async ({ page }) => {
+  const { search } = await openVenueStep(page);
+  await search.getByRole('article', { name: 'Synthetic Hall 02' }).getByRole('button', { name: 'Choose as ideal venue' }).click();
+  const choices = page.getByRole('region', { name: 'Your venue choices' });
+  await choices.getByRole('button', { name: 'Set time on calendar' }).click();
+  const calendar = page.getByRole('region', { name: 'Synthetic Hall 02 calendar' });
+  await expect(calendar).toBeVisible();
+  // The request is unavailable then (by kind only); no other booking's time or title is shown.
+  await expect(choices.getByText(/Unavailable at this time \(booking\)/).first()).toBeVisible();
+  await expect(calendar.getByText(/REQ-|Booking #/)).toHaveCount(0);
+  await choices.getByRole('button', { name: 'Hide calendar' }).click();
+  await expect(calendar).toHaveCount(0);
+});
+
+test('[developer request] the step circles open their step, and there is no Add Quick Event button', async ({ page }) => {
+  await installConnectSphereMocks(page);
+  await page.goto('/events/new');
+  await expect(page.getByRole('link', { name: /Add Quick Event/ })).toHaveCount(0);
+  const progress = page.getByRole('navigation', { name: 'Request progress' });
+  await progress.getByRole('button', { name: /Registration/ }).click();
+  await expect(page.getByText('Step 6 of 6')).toBeVisible();
+  await progress.getByRole('button', { name: /Venue/ }).click();
+  await expect(page.getByRole('heading', { name: 'Venue & Layout Requirements' })).toBeVisible();
+  // Submit still checks every step, so skipping ahead never sends an incomplete request.
 });

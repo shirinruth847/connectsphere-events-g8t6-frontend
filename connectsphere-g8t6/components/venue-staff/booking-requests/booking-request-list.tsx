@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageContent } from "@/components/layout/page-content";
-import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton, fieldClasses } from "@/components/shared/primitives";
+import { AlertBanner, Button, buttonClasses, EmptyState, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { OptionDropdown } from "@/components/shared/option-dropdown";
+import { compactField, FilterSelect } from "@/components/shared/list-filters";
 import { SortOrderToggle } from "@/components/venues/sort-order-toggle";
 import { useDebouncedValue } from "@/components/venues/use-debounced-value";
 import { useVenueOptions } from "@/components/venues/use-venue-options";
@@ -18,21 +19,23 @@ import {
   type VenueBookingFilters,
   type VenueBookingListItem,
 } from "@/lib/api/venue-bookings";
-import { BOOKING_SORT_OPTIONS, MAX_SEARCH_LENGTH, sortByLastAccessed, type BookingSort, type SortOrder } from "./booking-filters";
+import { BOOKING_SORT_OPTIONS, MAX_SEARCH_LENGTH, groupBookingsByEvent, sortByLastAccessed, type BookingSort, type EventRequestGroup, type SortOrder } from "./booking-filters";
 import { BOOKING_BORDERS, BookingStatusChip } from "./booking-status-chip";
 import { useOpenedBookings } from "./use-opened-bookings";
-import { useHoldRequests } from "./hold-request-list";
 
 type ListState =
   | { status: "loading" }
   | { status: "ready"; bookings: VenueBookingListItem[]; hasMore: boolean; pendingCount: number; approvedCount: number }
   | { status: "error"; message: string; fields?: Record<string, string> };
 
-type Option = { value: string; label: string };
 type Filters = { status: string; venueId: string; date: string };
 
-const STATUS_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected", CANCELLED: "Cancelled" };
+// Short labels, so every filter in the row is the same size (developer
+// request of 1 November 2026). A booking request is the venue's hold while it
+// is pending, so there are no separate hold requests (SPM-190).
+const STATUS_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected", CANCELLED: "Cancelled", EXPIRED: "Expired" };
 const EMPTY_FILTERS: Filters = { status: "", venueId: "", date: "" };
+
 // The direction each sort starts in when it is chosen.
 const DEFAULT_ORDER: Record<BookingSort, SortOrder> = {
   default: "asc",
@@ -41,39 +44,38 @@ const DEFAULT_ORDER: Record<BookingSort, SortOrder> = {
   lastAccessed: "desc",
   alphabetical: "asc",
 };
-// Compact controls: each select is as wide as its longest option.
-const compactField = fieldClasses.replace("w-full", "");
+// Review opens the event's venue bookings with the card's lead booking selected.
+const groupHref = (group: EventRequestGroup<VenueBookingListItem>) => `/events/${group.event.eventId}?booking=${group.lead.bookingId}`;
 
-const bookingHref = (booking: VenueBookingListItem) => `/events/${booking.event.eventId}?booking=${booking.bookingId}`;
-
-// Compact card (SPM-186): headed by the event, without the booking ID; the
-// viewer's own last opening sits bottom right.
-function BookingRequestCard({ booking, openedAt, onOpen }: { booking: VenueBookingListItem; openedAt: number | null; onOpen: () => void }) {
-  const titleId = `booking-${booking.bookingId}-title`;
-  const venue = `${booking.venueName}${booking.label ? ` · ${booking.label}` : ""}`;
+// One card per event (developer request of 1 November 2026): the event title,
+// the venues it asks for, the event's date and time and when to respond by.
+// The viewer's own last opening sits bottom right.
+function EventRequestCard({ group, openedAt, onOpen }: { group: EventRequestGroup<VenueBookingListItem>; openedAt: number | null; onOpen: () => void }) {
+  const titleId = `event-request-${group.event.eventId}-title`;
+  const { lead } = group;
   return (
     <article
       aria-labelledby={titleId}
-      data-booking-id={booking.bookingId}
-      className={`flex flex-col gap-3 rounded-panel border-t-4 ${BOOKING_BORDERS[booking.status] ?? "border-t-slate-400"} bg-surface-container-lowest p-4 shadow-elevation-1 transition-shadow duration-150 hover:shadow-elevation-2`}
+      data-event-id={group.event.eventId}
+      data-booking-id={lead.bookingId}
+      className={`flex flex-col gap-3 rounded-panel border-t-4 ${BOOKING_BORDERS[lead.status] ?? "border-t-slate-400"} bg-surface-container-lowest p-4 shadow-elevation-1 transition-shadow duration-150 hover:shadow-elevation-2`}
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 id={titleId} className="line-clamp-2 text-base font-bold leading-snug text-on-surface">{booking.event.title}</h3>
-        <BookingStatusChip status={booking.status} label={booking.statusLabel} />
+        <h3 id={titleId} className="line-clamp-2 text-base font-bold leading-snug text-on-surface">{group.event.title}</h3>
+        <BookingStatusChip status={lead.status} label={lead.statusLabel} />
       </div>
-      <p className="-mt-2 text-xs text-on-surface-variant">
-        {venue} · <span className="font-mono">{booking.event.requestId}</span>
-        {booking.fromHold ? <span className="ml-2 inline-flex rounded-chip bg-[#FEF3C7] px-1.5 py-0.5 text-[11px] font-semibold text-[#92400E]">From hold</span> : null}
-      </p>
-      <ul className="grid gap-1 text-sm text-on-surface">
-        <li className="flex items-center gap-2"><Icon name="calendar" size={16} />{formatEventWindow(booking.startDatetime, booking.endDatetime)}</li>
-        <li className="flex items-center gap-2">
-          <Icon name="attendees" size={16} />
-          {booking.expectedAttendance ? `${booking.expectedAttendance.toLocaleString()} people` : "Attendance not provided"}
+      <ul className="grid gap-1.5 text-sm text-on-surface">
+        <li className="flex items-start gap-2">
+          <Icon name="venue" size={16} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 [overflow-wrap:anywhere]"><span className="sr-only">Venues: </span>{group.venues.join(", ")}</span>
         </li>
+        <li className="flex items-start gap-2"><Icon name="calendar" size={16} className="mt-0.5 shrink-0" />{formatEventWindow(group.start, group.end)}</li>
+        {group.decideBy ? (
+          <li className="flex items-start gap-2 font-semibold text-[#92400E]"><Icon name="schedule" size={16} className="mt-0.5 shrink-0" />Respond by {formatTimestamp(group.decideBy)}</li>
+        ) : null}
       </ul>
       <div className="mt-auto flex items-end justify-between gap-3">
-        <Link href={bookingHref(booking)} onClick={onOpen} className={buttonClasses("primary")} aria-describedby={titleId}>
+        <Link href={groupHref(group)} onClick={onOpen} className={buttonClasses("primary")} aria-describedby={titleId}>
           Review<Icon name="arrow-forward" size={16} />
         </Link>
         {openedAt ? (
@@ -92,30 +94,11 @@ function CountTile({ count, label }: { count: number; label: string }) {
   );
 }
 
-function FilterSelect({ id, label, value, options, allLabel, width, onChange }: {
-  id: string;
-  label: string;
-  value: string;
-  options: Option[];
-  allLabel?: string;
-  width: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="grid gap-1">
-      <label htmlFor={id} className="text-xs font-semibold text-on-surface-variant">{label}</label>
-      <select id={id} className={`${compactField} ${width}`} value={value} onChange={(event) => onChange(event.target.value)}>
-        {allLabel !== undefined ? <option value="">{allLabel}</option> : null}
-        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
-    </div>
-  );
-}
-
-// The Venue Staff dashboard and "My Requests" tab (SPM-181): every venue
-// booking request, pending first by default, searchable as you type (booking
-// ID, request ID, event title, venue or label), sortable and filterable by
-// status, venue and date.
+// The Venue Staff dashboard and "My Requests" tab (SPM-181): every booking
+// request, pending first by default, searchable as you type (booking ID,
+// request ID, event title, venue or label), sortable and filterable by
+// status, venue and date. A pending request keeps the venue until it is
+// decided or its respond-by time passes (SPM-190); the backend handles that.
 export function BookingRequestList() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [search, setSearch] = useState("");
@@ -127,10 +110,12 @@ export function BookingRequestList() {
   const [attempt, setAttempt] = useState(0);
   const venueOptions = useVenueOptions();
   const { opened, markOpened } = useOpenedBookings();
-  const holdRequests = useHoldRequests();
   const filtered = Boolean(filters.status || filters.venueId || filters.date || q);
 
-  const request: VenueBookingFilters = useMemo(() => ({ ...filters, q, sort, order }), [filters, q, sort, order]);
+  const request: VenueBookingFilters = useMemo(
+    () => ({ status: filters.status, venueId: filters.venueId, date: filters.date, q, sort, order }),
+    [filters.status, filters.venueId, filters.date, q, sort, order],
+  );
 
   // `alive` drops a slower response for a search or filter that has since changed.
   useEffect(() => {
@@ -170,21 +155,25 @@ export function BookingRequestList() {
     [venueOptions.venues],
   );
   const update = (key: keyof Filters) => (value: string) => setFilters((current) => ({ ...current, [key]: value }));
-  const visibleBookings = state.status === "ready"
+  const bookings = state.status === "ready"
     ? (sort === "lastAccessed" ? sortByLastAccessed(state.bookings, opened, order) : state.bookings)
     : [];
+  const groups = groupBookingsByEvent(bookings);
+  // A reply without a count counts as none, never NaN.
+  const pendingCount = state.status === "ready" ? state.pendingCount ?? 0 : 0;
+  const approvedCount = state.status === "ready" ? state.approvedCount ?? 0 : 0;
 
   return (
     <PageContent
       title="My Requests"
       eyebrow={ROLE_LABELS.VENUE_STAFF}
-      description="Review hold and booking requests from event coordinators in one place. Holds temporarily protect a venue; bookings are the requests you approve or reject."
+      description="Venue booking requests from event coordinators. Approve or reject each pending request by its respond-by time; after that the venue is released."
       action={
         <div className="flex flex-wrap items-center gap-2">
           {state.status === "ready" ? (
             <>
-              <CountTile count={state.pendingCount + (holdRequests.state.status === "ready" ? holdRequests.state.pendingCount : 0)} label="Pending" />
-              <CountTile count={state.approvedCount} label="Approved" />
+              <CountTile count={pendingCount} label="Pending" />
+              <CountTile count={approvedCount} label="Approved" />
             </>
           ) : null}
           {/* The Updates button and panel shared with the other inbox roles (SPM-286). */}
@@ -192,31 +181,15 @@ export function BookingRequestList() {
         </div>
       }
     >
-      <section aria-labelledby="venue-requests-heading" className="mb-6 grid gap-3">
-        <div>
-          <h2 id="venue-requests-heading" className="text-lg font-semibold text-on-surface">Hold and booking requests</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Process pending holds when a coordinator needs time to obtain organiser confirmation, then review booking requests for final venue approval.</p>
-        </div>
-        {holdRequests.notice ? <AlertBanner tone={holdRequests.notice.tone} live={false}>{holdRequests.notice.text}</AlertBanner> : null}
-        {holdRequests.state.status === "loading" ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-48 w-full" /></div> : null}
-        {holdRequests.state.status === "error" ? <AlertBanner tone="error" title="Could not load hold requests">{holdRequests.state.message}<div className="mt-3"><Button variant="secondary" onClick={holdRequests.reload}><Icon name="refresh" size={16} />Try again</Button></div></AlertBanner> : null}
-        {holdRequests.state.status === "ready" && holdRequests.state.requests.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-label="Hold requests">
-            {holdRequests.state.requests.map(holdRequests.card)}
-          </div>
-        ) : null}
-        {holdRequests.state.status === "ready" && holdRequests.state.requests.length === 0 ? <p className="text-sm text-on-surface-variant">No hold requests.</p> : null}
-        {holdRequests.dialog}
-      </section>
-      <h2 className="mb-3 text-lg font-semibold text-on-surface">Booking requests</h2>
-      <section aria-label="Search, sort and filter booking requests" className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
+      <h2 className="mb-3 text-lg font-semibold text-on-surface">Requests</h2>
+      <section aria-label="Search, sort and filter requests" className="mb-5 flex flex-wrap items-end gap-x-2 gap-y-2 rounded-panel bg-surface-container-lowest p-3 shadow-elevation-1">
         {/* Clear is always present (disabled when empty), so typing never resizes the box. */}
-        <div className="grid min-w-[14rem] flex-1 gap-1">
+        <div className="grid min-w-[10rem] flex-1 gap-1">
           <label htmlFor="booking-search" className="text-xs font-semibold text-on-surface-variant">Search</label>
           <input
             id="booking-search"
             type="search"
-            className={fieldClasses}
+            className={`${compactField} w-full`}
             placeholder="Booking ID, event, venue or label"
             maxLength={MAX_SEARCH_LENGTH}
             value={search}
@@ -225,18 +198,18 @@ export function BookingRequestList() {
           />
           <span id="booking-search-hint" className="sr-only">Results update as you type.</span>
         </div>
-        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[9.5rem]"
-          options={VENUE_BOOKING_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))} onChange={update("status")} />
+        <FilterSelect id="booking-status" label="Status" value={filters.status} allLabel="All statuses" width="w-[10rem]"
+          options={VENUE_BOOKING_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] ?? value }))} onChange={update("status")} />
         <div className="grid gap-1">
           <label htmlFor="booking-venue" className="text-xs font-semibold text-on-surface-variant">Venue</label>
-          <OptionDropdown id="booking-venue" label="Venue" allLabel="All venues" className="w-[13rem]" value={filters.venueId} options={venueChoices} onChange={update("venueId")} />
+          <OptionDropdown id="booking-venue" label="Venue" allLabel="All venues" className="w-[10rem]" value={filters.venueId} options={venueChoices} onChange={update("venueId")} />
         </div>
         <div className="grid gap-1">
           <label htmlFor="booking-date" className="text-xs font-semibold text-on-surface-variant">Date (SGT)</label>
-          <input id="booking-date" type="date" className={`${compactField} w-[10.5rem]`} value={filters.date} onChange={(event) => update("date")(event.target.value)} />
+          <input id="booking-date" type="date" className={`${compactField} w-[10rem]`} value={filters.date} onChange={(event) => update("date")(event.target.value)} />
         </div>
         <div className="flex items-end gap-1">
-          <FilterSelect id="booking-sort" label="Sort by" value={sort} options={BOOKING_SORT_OPTIONS} width="w-[11.5rem]"
+          <FilterSelect id="booking-sort" label="Sort by" value={sort} options={BOOKING_SORT_OPTIONS} width="w-[10rem]"
             onChange={(value) => { setSort(value as BookingSort); setOrder(DEFAULT_ORDER[value as BookingSort]); }} />
           <SortOrderToggle order={order} onChange={setOrder} />
         </div>
@@ -245,19 +218,19 @@ export function BookingRequestList() {
       </section>
 
       <div aria-live="polite">
-        {state.status === "ready" && state.pendingCount === 0 ? (
-          <div className="mb-5"><AlertBanner tone="info" live={false}>No pending booking requests.</AlertBanner></div>
+        {state.status === "ready" && pendingCount === 0 ? (
+          <div className="mb-5"><AlertBanner tone="info" live={false}>No pending requests.</AlertBanner></div>
         ) : null}
-        {state.status === "ready" && state.pendingCount > 0 ? (
+        {state.status === "ready" && pendingCount > 0 ? (
           <p className="mb-4 text-sm font-semibold text-on-surface">
-            {state.pendingCount} pending {state.pendingCount === 1 ? "request" : "requests"} awaiting review
+            {pendingCount} pending {pendingCount === 1 ? "request" : "requests"} awaiting review
           </p>
         ) : null}
         {busy && state.status === "ready" ? <p className="mb-2 text-xs text-on-surface-variant">Updating…</p> : null}
       </div>
 
       {state.status === "loading" ? (
-        <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading booking requests">
+        <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading requests">
           {[0, 1, 2].map((key) => <Skeleton key={key} className="h-48 w-full" />)}
         </div>
       ) : null}
@@ -269,28 +242,31 @@ export function BookingRequestList() {
         </AlertBanner>
       ) : null}
 
-      {state.status === "ready" && visibleBookings.length === 0 ? (
+      {state.status === "ready" && bookings.length === 0 ? (
         <EmptyState
-          title={filtered ? "No matching booking requests" : "No booking requests yet"}
-          description={filtered ? "No venue booking matches this search or these filters. Clear them to see more." : "Booking requests from event coordinators appear here."}
+          title={filtered ? "No matching requests" : "No requests yet"}
+          description={filtered ? "No booking request matches this search or these filters. Clear them to see more." : "Booking requests from event coordinators appear here."}
           action={filtered ? <Button variant="secondary" onClick={clearAll}>Clear search and filters</Button> : undefined}
         />
       ) : null}
 
-      {state.status === "ready" && visibleBookings.length > 0 ? (
+      {state.status === "ready" && bookings.length > 0 ? (
         <>
           <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy={busy}>
-            {visibleBookings.map((booking) => (
-              <BookingRequestCard
-                key={booking.bookingId}
-                booking={booking}
-                openedAt={opened[String(booking.bookingId)] ?? null}
-                onOpen={() => markOpened(booking.bookingId)}
-              />
-            ))}
+            {groups.map((group) => {
+              const openings = group.bookings.map((booking) => opened[String(booking.bookingId)]).filter((time): time is number => typeof time === "number");
+              return (
+                <EventRequestCard
+                  key={`event-${group.event.eventId}`}
+                  group={group}
+                  openedAt={openings.length ? Math.max(...openings) : null}
+                  onOpen={() => markOpened(group.lead.bookingId)}
+                />
+              );
+            })}
           </div>
           {state.hasMore ? (
-            <p className="mt-4 text-sm text-on-surface-variant">Showing the first {visibleBookings.length} requests. Narrow the search or filters to see the rest.</p>
+            <p className="mt-4 text-sm text-on-surface-variant">Showing the first {bookings.length} booking requests. Narrow the search or filters to see the rest.</p>
           ) : null}
         </>
       ) : null}

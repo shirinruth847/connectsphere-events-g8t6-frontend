@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Dialog } from "@/components/shared/dialog";
 import { AlertBanner, Button, EmptyState, PageHeader, ReferenceIdTag, SectionCard, Skeleton, buttonClasses, fieldClasses } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
+import { BackButton } from "@/components/shared/back-button";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { ApiError } from "@/lib/api";
@@ -309,7 +310,7 @@ function DetailsSection({ venueId, details, detailStatus, onSaved }: {
       <form noValidate onSubmit={submit} className="grid gap-4">
         {message ? <AlertBanner tone={message.tone}>{message.text}</AlertBanner> : null}
         {detailStatus === "NOT_AVAILABLE" ? (
-          <AlertBanner tone="info" live={false}>No details are recorded for this venue yet. Setup and turnaround times are needed before it can receive holds or bookings.</AlertBanner>
+          <AlertBanner tone="info" live={false}>No details are recorded for this venue yet. Setup and turnaround times are needed before it can receive bookings.</AlertBanner>
         ) : null}
         <BufferFields idPrefix="details" values={values} errors={errors} onChange={change} disabled={saving} locked={locked} />
         <Field id="details-description" label="Description" error={errors.description}>
@@ -417,9 +418,7 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
   };
   return (
     <div className="grid gap-5">
-      <Link href="/venues" className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
-        <Icon name="arrow-back" size={16} />My Venues
-      </Link>
+      <BackButton fallback="/venues" />
       <VenueGallery venueId={venue.venueId} venueName={venue.name} />
       <PageHeader
         eyebrow="Venue management"
@@ -429,9 +428,10 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
       />
       <div className="-mt-2 flex flex-wrap items-center gap-3">
         <ReferenceIdTag value={`VENUE-${venue.venueId}`} />
-        <Link href={`/venues?view=availability&venueId=${venue.venueId}&from=venue`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+        <Link href={`/venues/availability?venueId=${venue.venueId}&from=venue`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
           <Icon name="calendar" size={16} />View availability
         </Link>
+        <Button variant="quiet" onClick={reload}><Icon name="refresh" size={16} />Reload venue</Button>
       </div>
       <div aria-live="polite">
         {notice ? <AlertBanner tone={notice.tone} live={false}>{notice.text}</AlertBanner> : null}
@@ -458,7 +458,6 @@ export function VenueDetailManager({ venueId }: { venueId: number | null }) {
           <VenueBlocksSection venueId={venue.venueId} venueName={venue.name} />
         </div>
         <aside className="grid content-start gap-5 xl:col-span-4" aria-label="Record history">
-          <Button variant="secondary" className="justify-self-start" onClick={reload}><Icon name="refresh" size={16} />Reload venue</Button>
           <section className="rounded-panel bg-surface-container-lowest p-4 shadow-elevation-1 sm:p-5">
             <SectionHeading title="Record history" />
             <KeyValuePanel

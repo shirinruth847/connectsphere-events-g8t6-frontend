@@ -1,5 +1,6 @@
 "use client";
 
+import { canonicalLayout } from "@/components/venues/event-venue-options/venue-option-model";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/shared/dialog";
@@ -123,7 +124,7 @@ export function VenueInfoDialog({ open, onClose, booking, requestId }: {
           </dl>
           {state.details?.description ? <p className="text-sm text-on-surface">{state.details.description}</p> : null}
           <div className="grid gap-4 md:grid-cols-3">
-            <Chips title="Layouts" items={state.details?.supportedLayouts ?? []} />
+            <Chips title="Layouts" items={(state.details?.supportedLayouts ?? []).map(canonicalLayout)} />
             <Chips title="Facilities" items={state.details?.facilities ?? []} />
             <Chips title="Accessibility" items={state.details?.accessibilityFeatures ?? []} />
           </div>

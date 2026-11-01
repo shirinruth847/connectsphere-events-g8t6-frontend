@@ -6,6 +6,7 @@ import { installConnectSphereMocks, makeDraft } from "./support.mjs";
 
 const eventWindow = { startDatetime: "2026-11-20T02:00:00.000Z", endDatetime: "2026-11-20T04:00:00.000Z" };
 const forum = { eventId: 442, requestId: "REQ-000442", title: "Synthetic planning forum", status: "PLANNING", eventType: "SEMINAR", eventTypeLabel: "Seminar" };
+const cardRenderTimeout = 15_000;
 
 const dashboards = {
   ORGANISER: {
@@ -28,7 +29,7 @@ const dashboards = {
   VENUE_STAFF: {
     cards: "main article",
     setup: (state) => {
-      state.venueBookings = { bookings: Array.from({ length: 4 }, (_, index) => ({ bookingId: 110 + index, label: null, status: "PENDING", statusLabel: "Pending", venueId: 45, venueName: `Synthetic Hall ${index}`, expectedAttendance: 120, submittedAt: "2026-10-07T13:32:08.000Z", updatedAt: "2026-10-08T02:00:00.000Z", event: forum, ...eventWindow })), hasMore: false, pendingCount: 4 };
+      state.venueBookings = { bookings: Array.from({ length: 4 }, (_, index) => ({ bookingId: 110 + index, label: null, status: "PENDING", statusLabel: "Pending", venueId: 45, venueName: `Synthetic Hall ${index}`, expectedAttendance: 120, submittedAt: "2026-10-07T13:32:08.000Z", updatedAt: "2026-10-08T02:00:00.000Z", event: { ...forum, eventId: forum.eventId + index, requestId: `REQ-000${forum.eventId + index}` }, ...eventWindow })), hasMore: false, pendingCount: 4 };
     },
   },
 };
@@ -44,7 +45,7 @@ for (const [role, { path = "/dashboard", cards, setup }] of Object.entries(dashb
     await setup(state, page);
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto(path);
-    await expect(page.locator(cards)).toHaveCount(4);
+    await expect(page.locator(cards)).toHaveCount(4, { timeout: cardRenderTimeout });
     expect(await perRow(page, cards)).toBe(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1366);
 

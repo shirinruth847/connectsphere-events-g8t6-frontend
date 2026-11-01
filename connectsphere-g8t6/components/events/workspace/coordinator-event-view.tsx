@@ -170,12 +170,18 @@ export function CoordinatorEventView({ event, onEventChange, onAccessChanged }: 
             ) : null}
           </ReviewSection>
 
-          <ReviewSection step={3} title="Venue & layout" description="The event's venue bookings and the organiser's venue choices. Find another venue to search, compare and suggest one." action={significantPill}>
+          <ReviewSection step={3} title="Venue & layout" description="The event's venue bookings, the organiser's venue choices and your venues for the organiser. Find another venue to search, compare and suggest one." action={significantPill}>
             <KeyValuePanel rows={layoutRows(event)} />
             <EventVenueSection
-              key={event.venueSuggestion?.version ?? 0}
+              key={(event.venueSuggestions ?? []).map((item) => item.venueId).join(",")}
               event={event}
-              onSuggested={() => setHistoryKey((value) => value + 1)}
+              onSuggested={() => {
+                // Suggesting a venue may open a clarification, which changes the
+                // event's status and its clarification requests.
+                setHistoryKey((value) => value + 1);
+                setClarificationKey((value) => value + 1);
+                getEventView(event.eventId).then(({ event: latest }) => onEventChange(latest)).catch(() => {});
+              }}
               onStale={onAccessChanged}
               onBookingsRequested={() => {
                 // New bookings change the arrangement version, history and

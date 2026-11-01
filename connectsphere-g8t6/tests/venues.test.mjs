@@ -122,9 +122,10 @@ test('[SPM-75] the filter dropdowns list every value the venues carry, once, and
   const venue = (rooms, supportedLayouts, facilities, accessibilityFeatures) => ({ rooms: rooms.map((layoutType) => ({ layoutType })), supportedLayouts, facilities, accessibilityFeatures });
   const first = venueFilterChoices([
     venue(['THEATRE'], ['Banquet'], ['Stage', 'Projector'], ['Ramp']),
-    venue(['theatre', 'CLASSROOM'], null, [' Stage ', ''], null),
+    venue(['theatre', 'CLASSROOM'], ['Theater'], [' Stage ', ''], null),
   ]);
-  assert.deepEqual(first, { layouts: ['Banquet', 'CLASSROOM', 'THEATRE'], facilities: ['Projector', 'Stage'], accessibility: ['Ramp'] });
+  // Every spelling of the theatre layout is one "Theatre" (developer request of 1 November 2026).
+  assert.deepEqual(first, { layouts: ['Banquet', 'CLASSROOM', 'Theatre'], facilities: ['Projector', 'Stage'], accessibility: ['Ramp'] });
   // A filtered load returns fewer venues; the earlier choices stay.
   assert.deepEqual(venueFilterChoices([venue([], [], ['PA system'], [])], first).facilities, ['PA system', 'Projector', 'Stage']);
 });

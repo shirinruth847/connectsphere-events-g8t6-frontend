@@ -166,3 +166,47 @@ export function blockOverlays(data: VenueAvailability, formatWindow: (start: str
   }
   return overlays;
 }
+
+// SPM-76: the organiser's calendar for one chosen venue, drawn as coloured
+// blocks without words. It shows only the organiser's own times: blue behind
+// for their other chosen venues, yellow for the time being edited (draggable
+// when `resize` is given), red over it when the backend's check found the venue
+// unavailable then, and grey outside opening hours. Other bookings, holds and
+// blocks are never drawn, so it shows nothing about when they are (SPM-76 AC3,
+// TC-VS-003; developer request of 1 November 2026).
+export function requestCalendar(
+  venue: { venueId: number; name: string; operatingHours: string | null },
+  range: { date: string; days: number },
+  { requested, otherChoices = [], unavailable = false, resize }: {
+    requested: { start: string; end: string } | null;
+    otherChoices?: Array<{ start: string; end: string }>;
+    unavailable?: boolean;
+    resize?: CalendarOverlay["resize"];
+  },
+): { lanes: CalendarCoordinator[]; overlays: CalendarOverlay[] } {
+  const lanes: CalendarCoordinator[] = [{ coordinatorId: venue.venueId, name: venue.name, events: [] }];
+  const overlays = [
+    ...closedHourOverlays([venue.operatingHours], range),
+    ...otherChoices.map((choice, index): CalendarOverlay => ({ id: `other-${index}`, tone: "other", start: choice.start, end: choice.end })),
+  ];
+  if (!requested) return { lanes, overlays };
+  overlays.push({ id: "request", tone: "request", start: requested.start, end: requested.end, resize });
+  if (unavailable) overlays.push({ id: "conflict", tone: "conflict", start: requested.start, end: requested.end });
+  return { lanes, overlays };
+}
+
+// The calendar's drag step (RESIZE_STEP_MS in calendar-view).
+const STEP_MS = 15 * MINUTE_MS;
+
+// Keeps a dragged edge inside the event and at least one step from the other edge.
+export function resizeWithin(
+  current: { start: string; end: string },
+  bounds: { start: string; end: string },
+  edge: "start" | "end",
+  instant: number,
+): { start: string; end: string } {
+  const [min, max] = [Date.parse(bounds.start), Date.parse(bounds.end)];
+  const [start, end] = [Date.parse(current.start), Date.parse(current.end)];
+  if (edge === "start") return { start: iso(Math.max(min, Math.min(instant, end - STEP_MS))), end: current.end };
+  return { start: current.start, end: iso(Math.min(max, Math.max(instant, start + STEP_MS))) };
+}

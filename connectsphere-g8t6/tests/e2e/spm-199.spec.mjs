@@ -78,15 +78,14 @@ for (const width of [1440, 390]) {
   });
 }
 
-test("[SPM-199 TC04] active and expired holds show their expiry and never read as approved bookings", async ({ page }) => {
+test("[SPM-199 TC04][SPM-190] holds are handled by the backend: the organiser sees bookings, never a holds section", async ({ page }) => {
   const state = await open(page);
   state.arrangements.venues.holds = [hold(), hold({ holdId: "hold-b", status: "EXPIRED", venueName: "Expired option" })];
+  state.arrangements.venues.bookings = [booking({ bookingId: 4, status: "EXPIRED", venueName: "Lapsed Hall", isPrimary: false })];
   await page.goto("/events/42");
-  await expect(venues(page).getByText("Tentative hold", { exact: true })).toBeVisible();
-  await expect(venues(page).getByText("Expired hold", { exact: true })).toBeVisible();
-  await expect(venues(page).getByText(/Hold expiry:/)).toHaveCount(2);
-  await expect(venues(page).getByText("A tentative hold is not an approved booking.")).toBeVisible();
-  await expect(venues(page).getByText("This hold is no longer active.")).toBeVisible();
+  await expect(venues(page).getByText(/Lapsed Hall/)).toBeVisible();
+  await expect(venues(page).getByText("Expired", { exact: true })).toBeVisible();
+  await expect(venues(page).getByText(/hold/i)).toHaveCount(0);
   await expect(venues(page).getByText("Approved", { exact: true })).toHaveCount(0);
 });
 
@@ -104,11 +103,11 @@ test("[SPM-199 TC05] operational unavailability preserves booking decisions and 
   };
   await page.goto("/events/42");
   const section = venues(page);
-  await expect(section.getByText(affected.message, { exact: true })).toHaveCount(2);
-  await expect(section.getByText(affected.nextAction, { exact: true })).toHaveCount(2);
+  // Holds are not shown (SPM-190, 1 November 2026); only the affected booking.
+  await expect(section.getByText(affected.message, { exact: true })).toHaveCount(1);
+  await expect(section.getByText(affected.nextAction, { exact: true })).toHaveCount(1);
   await expect(section.getByText("Approved", { exact: true })).toHaveCount(2);
   await expect(section.getByText("Released", { exact: true })).toBeVisible();
-  await expect(section.getByText("Expired hold", { exact: true })).toBeVisible();
   await expect(section.getByText("A replacement venue has been arranged.", { exact: true })).toBeVisible();
   await expect(section.getByText(/Venue unavailability and next actions could not be fully verified/)).toBeVisible();
   await expect(page.getByText("Approved & Planning", { exact: true })).toBeVisible();
@@ -135,18 +134,6 @@ test("[SPM-199 TC06] requirements and technical decisions remain distinct", asyn
   await expect(technical(page).getByText("Partially fulfilled — not approved", { exact: true })).toBeVisible();
   await expect(technical(page).getByText("Technical support requested", { exact: true })).toBeVisible();
   await expect(technical(page).getByText("Approved", { exact: true })).toHaveCount(0);
-});
-
-test("[SPM-199 TC04] a hold expires while the organiser keeps the page open", async ({ page }) => {
-  await page.clock.install({ time: new Date("2030-01-01T00:00:00Z") });
-  const state = await open(page);
-  state.arrangements.venues.holds = [hold({ holdExpiresAt: "2030-01-01T00:01:00Z" })];
-  await page.goto("/events/42");
-  await expect(venues(page).getByText("Tentative hold", { exact: true })).toBeVisible();
-  state.arrangements.venues.holds[0].status = "EXPIRED";
-  await page.clock.fastForward(61_000);
-  await expect(venues(page).getByText("Expired hold", { exact: true })).toBeVisible();
-  await expect(venues(page).getByText("Tentative hold", { exact: true })).toHaveCount(0);
 });
 
 test("[SPM-199 TC07/08] safety outcome and external comments do not confirm the event or expose internal fields", async ({ page }) => {
@@ -188,7 +175,6 @@ test("[SPM-199 TC10] no arrangements shows explicit empty states", async ({ page
   await open(page);
   await page.goto("/events/42");
   await expect(venues(page).getByText("No venue bookings have been arranged yet.")).toBeVisible();
-  await expect(venues(page).getByText("No tentative venue holds.")).toBeVisible();
   await expect(technical(page).getByText("No technical arrangements have been recorded yet.")).toBeVisible();
   await expect(safety(page).getByText("No safety review has been submitted yet.")).toBeVisible();
 });

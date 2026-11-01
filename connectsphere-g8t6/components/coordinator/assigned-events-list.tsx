@@ -8,10 +8,27 @@ import { AlertBanner, Button, buttonClasses, EmptyState, ReferenceIdTag, Skeleto
 import { Icon } from "@/components/shared/icon";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { compareValues, FilterSelect, ListToolbar, matchesSearch, type SortOrder } from "@/components/shared/list-filters";
 import { listAssignedEvents, type AssignedEvent } from "@/lib/api/event-workspace";
 import { ROLE_LABELS } from "@/lib/auth";
 import { statusPresentation } from "@/lib/events";
 import { formatEventWindow } from "@/lib/datetime";
+
+type EventSort = "event" | "updated" | "title" | "attendance";
+const SORT_OPTIONS: Array<{ value: EventSort; label: string }> = [
+  { value: "event", label: "Event date" },
+  { value: "updated", label: "Last updated" },
+  { value: "title", label: "Title" },
+  { value: "attendance", label: "Attendance" },
+];
+// Soonest events first; the most recently updated first.
+const DEFAULT_ORDER: Record<EventSort, SortOrder> = { event: "asc", updated: "desc", title: "asc", attendance: "desc" };
+const sortValue = (event: AssignedEvent, sort: EventSort) => ({
+  event: event.startDatetime,
+  updated: event.updatedAt,
+  title: event.title.toLowerCase(),
+  attendance: event.expectedAttendance,
+}[sort]);
 
 type ListState =
   | { status: "loading" }
@@ -62,6 +79,10 @@ function AssignedEventCard({ event }: { event: AssignedEvent }) {
 export function AssignedEventsList() {
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [sort, setSort] = useState<EventSort>("event");
+  const [order, setOrder] = useState<SortOrder>("asc");
 
   useEffect(() => {
     let alive = true;
@@ -84,6 +105,12 @@ export function AssignedEventsList() {
 
   const events = state.status === "ready" ? state.events : [];
   const needsAction = events.filter((event) => event.status === "AWAITING_CLARIFICATION").length;
+  const statusOptions = [...new Set(events.map((event) => event.status))].map((value) => ({ value, label: statusPresentation(value).label }));
+  const shown = events
+    .filter((event) => (!status || event.status === status) && matchesSearch(search, [event.title, event.requestId, event.organisation?.name]))
+    .sort((left, right) => compareValues(sortValue(left, sort), sortValue(right, sort), order) || left.eventId - right.eventId);
+  const filtered = Boolean(search.trim() || status);
+  const clear = () => { setSearch(""); setStatus(""); setSort("event"); setOrder("asc"); };
 
   return (
     <PageContent
@@ -109,6 +136,18 @@ export function AssignedEventsList() {
       >
       <section aria-labelledby="assigned-heading" className="grid gap-4">
         <SectionHeading id="assigned-heading" title="Assigned events" description="Only events currently assigned to you appear here." />
+        <ListToolbar
+          id="assigned-events"
+          label="Search, sort and filter assigned events"
+          search={search}
+          onSearch={setSearch}
+          placeholder="Request ID, title or organisation"
+          sort={{ value: sort, options: SORT_OPTIONS, onChange: (value) => { setSort(value as EventSort); setOrder(DEFAULT_ORDER[value as EventSort]); }, order, onOrderChange: setOrder }}
+          onClear={clear}
+          canClear={filtered || sort !== "event" || order !== "asc"}
+        >
+          <FilterSelect id="assigned-status" label="Status" value={status} allLabel="All statuses" width="w-[12rem]" options={statusOptions} onChange={setStatus} />
+        </ListToolbar>
         {state.status === "loading" ? (
           <div className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3" aria-busy="true" aria-label="Loading assigned events">
             <Skeleton className="h-64" />
@@ -121,9 +160,11 @@ export function AssignedEventsList() {
           </AlertBanner>
         ) : events.length === 0 ? (
           <EmptyState title="No events assigned yet" description="When a Coordinator Lead assigns an event to you, it appears here." />
+        ) : shown.length === 0 ? (
+          <EmptyState title="No events match" description="Change the search or filters, or select Clear to see every assigned event." />
         ) : (
           <ul className="grid gap-4 md:grid-cols-2 min-[66rem]:grid-cols-3">
-            {events.map((event) => (
+            {shown.map((event) => (
               <li key={event.eventId} className="grid"><AssignedEventCard event={event} /></li>
             ))}
           </ul>

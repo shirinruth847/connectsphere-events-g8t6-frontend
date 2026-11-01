@@ -34,7 +34,9 @@ export const EMPTY_VENUE_FORM: VenueFormValues = {
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const CONTACT_NUMBER = /^\+?[0-9(][0-9 ()-]*$/;
 
-export function validateVenueForm(values: VenueFormValues, { includeStatus = true } = {}) {
+// requireBuffers: a new venue must have its setup and turnaround times
+// (developer request of 1 November 2026); an existing one may still lack them.
+export function validateVenueForm(values: VenueFormValues, { includeStatus = true, requireBuffers = false } = {}) {
   const errors: Partial<Record<keyof VenueFormValues, string>> = {};
   if (!values.name.trim()) errors.name = "Venue name is required";
   else if (values.name.trim().length > 150) errors.name = "Venue name must be 150 characters or fewer";
@@ -54,7 +56,8 @@ export function validateVenueForm(values: VenueFormValues, { includeStatus = tru
   }
   for (const key of ["setupMinutes", "turnaroundMinutes"] as const) {
     const text = values[key].trim();
-    if (text && (!/^\d+$/.test(text) || Number(text) > MAX_BUFFER_MINUTES)) errors[key] = `Enter whole minutes from 0 to ${MAX_BUFFER_MINUTES}`;
+    if (!text && requireBuffers) errors[key] = `${key === "setupMinutes" ? "Setup" : "Turnaround"} time is required`;
+    else if (text && (!/^\d+$/.test(text) || Number(text) > MAX_BUFFER_MINUTES)) errors[key] = `Enter whole minutes from 0 to ${MAX_BUFFER_MINUTES}`;
   }
   return errors;
 }

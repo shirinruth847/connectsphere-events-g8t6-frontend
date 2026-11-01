@@ -9,6 +9,7 @@ import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import type { EventVenueOption, VenueRequirement } from "@/lib/api/event-venues";
 import { RequirementRow } from "./venue-requirement-chips";
 import { VenuePhotoCarousel } from "./venue-photo-carousel";
+import { canonicalLayout } from "./venue-option-model";
 
 // The event window the coordinator's availability calendar opens on (SPM-74).
 export interface VenueCalendarWindow {
@@ -33,7 +34,7 @@ const minutes = (value: number | null | undefined, venue: EventVenueOption) =>
 // What the venue has for a requirement, shown in its row (developer request of
 // 24 October 2026: no separate rows repeating the checks).
 const venueValue = (requirement: VenueRequirement, venue: EventVenueOption) => {
-  if (requirement.key === "layout") return listText(venue.supportedLayouts, venue);
+  if (requirement.key === "layout") return listText(venue.supportedLayouts?.map(canonicalLayout), venue);
   if (requirement.key.startsWith("accessibility")) return listText(venue.accessibilityFeatures, venue);
   if (requirement.key.startsWith("facility")) return listText(venue.facilities, venue);
   return undefined;
@@ -61,7 +62,7 @@ export function VenueFacts({ venue, onOpenVenue, onFindAlternatives, organiser =
     ["Operating hours", venue.operatingHours || NONE],
     ["Setup time", minutes(venue.setupMinutes, venue)],
     ["Turnaround time", minutes(venue.turnaroundMinutes, venue)],
-    ...(has("layout") ? [] : [["Supported layouts", listText(venue.supportedLayouts, venue)] as [string, ReactNode]]),
+    ...(has("layout") ? [] : [["Supported layouts", listText(venue.supportedLayouts?.map(canonicalLayout), venue)] as [string, ReactNode]]),
     ["Facilities", listText(venue.facilities, venue)],
     ...(has("accessibility") ? [] : [["Accessibility", listText(venue.accessibilityFeatures, venue)] as [string, ReactNode]]),
     ...(organiser

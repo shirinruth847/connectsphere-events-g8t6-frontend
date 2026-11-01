@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EMPTY_EVENT_FORM, toPayload, formValuesFromEvent, validateEventStep, amendedFields } from '../lib/events.ts';
-import { ORGANISER_VENUE_PAGE_SIZES, showMoreCount } from '../components/venues/event-venue-options/venue-option-model.ts';
+import { requestCalendar, resizeWithin } from '../components/venues/availability-calendar-model.ts';
+import { DEFAULT_VENUE_PAGE_SIZE, parsePageSize, showMoreCount } from '../components/venues/event-venue-options/venue-option-model.ts';
 
+const at = (time, day = '2026-12-01') => new Date(`${day}T${time}:00+08:00`).toISOString();
 const form = (overrides = {}) => ({
   ...EMPTY_EVENT_FORM,
   title: 'Forum',
@@ -47,9 +49,47 @@ test("[SPM-76] changing only a choice's time is an amendment", () => {
   assert.ok('venuePreferences' in amendedFields(before, after));
 });
 
-test('[SPM-76 AC2][TC2] the organiser list shows 10 at first, or 20, 50 or 100, and Show more adds a page', () => {
-  assert.deepEqual([...ORGANISER_VENUE_PAGE_SIZES], [10, 20, 50, 100]);
-  assert.equal(showMoreCount(10, 21, 10), 10);
-  assert.equal(showMoreCount(20, 21, 20), 1);
-  assert.equal(showMoreCount(21, 21, 20), 0);
+test('[SPM-76 AC4] a dragged edge stays inside the event and at least 15 minutes from the other edge', () => {
+  const bounds = { start: at('09:00'), end: at('18:00') };
+  const current = { start: at('13:00'), end: at('15:00') };
+  assert.deepEqual(resizeWithin(current, bounds, 'end', Date.parse(at('19:30'))), { start: current.start, end: at('18:00') });
+  assert.deepEqual(resizeWithin(current, bounds, 'start', Date.parse(at('07:00'))), { start: at('09:00'), end: current.end });
+  assert.deepEqual(resizeWithin(current, bounds, 'start', Date.parse(at('16:00'))), { start: at('14:45'), end: current.end });
+  assert.deepEqual(resizeWithin(current, bounds, 'end', Date.parse(at('14:00'))), { start: current.start, end: at('14:00') });
+});
+
+test("[SPM-76 AC3][TC-VS-003] the organiser calendar shows only the organiser's own times, red when the venue is unavailable then", () => {
+  const venue = { venueId: 7, name: 'Hall', operatingHours: '08:00-22:00' };
+  const range = { date: '2026-12-01', days: 1 };
+  const free = requestCalendar(venue, range, { requested: { start: at('11:00'), end: at('13:00') } });
+  assert.equal(free.lanes[0].events.length, 0);
+  const request = free.overlays.find((overlay) => overlay.tone === 'request');
+  assert.deepEqual([request.start, request.end], [at('11:00'), at('13:00')]);
+  assert.equal(free.overlays.some((overlay) => overlay.tone === 'conflict' || overlay.tone === 'busy'), false);
+  assert.ok(free.overlays.every((overlay) => !overlay.label && !overlay.detail));
+
+  const clash = requestCalendar(venue, range, { requested: { start: at('11:00'), end: at('13:00') }, unavailable: true });
+  const conflict = clash.overlays.find((overlay) => overlay.tone === 'conflict');
+  // Only the requested time turns red: nothing says when the other entry is.
+  assert.deepEqual([conflict.start, conflict.end], [at('11:00'), at('13:00')]);
+  assert.equal(clash.overlays.some((overlay) => overlay.tone === 'busy'), false);
+});
+
+test("[SPM-76] the organiser's other venues' times sit behind in their own colour", () => {
+  const { lanes, overlays } = requestCalendar({ venueId: 7, name: 'Hall', operatingHours: null }, { date: '2026-12-01', days: 1 }, {
+    requested: { start: at('09:00'), end: at('18:00') },
+    otherChoices: [{ start: at('13:00'), end: at('15:00') }],
+  });
+  assert.equal(lanes.length, 1);
+  const other = overlays.find((overlay) => overlay.tone === 'other');
+  assert.deepEqual([other.start, other.end], [at('13:00'), at('15:00')]);
+});
+
+test('[SPM-76 AC2] the organiser list shows 12 at first, Show takes a typed number, and Show more adds a page', () => {
+  assert.equal(DEFAULT_VENUE_PAGE_SIZE, 12);
+  assert.equal(parsePageSize('24'), 24);
+  assert.equal(parsePageSize('0'), null);
+  assert.equal(parsePageSize('101'), null);
+  assert.equal(showMoreCount(12, 21, 12), 9);
+  assert.equal(showMoreCount(21, 21, 12), 0);
 });

@@ -75,7 +75,7 @@ export function RestoreIncidentButton({ incident, onRestored, onRefused }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const pendingKey = useRef<string | null>(null);
-  const subject = incident.bookingId ? `Booking #${incident.bookingId}` : "the tentative hold";
+  const subject = incident.bookingId ? `Booking #${incident.bookingId}` : "the earlier reservation";
 
   if (incident.status !== "OPEN") return null;
 

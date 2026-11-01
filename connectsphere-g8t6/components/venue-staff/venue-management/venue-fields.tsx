@@ -89,13 +89,15 @@ export function VenueCoreFields({ idPrefix, values, errors, onChange, disabled }
 }
 
 // Setup and turnaround are set once each and locked afterwards (Master 5.4.1).
-export function BufferFields({ idPrefix, values, errors, onChange, disabled, locked = {} }: {
+export function BufferFields({ idPrefix, values, errors, onChange, disabled, locked = {}, required = false }: {
   idPrefix: string;
   values: Pick<VenueFormValues, "setupMinutes" | "turnaroundMinutes">;
   errors: FieldErrors;
   onChange: (key: "setupMinutes" | "turnaroundMinutes", value: string) => void;
   disabled?: boolean;
   locked?: Partial<Record<"setupMinutes" | "turnaroundMinutes", boolean>>;
+  // Creating a venue: both times are required.
+  required?: boolean;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -104,6 +106,7 @@ export function BufferFields({ idPrefix, values, errors, onChange, disabled, loc
           key={key}
           id={`${idPrefix}-${key}`}
           label={label}
+          required={required}
           error={errors[key]}
           hint={locked[key] ? "Set once; it cannot be changed." : "Whole minutes, 0 allowed. Can be set only once."}
         >

@@ -1,18 +1,23 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { AlertBanner, Button, Skeleton, StatusChip } from "@/components/shared/primitives";
+import { AlertBanner, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { SectionHeading } from "@/components/shared/section-heading";
 import { SafetyRoundCard } from "@/components/events/workspace/safety-review-section";
 import { TechnicalRequestCards } from "@/components/events/equipment/technical-request-cards";
 import { ApiError } from "@/lib/api";
 import { getOrganiserArrangements, type EquipmentItem, type OrganiserArrangements, type VenueImpact } from "@/lib/api/organiser-arrangements";
 import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
+import { OrganiserVenueCards, type OrganiserVenueCardsProps } from "./organiser-venue-cards";
+
+// The organiser's venues as cards above the bookings (developer request, 1 November 2026).
+export type VenueCardsContext = Omit<OrganiserVenueCardsProps, "eventId" | "refreshKey">;
 
 const LABELS: Record<string, string> = {
   PENDING: "Pending approval", APPROVED: "Approved", REJECTED: "Rejected",
   CANCELLED: "Cancelled", RELEASED: "Released", SUPERSEDED: "Superseded",
-  ACTIVE: "Tentative hold", EXPIRED: "Expired hold", CONVERTED: "Converted to booking request",
+  // A booking request that Venue Staff did not decide in time (SPM-190).
+  EXPIRED: "Expired",
   NOT_REQUIRED: "Not required", OPEN: "Under safety review", CHANGES_REQUESTED: "Changes requested",
   PARTIALLY_FULFILLED: "Partially fulfilled — not approved",
 };
@@ -21,8 +26,8 @@ const statusLabel = (status: string) => LABELS[status] ?? "Status unavailable";
 // explicit so an approved resource cannot be mistaken for a confirmed event.
 const CHIP_STATES: Record<string, string> = {
   PENDING: "SUBMITTED", APPROVED: "CONFIRMED", REJECTED: "REJECTED", CANCELLED: "CANCELLED",
-  RELEASED: "CANCELLED", SUPERSEDED: "CANCELLED", ACTIVE: "PLANNING", EXPIRED: "CANCELLED",
-  CONVERTED: "SUBMITTED", NOT_REQUIRED: "COMPLETED", OPEN: "SAFETY_REVIEW", CHANGES_REQUESTED: "AWAITING_CLARIFICATION",
+  RELEASED: "CANCELLED", SUPERSEDED: "CANCELLED", EXPIRED: "CANCELLED",
+  NOT_REQUIRED: "COMPLETED", OPEN: "SAFETY_REVIEW", CHANGES_REQUESTED: "AWAITING_CLARIFICATION",
   PARTIALLY_FULFILLED: "AWAITING_CLARIFICATION",
 };
 function ArrangementStatus({ status }: { status: string }) {
@@ -58,10 +63,14 @@ function Equipment({ items }: { items: EquipmentItem[] }) {
   </ul> : <Empty>No equipment items in this request.</Empty>;
 }
 
-function ArrangementDetails({ data }: { data: OrganiserArrangements }) {
+function ArrangementDetails({ data, eventId, refreshKey, venueCards }: { data: OrganiserArrangements; eventId: number; refreshKey: number; venueCards?: VenueCardsContext }) {
   const { venues, technical, safety } = data;
   return <>
-    <ArrangementSection id="venue-arrangements-heading" title="Venue arrangements" description="Bookings and tentative holds arranged for this event.">
+    <ArrangementSection id="venue-arrangements-heading" title="Venue arrangements" description="The venues you asked for, and the bookings your coordinator has arranged.">
+      {venueCards ? <>
+        <OrganiserVenueCards eventId={eventId} refreshKey={refreshKey} {...venueCards} />
+        <h3 className="text-sm font-semibold text-on-surface">Venue bookings</h3>
+      </> : null}
       {venues.status === "UNAVAILABLE" ? <Unavailable>Venue arrangements could not be loaded. Try refreshing arrangements.</Unavailable> : <>
         {!venues.bookings.length ? <Empty>No venue bookings have been arranged yet.</Empty> : <ul className="grid gap-3">
           {venues.bookings.map((booking) => <li key={booking.bookingId} className={panelClass}>
@@ -75,19 +84,6 @@ function ArrangementDetails({ data }: { data: OrganiserArrangements }) {
           </li>)}
         </ul>}
         {venues.bookings.length && venues.primaryVenueStatus === "NOT_DESIGNATED" ? <Empty>Primary venue has not been designated.</Empty> : null}
-        <h3 className="text-sm font-semibold text-on-surface">Tentative holds</h3>
-        {venues.holdsStatus === "UNAVAILABLE" ? <Unavailable>Tentative holds could not be checked. Try refreshing arrangements.</Unavailable> : !venues.holds.length ? <Empty>No tentative venue holds.</Empty> : <ul className="grid gap-3">
-          {venues.holds.map((hold) => <li key={hold.holdId} className={panelClass}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <h4 className="min-w-0 text-sm font-semibold text-on-surface">{hold.venueName}{hold.label ? ` · ${hold.label}` : ""}</h4>
-              <ArrangementStatus status={hold.status} />
-            </div>
-            <p className="text-sm text-on-surface-variant">{formatEventWindow(hold.startDatetime, hold.endDatetime)}</p>
-            <p className="text-xs text-on-surface-variant">Hold expiry: {formatTimestamp(hold.holdExpiresAt)}</p>
-            <p className="text-xs text-on-surface-variant">{hold.status === "ACTIVE" ? "A tentative hold is not an approved booking." : "This hold is no longer active."}</p>
-            <Impact impact={hold.impact} />
-          </li>)}
-        </ul>}
         {venues.availabilityStatus === "UNAVAILABLE" ? <Unavailable>Venue unavailability and next actions could not be fully verified. Contact your coordinator or try refreshing arrangements.</Unavailable> : null}
       </>}
     </ArrangementSection>
@@ -122,8 +118,8 @@ function ArrangementDetails({ data }: { data: OrganiserArrangements }) {
 
 type State = { status: "loading" } | { status: "ready"; data: OrganiserArrangements } | { status: "error"; denied: boolean; changed: boolean };
 
-export function EventArrangements({ eventId }: { eventId: number }) {
-  const [attempt, setAttempt] = useState(0);
+// refreshKey changes when the organiser selects Refresh on the event page.
+export function EventArrangements({ eventId, refreshKey = 0, venueCards }: { eventId: number; refreshKey?: number; venueCards?: VenueCardsContext }) {
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     let alive = true;
@@ -134,30 +130,19 @@ export function EventArrangements({ eventId }: { eventId: number }) {
         changed: error instanceof ApiError && error.code === "ARRANGEMENTS_CHANGED" });
     });
     return () => { alive = false; };
-  }, [eventId, attempt]);
+  }, [eventId, refreshKey]);
 
-  // Refresh an active hold at expiry even when the page remains open; the
-  // backend determines expiry from the clock rather than the expiry job.
-  useEffect(() => {
-    if (state.status !== "ready" || state.data.venues.status !== "READY") return;
-    const expiries = state.data.venues.holds.filter((hold) => hold.status === "ACTIVE" && hold.holdExpiresAt)
-      .map((hold) => new Date(hold.holdExpiresAt!).getTime()).filter(Number.isFinite);
-    if (!expiries.length) return;
-    const timer = setTimeout(() => { setState({ status: "loading" }); setAttempt((value) => value + 1); },
-      Math.min(2_147_483_647, Math.max(1000, Math.min(...expiries) - Date.now() + 100)));
-    return () => clearTimeout(timer);
-  }, [state]);
-
-  const refresh = () => { setState({ status: "loading" }); setAttempt((value) => value + 1); };
-  return <div className="grid min-w-0 gap-5" aria-label="Event arrangements">
-    <div className="flex justify-end">
-      <Button variant="secondary" onClick={refresh} disabled={state.status === "loading"}>Refresh arrangements</Button>
+  // One header for the three arrangement sections; Refresh is at the top of the page.
+  return <section className="grid min-w-0 gap-5" aria-labelledby="arrangements-heading">
+    <div>
+      <h2 id="arrangements-heading" className="text-lg font-semibold text-on-surface">Arrangements</h2>
+      <p className="text-sm text-on-surface-variant">Venues, equipment and safety review for this event, as your coordinator arranges them.</p>
     </div>
     {state.status === "loading" ? <div aria-busy="true" aria-label="Loading arrangements"><Skeleton className="h-48 w-full" /></div>
       : state.status === "error" ? <AlertBanner tone="error" title={state.denied ? "Arrangements not available" : state.changed ? "Arrangements changed while loading" : "Could not load arrangements"}>
         {state.denied ? "These arrangements are not shared with you, or the event is no longer available." : state.changed
           ? "Refresh arrangements to load the latest decisions. Reload this page to update the event overview too."
           : "Try refreshing arrangements. Your event details remain available above."}
-      </AlertBanner> : <ArrangementDetails data={state.data} />}
-  </div>;
+      </AlertBanner> : <ArrangementDetails data={state.data} eventId={eventId} refreshKey={refreshKey} venueCards={venueCards} />}
+  </section>;
 }

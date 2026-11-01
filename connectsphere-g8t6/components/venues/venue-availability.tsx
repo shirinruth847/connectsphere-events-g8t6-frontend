@@ -70,7 +70,7 @@ function EntryRow({ entry }: { entry: CalendarEntry }) {
       {entry.eventTitle ? <span className="text-xs text-on-surface-variant">{entry.eventTitle}</span> : null}
       {entry.holdExpiresAt ? (
         <span className="text-xs font-semibold text-on-surface">
-          {entry.blocking ? "Hold expires" : "Hold expired"} {formatTimestamp(entry.holdExpiresAt)}
+          {entry.blocking ? "Expires" : "Expired"} {formatTimestamp(entry.holdExpiresAt)}
         </span>
       ) : null}
       {entry.reasonLabel ? <span className="text-xs font-semibold text-on-surface">Reason: {entry.reasonLabel}</span> : null}
@@ -237,7 +237,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
 
       <div aria-live="polite">
         {state.status === "idle" ? (
-          <EmptyState title="Choose venues" description="Bookings, active holds, operational blocks and setup/turnaround time appear on the calendar for each venue you choose." />
+          <EmptyState title="Choose venues" description="Bookings, operational blocks and setup/turnaround time appear on the calendar for each venue you choose." />
         ) : null}
         {state.status === "loading" ? (
           <div className="grid gap-4" aria-busy="true" aria-label="Loading availability"><Skeleton className="h-96 w-full" /></div>
@@ -261,7 +261,7 @@ export function VenueAvailabilityCalendar({ fixed }: { fixed?: FixedCalendarVenu
                 reuses them without the shell's full-page sizing. */}
             {missingBuffers.length ? (
               <AlertBanner tone="warning" live={false}>
-                {missingBuffers.map((venue) => venue.name).join(", ")}: Venue Staff have not recorded setup and turnaround times, so bookings are shown without them and no hold or booking can be made yet.
+                {missingBuffers.map((venue) => venue.name).join(", ")}: Venue Staff have not recorded setup and turnaround times, so bookings are shown without them and no booking can be made yet.
               </AlertBanner>
             ) : null}
             {outOfService.length ? (

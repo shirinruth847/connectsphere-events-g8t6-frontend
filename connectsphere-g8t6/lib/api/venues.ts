@@ -135,8 +135,10 @@ export const getVenueHistory = (venueId: number, options: { limit: number; curso
 export const getManagedVenue = (venueId: number) =>
   apiRequest<{ venue: ManagedVenue; details: VenueDetails | null; detailStatus: DetailStatus }>(`/venues/${venueId}`);
 
-export const createVenue = (input: VenueInput & { status: VenueStatus; statusReason?: string }) =>
-  apiRequest<{ message: string; venue: ManagedVenue }>("/venues", { method: "POST", body: JSON.stringify(input) });
+// Setup and turnaround are required on create; `warning` says when they could
+// not be saved with the venue (developer request of 1 November 2026).
+export const createVenue = (input: VenueInput & { status: VenueStatus; statusReason?: string; setupMinutes: number; turnaroundMinutes: number }) =>
+  apiRequest<{ message: string; venue: ManagedVenue; warning?: string }>("/venues", { method: "POST", body: JSON.stringify(input) });
 
 export const updateVenue = (venueId: number, input: Partial<VenueInput> & { version: number }) =>
   apiRequest<{ message: string; venue: ManagedVenue; changed: boolean }>(`/venues/${venueId}`, { method: "PUT", body: JSON.stringify(input) });

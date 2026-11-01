@@ -15,6 +15,8 @@ export const ROUTES = {
   drafts: "/dashboard?status=DRAFT#my-drafts",
   notifications: "/notifications",
   venues: "/venues",
+  // Its own page, so the navigation and links follow the path (developer request of 1 November 2026).
+  venueAvailability: "/venues/availability",
   equipment: "/equipment",
   equipmentSchedule: "/equipment/schedule",
   technicalRequests: "/technical-requests",
@@ -67,7 +69,7 @@ export function canViewPath(role: UserRole, path: string) {
   // the backend still answers "not found" for unrelated events. Venue Staff
   // open an event through its venue bookings (SPM-181).
   if (/^\/events\/\d+$/.test(pathname)) return ["ORGANISER", "COORDINATOR", "COORDINATOR_LEAD", "VENUE_STAFF", "SAFETY_OFFICER", "ATTENDEE"].includes(role);
-  if (pathname === ROUTES.venues) return role === "VENUE_STAFF";
+  if (pathname === ROUTES.venues || pathname === ROUTES.venueAvailability) return role === "VENUE_STAFF";
   // Venue maintenance (SPM-73).
   if (/^\/venues\/\d+$/.test(pathname)) return role === "VENUE_STAFF";
   // Equipment catalogue (SPM-52).

@@ -102,6 +102,7 @@ export async function installConnectSphereMocks(page, { authenticated = true, dr
     if (pathname === "/api/auth/me") return state.revoked ? json({ error: "Please log in to continue." }, 401) : json({ user: { user_id: 11, name: "Test User", email: "user@example.com", role: state.role } });
     if (pathname === "/api/auth/logout") { state.revoked = true; return route.fulfill({ status: 204 }); }
     if (pathname === "/api/venues/bookings") return json(state.venueBookings ?? { bookings: [], hasMore: false, pendingCount: 0 });
+    if (pathname === "/api/venues/hold-requests" && method === "GET") return json(state.holdRequests ?? { requests: [], pendingCount: 0 });
     if (pathname === "/api/venues/manage/options") return json({ venues: state.venueOptions ?? [] });
     if (pathname === "/api/events/assigned") return json({ events: [{ eventId: 42, title: "Assigned coordinator event", status: "UNDER_REVIEW" }] });
     if (pathname === "/api/events/unassigned") {

@@ -48,7 +48,7 @@ const eventView = {
   coordinatorId: 11,
   coordinatorName: "Synthetic Coordinator",
   organiser: { userId: 5, name: "Synthetic Organiser" },
-  venueSuggestion: null,
+  venueSuggestions: [],
 };
 
 // The search returns only venues of at least minCapacity, as the backend does.

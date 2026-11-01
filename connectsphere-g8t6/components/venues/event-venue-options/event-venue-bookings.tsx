@@ -3,7 +3,7 @@
 import { AlertBanner, Button, Skeleton } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
 import { BookingStatusChip, BOOKING_BORDERS } from "@/components/venue-staff/booking-requests/booking-status-chip";
-import { formatEventWindow } from "@/lib/datetime";
+import { formatEventWindow, formatTimestamp } from "@/lib/datetime";
 import type { EventVenueBookingList } from "@/lib/api/event-venues";
 import { BookingIncidentCard } from "@/components/venues/booking-incident";
 import { VenueBadge } from "./venue-option-card";
@@ -83,6 +83,12 @@ export function EventVenueBookings({ state, isCoordinator, canRequest, onRequest
                   </p>
                   {booking.occupiedStart && booking.occupiedEnd ? (
                     <p className="text-xs text-on-surface-variant">Venue occupied {formatEventWindow(booking.occupiedStart, booking.occupiedEnd)}, including setup and turnaround.</p>
+                  ) : null}
+                  {booking.status === "PENDING" && booking.decideBy ? (
+                    <p className="text-xs text-on-surface-variant">The venue is kept for this event until Venue Staff decide, or until {formatTimestamp(booking.decideBy)}; after that the request expires and the venue is released.</p>
+                  ) : null}
+                  {booking.status === "EXPIRED" ? (
+                    <p className="text-xs text-on-surface-variant">Venue Staff did not decide in time, so the venue was released. Send a new request if you still need it.</p>
                   ) : null}
                   {booking.status === "REJECTED" && booking.rejectionReason ? (
                     <p className="text-xs text-on-surface"><span className="font-semibold">Reason:</span> {booking.rejectionReason}</p>

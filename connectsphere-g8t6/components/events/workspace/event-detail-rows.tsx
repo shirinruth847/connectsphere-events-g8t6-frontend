@@ -1,3 +1,4 @@
+import { canonicalLayout } from "@/components/venues/event-venue-options/venue-option-model";
 import type { KeyValueRow } from "@/components/shared/key-value-panel";
 import type { EventView } from "@/lib/api/event-workspace";
 import { formatDuration, formatEventWindow } from "@/lib/datetime";
@@ -34,12 +35,15 @@ export const fieldLabel = (field: string) => FIELD_LABELS[field] ?? field;
 const humanise = (code: string) => code.charAt(0) + code.slice(1).toLowerCase().replaceAll("_", " ");
 
 export const layoutLabel = (layout: string | null) =>
-  !layout || layout === "NO_PREFERENCE" ? "No preference" : humanise(layout);
+  !layout || layout === "NO_PREFERENCE" ? "No preference" : canonicalLayout(humanise(layout));
 
 // The event API returns venue IDs only; names need the venue catalogue, which
 // is not in SPM-33's scope.
-export const venuePreferenceLabel = (venueIds: number[]) =>
-  venueIds.length ? venueIds.map((id, index) => `${index + 1}. Venue #${id}`).join(", ") : "No preference";
+// Names come with the choices (SPM-76); an ID only where a name is missing.
+export const venuePreferenceLabel = (venueIds: number[], choices: EventView["venuePreferenceTimes"] = []) => {
+  const names = new Map((choices ?? []).map((choice) => [choice.venueId, choice.venueName]));
+  return venueIds.length ? venueIds.map((id, index) => `${index + 1}. ${names.get(id) ?? `Venue #${id}`}`).join(", ") : "No preference";
+};
 
 export function scheduleRows(event: EventView): KeyValueRow[] {
   const duration = formatDuration(event.startDatetime, event.endDatetime);
@@ -60,7 +64,7 @@ export function layoutRows(event: EventView): KeyValueRow[] {
 
 export function venueRows(event: EventView): KeyValueRow[] {
   return [
-    { icon: "venue", label: "Venue preferences", value: venuePreferenceLabel(event.venuePreferences) },
+    { icon: "venue", label: "Venue preferences", value: venuePreferenceLabel(event.venuePreferences, event.venuePreferenceTimes) },
     ...layoutRows(event),
   ];
 }

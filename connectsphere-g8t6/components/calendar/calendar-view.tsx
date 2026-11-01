@@ -51,7 +51,8 @@ export type CalendarOverlay = {
   id: string;
   start: string;
   end: string;
-  tone: "request" | "conflict" | "closed" | "block";
+  // "busy" and "other" are plain coloured periods (SPM-76's organiser calendar).
+  tone: "request" | "conflict" | "closed" | "block" | "busy" | "other";
   label?: string;
   detail?: string;
   // A request whose start and end can be dragged (SPM-76): called with the

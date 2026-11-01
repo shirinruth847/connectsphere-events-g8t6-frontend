@@ -13,10 +13,20 @@ import { type CalendarEvent } from "@/components/calendar/calendar-view";
 import { CoordinatorAvailabilityCalendar } from "@/components/calendar/coordinator-availability-calendar";
 import { EmptyState, Skeleton } from "@/components/shared/primitives";
 import { equipmentLabel } from "@/lib/technical-requests";
+import { compareValues, FilterSelect, ListToolbar, matchesSearch, type SortOrder } from "@/components/shared/list-filters";
 
 import styles from "./event-assignment-queue.module.css";
 
 type ViewMode = "list" | "calendar";
+type QueueSort = "submitted" | "event" | "attendance" | "title";
+const SORT_OPTIONS: Array<{ value: QueueSort; label: string }> = [
+  { value: "submitted", label: "Submitted" },
+  { value: "event", label: "Event date" },
+  { value: "attendance", label: "Attendance" },
+  { value: "title", label: "Title" },
+];
+// Longest-waiting and soonest first; the largest events first.
+const DEFAULT_ORDER: Record<QueueSort, SortOrder> = { submitted: "asc", event: "asc", attendance: "desc", title: "asc" };
 type EventRequest = Omit<ApiEvent, "organisation"> & { date: string; start: string; end: string; organiser: string; organisation: { organisationId: number; name: string } | null; venue: string; submitted: string };
 type LiveCoordinator = Omit<CoordinatorAvailability, "events"> & { events: EventRequest[] };
 type AuthState = "loading" | "ready" | "forbidden" | "error";
@@ -56,7 +66,8 @@ function overlaps(first: EventRequest, second: EventRequest) {
   return Date.parse(first.startDatetime) < Date.parse(second.endDatetime) && Date.parse(second.startDatetime) < Date.parse(first.endDatetime);
 }
 
-export function EventAssignmentQueue() {
+// filters: the search, organisation filter and sort above the list (the Lead's dashboard).
+export function EventAssignmentQueue({ filters = false }: { filters?: boolean } = {}) {
   const loadRevision = useRef(0);
   const inFlight = useRef(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -73,6 +84,10 @@ export function EventAssignmentQueue() {
   const [availabilityError, setAvailabilityError] = useState("");
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [organisation, setOrganisation] = useState("");
+  const [sort, setSort] = useState<QueueSort>("submitted");
+  const [order, setOrder] = useState<SortOrder>("asc");
 
   const loadData = useCallback(() => {
     const revision = ++loadRevision.current;
@@ -138,7 +153,21 @@ export function EventAssignmentQueue() {
     return <div className={styles.queue}><div className="error-alert" role="alert"><h1>Unable to load event requests</h1><span>{error}</span><button type="button" className="button button-secondary" disabled={loading} onClick={() => void refresh()}>Retry</button></div></div>;
   }
 
-  const unassigned = requests;
+  const sortValue = (request: EventRequest) => ({
+    submitted: request.submittedAt ?? request.createdAt,
+    event: request.startDatetime,
+    attendance: request.expectedAttendance,
+    title: request.title.toLowerCase(),
+  }[sort]);
+  const organisationOptions = [...new Map(requests.flatMap((request) => (request.organisation ? [[String(request.organisation.organisationId), request.organisation.name] as const] : []))).entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+  const narrowed = Boolean(search.trim() || organisation);
+  const unassigned = requests
+    .filter((request) => (!organisation || String(request.organisation?.organisationId) === organisation)
+      && matchesSearch(search, [request.title, request.requestId, request.organisation?.name, request.purpose]))
+    .sort((left, right) => compareValues(sortValue(left), sortValue(right), order) || left.eventId - right.eventId);
+  const clearFilters = () => { setSearch(""); setOrganisation(""); setSort("submitted"); setOrder("asc"); };
   const selected = requests.find((request) => request.eventId === selectedId);
   const selectedCoordinator = coordinators.find((coordinator) => coordinator.coordinatorId === assignment);
   const conflict = selected && selectedCoordinator?.events.find((event) => overlaps(event, selected));
@@ -189,9 +218,23 @@ export function EventAssignmentQueue() {
       {feedback && <div className="success-banner" role="status">{feedback}<button onClick={() => setFeedback("")} aria-label="Dismiss">×</button></div>}
       {error && <div className="error-alert" role="alert"><strong>Request failed</strong><span>{error}</span></div>}
       <section className="section-heading"><div><h2>{viewMode === "list" ? "Assignment queue" : "Coordinator availability"}</h2><p>{viewMode === "list" ? "Only submitted requests without an assigned coordinator appear here." : "Review each coordinator's scheduled events before assigning a request."}</p></div><div className="view-toggle" role="group" aria-label="Queue view"><button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>Unassigned requests</button><button className={viewMode === "calendar" ? "active" : ""} onClick={() => setViewMode("calendar")}>Calendar</button></div></section>
+      {filters && viewMode === "list" ? (
+        <ListToolbar
+          id="assignment-queue"
+          label="Search, sort and filter the assignment queue"
+          search={search}
+          onSearch={setSearch}
+          placeholder="Request ID, title, purpose or organisation"
+          sort={{ value: sort, options: SORT_OPTIONS, onChange: (value) => { setSort(value as QueueSort); setOrder(DEFAULT_ORDER[value as QueueSort]); }, order, onOrderChange: setOrder }}
+          onClear={clearFilters}
+          canClear={narrowed || sort !== "submitted" || order !== "asc"}
+        >
+          <FilterSelect id="assignment-organisation" label="Organisation" value={organisation} allLabel="All organisations" width="w-[13rem]" options={organisationOptions} onChange={setOrganisation} />
+        </ListToolbar>
+      ) : null}
       {viewMode === "calendar" ? (
         <CoordinatorAvailabilityCalendar coordinators={calendarCoordinators} />
-      ) : loading ? <Skeleton className="h-48" /> : unassigned.length === 0 ? <EmptyState title="Queue cleared" description="Every submitted request has an Event Coordinator assigned." /> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.eventId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `${equipmentLabel(item)}: ${item.quantity} ${item.quantity === 1 ? "unit" : "units"} requested`).join(" · ") : "None requested"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled={submitting || loading || needsRefresh} onClick={() => { setSelectedId(request.eventId); setAssignView("slots"); setAssignment(undefined); setError(""); }}>Assign coordinator</button></footer></article>)}</div>}
+      ) : loading ? <Skeleton className="h-48" /> : requests.length === 0 ? <EmptyState title="Queue cleared" description="Every submitted request has an Event Coordinator assigned." /> : unassigned.length === 0 ? <EmptyState title="No requests match" description="Change the search or filters, or select Clear to see the whole queue." /> : <div className="request-list">{unassigned.map((request) => <article className="request-card" key={request.eventId}><div className="card-top"><span className="status-chip">UNASSIGNED</span><span className="reference-tag">{request.requestId}</span></div><div className="request-main"><div><h3>{request.title}</h3><p className="description">Submitted by {request.organisation?.name ?? "ConnectSphere"}</p>{request.purpose && <p className="description">Purpose: {request.purpose}</p>}</div><span className="submitted">Submitted {request.submitted}</span></div><div className="details-panel"><div><span className="detail-label">DATE & TIME</span><strong>{request.date} · {request.start}–{request.end}</strong></div><div><span className="detail-label">EXPECTED ATTENDANCE</span><strong>{request.expectedAttendance} people</strong></div><div><span className="detail-label">VENUE PREFERENCES</span><strong>{request.venue}</strong></div><div><span className="detail-label">EQUIPMENT REQUIREMENTS</span><strong>{request.equipmentRequirements?.length ? request.equipmentRequirements.map((item) => `${equipmentLabel(item)}: ${item.quantity} ${item.quantity === 1 ? "unit" : "units"} requested`).join(" · ") : "None requested"}</strong></div></div><footer className="card-footer"><span className="next-action">Next action: choose an Event Coordinator</span><button className="button button-primary" disabled={submitting || loading || needsRefresh} onClick={() => { setSelectedId(request.eventId); setAssignView("slots"); setAssignment(undefined); setError(""); }}>Assign coordinator</button></footer></article>)}</div>}
       {selected && (
         <dialog
           ref={dialogRef}

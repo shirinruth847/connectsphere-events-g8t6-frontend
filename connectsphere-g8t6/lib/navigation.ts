@@ -7,7 +7,6 @@ type NavigationGroup = { title: string; items: NavigationItem[] };
 // An absent href renders an unavailable item, never a link to an unfinished page.
 const organiserItems: NavigationItem[] = [
   { id: "home", title: "Dashboard", icon: "dashboard", href: ROUTES.dashboard },
-  { id: "registrations-unavailable", title: "Registrations", icon: "registrations" },
   // The same inbox attendees use (SPM-192); the Updates panel's See more leads here too.
   { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
 ];
@@ -28,7 +27,7 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   VENUE_STAFF: [
     { id: "home", title: "My Requests", icon: "event", href: ROUTES.dashboard },
     { id: "venues", title: "My Venues", icon: "dashboard", href: ROUTES.venues },
-    { id: "availability", title: "Availability Calendar", icon: "calendar", href: `${ROUTES.venues}?view=availability` },
+    { id: "availability", title: "Availability Calendar", icon: "calendar", href: ROUTES.venueAvailability },
     // Booking and hold requests and safety notices (SPM-286); the Updates panel's See more leads here too.
     { id: "notifications", title: "Notifications", icon: "notifications", href: ROUTES.notifications },
   ],
@@ -51,14 +50,10 @@ const mainItems: Record<UserRole, NavigationItem[]> = {
   ],
 };
 
+// Every role has only its main tabs; Contact Support and Settings had no page
+// behind them (developer request of 1 November 2026).
 export function navigationForRole(role: UserRole): NavigationGroup[] {
-  // Organisers switch between organisation events and personal requests in the dashboard.
-  if (role === "ORGANISER") return [{ title: "Main Navigation", items: mainItems[role] }];
-  return [
-    { title: "Main Navigation", items: mainItems[role] },
-    { title: "Support And Settings", items: [{ id: "support", title: "Contact Support", icon: "support" }] },
-    { title: "Account Management", items: [{ id: "settings", title: "Settings", icon: "settings" }] },
-  ];
+  return [{ title: "Main Navigation", items: mainItems[role] }];
 }
 
 export function activeNavigationId(role: UserRole, pathname: string) {
@@ -84,7 +79,7 @@ export function activeNavigationId(role: UserRole, pathname: string) {
     if (pathname === ROUTES.equipmentSchedule) return "schedule";
     return pathname === ROUTES.equipment || pathname.startsWith(`${ROUTES.equipment}/`) ? "equipment" : "home";
   }
+  if (role === "VENUE_STAFF" && pathname === ROUTES.venueAvailability) return "availability";
   const inVenues = pathname === ROUTES.venues || pathname.startsWith(`${ROUTES.venues}/`);
-  if (role === "VENUE_STAFF" && pathname === ROUTES.venues && typeof window !== "undefined" && window.location.search.includes("view=availability")) return "availability";
   return role !== "ORGANISER" && inVenues ? "venues" : "home";
 }

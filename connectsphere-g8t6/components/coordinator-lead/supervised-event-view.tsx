@@ -42,9 +42,9 @@ export function SupervisedEventView({ event }: { event: EventView }) {
             <KeyValuePanel rows={scheduleRows(event)} />
           </SectionCard>
           <SectionCard className="grid gap-4">
-            <SectionHeading step={2} title="Venue & layout" description="The organiser's venue choices and the coordinator's suggestion. Find another venue to search and compare." />
+            <SectionHeading step={2} title="Venue & layout" description="The organiser's venue choices and the coordinator's venues for the organiser. Find another venue to search and compare." />
             <KeyValuePanel rows={layoutRows(event)} />
-            <EventVenueSection key={event.venueSuggestion?.version ?? 0} event={event} />
+            <EventVenueSection key={(event.venueSuggestions ?? []).map((item) => item.venueId).join(",")} event={event} />
           </SectionCard>
           <div className="grid gap-5 md:grid-cols-2">
             <SectionCard className="grid gap-4">

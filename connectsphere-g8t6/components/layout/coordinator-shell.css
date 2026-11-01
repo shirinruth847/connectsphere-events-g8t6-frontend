@@ -1783,6 +1783,10 @@
   background: repeating-linear-gradient(135deg, rgb(55 65 81 / 10%) 0 8px, rgb(55 65 81 / 18%) 8px 16px);
 }
 .coordinator-shell .cal-overlay--block .cal-overlay-label { color: #1f2937; }
+/* SPM-76 organiser calendar: plain coloured periods, no words. The other
+   chosen venues sit furthest back, then busy time, then the edited time. */
+.coordinator-shell .cal-overlay--other { z-index: 1; border: 1px dashed rgb(37 99 235 / 55%); border-radius: 6px; background: rgb(59 130 246 / 16%); }
+.coordinator-shell .cal-overlay--busy { z-index: 2; border-radius: 4px; background: rgb(75 85 99 / 38%); }
 .coordinator-shell .cal-overlay-label {
   position: relative;
   z-index: 5;
