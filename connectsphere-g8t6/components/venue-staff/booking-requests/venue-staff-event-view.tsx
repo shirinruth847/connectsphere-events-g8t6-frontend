@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AlertBanner, Button, buttonClasses, EmptyState, PageHeader, ReferenceIdTag, SectionCard, Skeleton, StatusChip } from "@/components/shared/primitives";
 import { Icon } from "@/components/shared/icon";
+import { BackButton } from "@/components/shared/back-button";
 import { KeyValuePanel } from "@/components/shared/key-value-panel";
 import { PermissionPill } from "@/components/shared/permission-pill";
 import { SectionHeading } from "@/components/shared/section-heading";
@@ -234,9 +235,7 @@ function LoadedView({ data, selectedId, onSelect, notice, onDecided, refreshKey,
 
   return (
     <div className="grid gap-5">
-      <Link href="/dashboard" className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
-        <Icon name="arrow-back" size={16} />My Requests
-      </Link>
+      <BackButton fallback="/dashboard" />
 
       <PageHeader
         eyebrow={selected ? "Venue booking review" : "Event venue bookings"}

@@ -35,7 +35,7 @@ const eventView = (overrides = {}) => ({
   coordinatorId: 11,
   coordinatorName: "Synthetic Coordinator",
   organiser: { userId: 5, name: "Synthetic Organiser" },
-  venueSuggestion: null,
+  venueSuggestions: [],
   ...overrides,
 });
 
@@ -109,13 +109,19 @@ async function routeVenueSection(page, { event = eventView(), venueOptions = opt
       sent.options.push(params);
       return route.fulfill({ status: optionsStatus, json: optionsStatus === 200 ? venueOptions : { error: "Internal Server Error" } });
     }
-    if (url.pathname === "/api/events/42/venue-suggestion") {
+    if (url.pathname === "/api/events/42/venue-suggestions") {
       sent.suggestions.push({ body: request.postDataJSON(), key: request.headers()["idempotency-key"] });
       const body = suggestBody ?? {
-        message: "Synthetic Grand Hall was suggested to the organiser.",
-        suggestion: { venueId: 45, name: "Synthetic Grand Hall", address: "1 Harbourfront Walk", maxCapacity: 300, suggestedAt: "2026-10-23T04:00:00.000Z", suggestedBy: "Synthetic Coordinator", version: 1 },
+        message: "Sent to the organiser in Clarification Request 1. They can amend their venue choices there.",
+        suggestions: [{ venueId: 47, name: "Synthetic Rooftop", address: "1 Harbourfront Walk", maxCapacity: 400, suggestedAt: "2026-11-01T04:00:00.000Z", suggestedBy: "Synthetic Coordinator", fromOrganiserChoices: false }],
+        clarificationRound: 1,
       };
       return route.fulfill({ status: suggestStatus, json: body });
+    }
+    // The organiser's arrangements and clarifications come from the shared mocks.
+    if (["/api/events/42/arrangements", "/api/events/42/clarifications"].includes(url.pathname)) return route.fallback();
+    if (url.pathname === "/api/events/42/venue-choices") {
+      return route.fulfill({ json: { preferredVenues: venueOptions.preferredVenues, suggestedVenues: venueOptions.suggestedVenues ?? [], detailsAvailable: true, availabilityChecked: true } });
     }
     return route.fulfill({ status: 501, json: { error: `Unmocked ${url.pathname}` } });
   });
@@ -340,51 +346,68 @@ test("[SPM-72 TC-VC-007][AC7] the comparison panel is hidden until Show comparis
   await expect(right).toHaveCount(0);
 });
 
-test("[SPM-72 TC-VC-008][TC-VC-009][AC8] selecting a venue suggests it to the organiser after confirmation", async ({ page }) => {
+test("[SPM-72 TC-VC-008][TC-VC-009][AC8] suggested venues go on the list and are sent to the organiser in a clarification", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   const sent = await routeVenueSection(page);
   await page.goto("/events/42");
   await openSearch(page);
 
   await expect(card(page, "Synthetic Seminar Room").getByRole("button", { name: "Suggest" })).toBeDisabled();
-  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "Suggest" }).click();
-  const dialog = page.getByRole("dialog", { name: "Suggest this venue?" });
-  await expect(dialog).toContainText("This does not hold or book the venue");
-  await dialog.getByRole("button", { name: "Suggest venue" }).click();
+  await card(page, "Synthetic Rooftop").getByRole("button", { name: "Suggest" }).click();
+  await expect(card(page, "Synthetic Rooftop").getByRole("button", { name: "On your list" })).toHaveAttribute("aria-pressed", "true");
+  // Nothing is sent until the coordinator sends the list.
+  expect(sent.suggestions).toHaveLength(0);
+  await page.keyboard.press("Escape");
 
-  // The popup closes, back to the choices, whose card now shows the suggestion.
-  await expect(popup(page)).toHaveCount(0);
-  await expect(page.getByText("Synthetic Grand Hall was suggested to the organiser. It is recorded in the event history.")).toBeVisible();
-  await expect(choices(page).getByRole("article", { name: "Synthetic Grand Hall" }).getByText("Suggested", { exact: true })).toBeVisible();
+  const list = page.getByRole("region", { name: /Venues for the organiser/ });
+  await expect(list.getByRole("list", { name: "Venues on the list" })).toContainText("Synthetic Rooftop");
+  await list.getByRole("button", { name: "Send to organiser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Send these venues to the organiser?" });
+  await expect(dialog).toContainText("Suggested: Synthetic Rooftop");
+  await expect(dialog).toContainText("This opens a clarification request for the organiser");
+  await dialog.getByLabel("Note to the organiser (optional)").fill("It has a stage.");
+  await dialog.getByRole("button", { name: "Send to organiser" }).click();
+
+  await expect(page.getByText("Sent to the organiser in Clarification Request 1. They can amend their venue choices there. It is recorded in the event history.")).toBeVisible();
   expect(sent.suggestions).toHaveLength(1);
-  expect(sent.suggestions[0].body).toEqual({ venueId: 45, version: 0 });
+  expect(sent.suggestions[0].body).toEqual({ venueIds: [47], expectedVenueIds: [], note: "It has a stage." });
   expect(sent.suggestions[0].key).toMatch(/^[0-9a-f-]{36}$/);
 });
 
-test("[SPM-72 TC-VC-008][AC8] the coordinator can select one of the organiser's choices without opening the search", async ({ page }) => {
+test("[SPM-72 TC-VC-008][AC8] the organiser's own choices are selected, not suggested back to them", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
-  const sent = await routeVenueSection(page);
+  const sent = await routeVenueSection(page, {
+    suggestBody: { message: "The organiser has been notified.", suggestions: [{ venueId: 45, name: "Synthetic Grand Hall", address: "1 Harbourfront Walk", maxCapacity: 300, suggestedAt: "2026-11-01T04:00:00.000Z", suggestedBy: "Synthetic Coordinator", fromOrganiserChoices: true }], clarificationRound: null },
+  });
   await page.goto("/events/42");
 
-  await choices(page).getByRole("article", { name: "Synthetic Grand Hall" }).getByRole("button", { name: "Suggest" }).click();
-  await page.getByRole("dialog", { name: "Suggest this venue?" }).getByRole("button", { name: "Suggest venue" }).click();
+  const grandHall = choices(page).getByRole("article", { name: "Synthetic Grand Hall" });
+  await expect(grandHall.getByRole("button", { name: "Suggest" })).toHaveCount(0);
+  await grandHall.getByRole("button", { name: "Select" }).click();
+  await page.getByRole("button", { name: "Send to organiser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Send these venues to the organiser?" });
+  await expect(dialog).toContainText("Selected from their choices: Synthetic Grand Hall");
+  await expect(dialog).toContainText("The organiser is notified.");
+  await expect(dialog.getByLabel("Note to the organiser (optional)")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Send to organiser" }).click();
   await expect.poll(() => sent.suggestions.length).toBe(1);
+  expect(sent.suggestions[0].body).toEqual({ venueIds: [45], expectedVenueIds: [], note: "" });
 });
 
-test("[SPM-72 TC-VC-010][AC10] a suggestion changed elsewhere is refused with a reload option", async ({ page }) => {
+test("[SPM-72 TC-VC-010][AC10] a list changed elsewhere is refused with a reload option", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await routeVenueSection(page, {
     suggestStatus: 409,
-    suggestBody: { error: "The suggested venue was changed after you loaded it. Reload the event, then try again.", code: "VENUE_SUGGESTION_VERSION_CONFLICT" },
+    suggestBody: { error: "The venues for the organiser were changed after you loaded them. Reload the event, then try again.", code: "VENUE_SUGGESTION_VERSION_CONFLICT" },
   });
   await page.goto("/events/42");
-  await openSearch(page);
 
-  await card(page, "Synthetic Grand Hall").getByRole("button", { name: "Suggest" }).click();
-  const dialog = page.getByRole("dialog", { name: "Suggest this venue?" });
-  await dialog.getByRole("button", { name: "Suggest venue" }).click();
-  await expect(dialog.getByText("The suggested venue was changed after you loaded it.")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Suggest venue" })).toBeDisabled();
+  await choices(page).getByRole("article", { name: "Synthetic Grand Hall" }).getByRole("button", { name: "Select" }).click();
+  await page.getByRole("button", { name: "Send to organiser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Send these venues to the organiser?" });
+  await dialog.getByRole("button", { name: "Send to organiser" }).click();
+  await expect(dialog.getByText("The venues for the organiser were changed after you loaded them.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Send to organiser" })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Reload" })).toBeVisible();
 });
 
@@ -427,8 +450,8 @@ test("[SPM-72 TC-VC-012][AC2] the supervising Lead browses and compares but cann
   await page.goto("/events/42");
 
   await expect(page.getByText("Supervising Lead • Read-only")).toBeVisible();
-  await expect(page.getByText("Read-only: only the assigned coordinator can select a venue.")).toBeVisible();
   await openSearch(page);
+  await expect(page.getByRole("button", { name: "Select" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Suggest" })).toHaveCount(0);
   await card(page, "Synthetic Grand Hall").getByRole("button", { name: "View details" }).click();
   await page.getByRole("button", { name: "Show comparison view" }).click();
@@ -438,21 +461,26 @@ test("[SPM-72 TC-VC-012][AC2] the supervising Lead browses and compares but cann
   await expect(page.locator('a[aria-current="page"]')).toHaveText(/Assignments/);
 });
 
-test("[SPM-72 TC-VC-011][AC9] the organiser sees the suggested venue on their request", async ({ page }) => {
+test("[SPM-72 TC-VC-011][AC9] the organiser sees their choices and the suggested venues as cards", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "ORGANISER" });
   const event = eventView({
     viewerRelationship: "OWNER",
     isOwner: true,
     permissions: { canEdit: false, editableFields: [], canViewDraftHistory: true, canViewStaffHistory: false, canSuggestVenue: false },
-    venueSuggestion: { venueId: 45, name: "Synthetic Grand Hall", address: "1 Harbourfront Walk", maxCapacity: 300, suggestedAt: "2026-10-23T04:00:00.000Z", suggestedBy: "Synthetic Coordinator", version: 1 },
+    venueSuggestions: [{ venueId: 47, name: "Synthetic Rooftop", address: "1 Harbourfront Walk", maxCapacity: 400, suggestedAt: "2026-11-01T04:00:00.000Z", suggestedBy: "Synthetic Coordinator", fromOrganiserChoices: false }],
   });
   delete event.status;
-  const sent = await routeVenueSection(page, { event });
+  const sent = await routeVenueSection(page, {
+    event,
+    venueOptions: options({ suggestedVenues: [{ venueId: 47, name: "Synthetic Rooftop", option: rooftop, fromOrganiserChoices: false }] }),
+  });
   await page.goto("/events/42");
 
-  const suggested = page.getByRole("region", { name: "Suggested venue" });
-  await expect(suggested).toContainText("Synthetic Grand Hall");
-  await expect(suggested).toContainText("It is not booked yet");
+  await expect(page.getByRole("article", { name: "Synthetic Grand Hall" }).getByText("Ideal venue")).toBeVisible();
+  const rooftopCard = page.getByRole("article", { name: "Synthetic Rooftop" });
+  await expect(rooftopCard.getByText("Suggested", { exact: true })).toBeVisible();
+  // Without an open clarification there is nothing to amend.
+  await expect(rooftopCard.getByRole("button", { name: "Add to my choices" })).toHaveCount(0);
   expect(sent.options).toHaveLength(0);
 });
 
@@ -820,11 +848,12 @@ test("[SPM-72 TC-VC-007][AC7] the venue boxes search by name, start blank, and n
 test("[SPM-72 AC8] a suggested venue outside the organiser's choices gets its own card with the Suggested status", async ({ page }) => {
   await installConnectSphereMocks(page, { role: "COORDINATOR" });
   await routeVenueSection(page, {
-    event: eventView({ venueSuggestion: { venueId: 47, name: "Synthetic Rooftop", address: "1 Harbourfront Walk", maxCapacity: 400, suggestedAt: "2026-10-23T04:00:00.000Z", suggestedBy: "Synthetic Coordinator", version: 1 } }),
+    event: eventView({ venueSuggestions: [{ venueId: 47, name: "Synthetic Rooftop", address: "1 Harbourfront Walk", maxCapacity: 400, suggestedAt: "2026-11-01T04:00:00.000Z", suggestedBy: "Synthetic Coordinator", fromOrganiserChoices: false }] }),
+    venueOptions: options({ suggestedVenues: [{ venueId: 47, name: "Synthetic Rooftop", option: rooftop, fromOrganiserChoices: false }] }),
   });
   await page.goto("/events/42");
 
-  const suggested = page.getByRole("region", { name: "Suggested venue" }).getByRole("article", { name: "Synthetic Rooftop" });
+  const suggested = page.getByRole("region", { name: "Suggested venues" }).getByRole("article", { name: "Synthetic Rooftop" });
   await expect(suggested.getByText("Suggested", { exact: true })).toBeVisible();
   await expect(choices(page).getByText("Suggested", { exact: true })).toHaveCount(0);
   await suggested.getByRole("button", { name: "View details" }).click();

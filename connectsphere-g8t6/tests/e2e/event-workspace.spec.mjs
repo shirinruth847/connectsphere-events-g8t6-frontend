@@ -84,7 +84,7 @@ test("[SPM-173 AC6] an owner's view without a stored status uses the organiser l
   await page.goto("/events/42");
   await expect(page.getByRole("heading", { name: "Workspace review event", exact: true })).toBeVisible();
   await expect(page.getByText("Approved & Planning", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Owner • Changes by request")).toBeVisible();
+  await expect(page.getByText("Owner • Read-only")).toBeVisible();
   await expect(page.getByText("Only you can see this draft")).toHaveCount(0);
 });
 

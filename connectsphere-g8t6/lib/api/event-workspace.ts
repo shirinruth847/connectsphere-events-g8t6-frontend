@@ -35,6 +35,8 @@ export interface EventPermissions {
 
 // The coordinator's suggested venue (SPM-72/74). Advice to the organiser, not
 // a hold or booking.
+// A venue on the coordinator's list for the organiser: one of the organiser's
+// own choices is "selected", any other venue is "suggested".
 export interface VenueSuggestion {
   venueId: number;
   name: string | null;
@@ -42,7 +44,7 @@ export interface VenueSuggestion {
   maxCapacity: number | null;
   suggestedAt: string;
   suggestedBy: string | null;
-  version: number;
+  fromOrganiserChoices: boolean;
 }
 
 export interface EventView {
@@ -93,7 +95,7 @@ export interface EventView {
   // and the review round to open (null when none is in their scope).
   registeredCount?: number;
   safetyReviewId?: number | null;
-  venueSuggestion?: VenueSuggestion | null;
+  venueSuggestions?: VenueSuggestion[];
 }
 
 export interface EventHistoryChange {

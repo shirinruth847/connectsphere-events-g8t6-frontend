@@ -62,8 +62,11 @@ interface RequestVenueStepProps {
   // Names from the request options, for choices not in the current list.
   knownNames: Map<number, string>;
   onChange: (next: VenueChoices) => void;
-  // Saves the choices with the draft and stays on the step; shown once a venue is chosen.
-  save: { onSave: () => void; saving: boolean; disabled: boolean; savedAt: string | null };
+  // Saves the choices with the draft and stays on the step; shown once a venue is
+  // chosen. The clarification amendment form saves with its own button instead.
+  save?: { onSave: () => void; saving: boolean; disabled: boolean; savedAt: string | null };
+  // Venues the coordinator suggested (SPM-72 follow-up), offered at the top.
+  suggested?: Array<{ venueId: number; name: string }>;
 }
 
 // SPM-76: the organiser explores venues with the coordinator's search
@@ -73,7 +76,7 @@ interface RequestVenueStepProps {
 // the same or different times. There is no availability calendar: a choice
 // shows only whether the venue is free then (TC-VS-001, TC-VS-003). Choosing
 // never holds or books a venue.
-export function RequestVenueStep({ values, knownNames, onChange, save }: RequestVenueStepProps) {
+export function RequestVenueStep({ values, knownNames, onChange, save, suggested = [] }: RequestVenueStepProps) {
   const [learnedNames, setLearnedNames] = useState<Map<number, string>>(new Map());
   const [openId, setOpenId] = useState<number | null>(null);
   const chosen = values.venuePreferences;
@@ -105,7 +108,7 @@ export function RequestVenueStep({ values, knownNames, onChange, save }: Request
     return window ? [{ venueId, ...window }] : [];
   }));
 
-  const nameOf = (venueId: number) => learnedNames.get(venueId) ?? knownNames.get(venueId) ?? `Venue ${venueId}`;
+  const nameOf = (venueId: number) => learnedNames.get(venueId) ?? knownNames.get(venueId) ?? suggested.find((item) => item.venueId === venueId)?.name ?? `Venue ${venueId}`;
   const withoutTime = (venueId: number) => Object.fromEntries(Object.entries(values.venueTimes).filter(([id]) => Number(id) !== venueId));
   const move = (index: number, offset: number) => {
     const next = [...chosen];
@@ -124,9 +127,16 @@ export function RequestVenueStep({ values, knownNames, onChange, save }: Request
     onChange({ venuePreferences: chosen, venueTimes: { ...values.venueTimes, [venueId]: { ...current, [edge]: text } } });
   };
 
+  const suggestedIds = new Set(suggested.map((item) => item.venueId));
   const badge = (venue: EventVenueOption) => {
     const rank = chosen.indexOf(venue.venueId) + 1;
-    return rank ? <VenueBadge tone={rank === 1 ? "success" : "neutral"}>Your choice {rank}</VenueBadge> : null;
+    if (!rank && !suggestedIds.has(venue.venueId)) return null;
+    return (
+      <>
+        {rank ? <VenueBadge tone={rank === 1 ? "success" : "neutral"}>Your choice {rank}</VenueBadge> : null}
+        {suggestedIds.has(venue.venueId) ? <VenueBadge tone="success">Suggested by your coordinator</VenueBadge> : null}
+      </>
+    );
   };
   const action = (venue: EventVenueOption) => chosen.includes(venue.venueId)
     ? <Button type="button" variant="secondary" onClick={() => remove(venue.venueId)}>Remove choice</Button>
@@ -136,10 +146,25 @@ export function RequestVenueStep({ values, knownNames, onChange, save }: Request
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
+      {suggested.length ? (
+        <section aria-label="Suggested by your coordinator" className="grid gap-2 rounded-panel border border-[#86EFAC] bg-[#F0FDF4] p-4">
+          <h3 className="text-sm font-semibold text-on-surface">Suggested by your coordinator</h3>
+          <ul className="grid gap-2">
+            {suggested.map((item) => (
+              <li key={item.venueId} className="flex flex-wrap items-center justify-between gap-2 text-sm text-on-surface">
+                <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{item.name}</span>
+                {chosen.includes(item.venueId)
+                  ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-success"><Icon name="check" size={16} />Your choice {chosen.indexOf(item.venueId) + 1}</span>
+                  : <Button type="button" variant="secondary" onClick={() => add(item.venueId)} disabled={full}><Icon name="add" size={16} />Add as a choice</Button>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <section aria-label="Your venue choices" className="grid gap-3 rounded-panel border border-outline-variant p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-on-surface">Your venue choices <span className="font-normal text-on-surface-variant">({chosen.length} / {MAX_VENUE_CHOICES})</span></h3>
-          {chosen.length ? (
+          {chosen.length && save ? (
             <span className="flex flex-wrap items-center gap-2">
               {save.savedAt ? <span className="text-xs font-semibold text-success" aria-live="polite">Saved at {save.savedAt}</span> : null}
               <Button type="button" variant="secondary" onClick={save.onSave} disabled={save.disabled} title={save.disabled && !save.saving ? "Enter an Event Title to save." : undefined}>
@@ -204,7 +229,7 @@ export function RequestVenueStep({ values, knownNames, onChange, save }: Request
         <p className="text-xs text-on-surface-variant">Each venue is wanted for the whole event unless you set a time; venues can share a time or have different ones. Choosing does not book or hold a venue; your coordinator arranges the bookings.</p>
       </section>
 
-      <VenueBrowser load={load} reloadKey={needsKey} onLoaded={remember} badge={badge} action={action} alternativeCapacity={needs.expectedAttendance} organiser={ORGANISER_BROWSER} />
+      <VenueBrowser load={load} reloadKey={needsKey} onLoaded={remember} badge={badge} action={action} organiser={ORGANISER_BROWSER} />
     </div>
   );
 }

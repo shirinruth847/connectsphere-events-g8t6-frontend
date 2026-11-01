@@ -89,6 +89,15 @@ export interface PreferredVenue {
   requestedAvailability?: VenueOptionAvailability | null;
 }
 
+// A venue on the coordinator's list for the organiser, as a card; option is
+// null when the venue is no longer available.
+export interface SuggestedVenue {
+  venueId: number;
+  name: string | null;
+  option: EventVenueOption | null;
+  fromOrganiserChoices: boolean;
+}
+
 export interface EventVenueOptions extends VenueOptionsResult {
   event: {
     eventId: number;
@@ -100,6 +109,7 @@ export interface EventVenueOptions extends VenueOptionsResult {
     accessibilityNeeds: string[];
   };
   preferredVenues: PreferredVenue[];
+  suggestedVenues: SuggestedVenue[];
   canSuggestVenue: boolean;
 }
 
@@ -112,11 +122,32 @@ export const getEventVenueOptions = async (eventId: number, query: VenueOptionsQ
     ...data,
     venues: Array.isArray(data.venues) ? data.venues : [],
     preferredVenues: Array.isArray(data.preferredVenues) ? data.preferredVenues : [],
+    suggestedVenues: Array.isArray(data.suggestedVenues) ? data.suggestedVenues : [],
     filtersNotChecked: Array.isArray(data.filtersNotChecked) ? data.filtersNotChecked : [],
     detailsAvailable: data.detailsAvailable === true,
     availabilityChecked: data.availabilityChecked === true,
     canSuggestVenue: data.canSuggestVenue === true,
   } as EventVenueOptions;
+};
+
+// GET /api/events/:id/venue-choices: the organiser's own choices and the
+// coordinator's selected and suggested venues, as cards. Busy periods show
+// only their kind.
+export interface EventVenueChoices {
+  preferredVenues: PreferredVenue[];
+  suggestedVenues: SuggestedVenue[];
+  detailsAvailable: boolean;
+  availabilityChecked: boolean;
+}
+
+export const getEventVenueChoices = async (eventId: number): Promise<EventVenueChoices> => {
+  const data = await apiRequest<Partial<EventVenueChoices>>(`/events/${eventId}/venue-choices`);
+  return {
+    preferredVenues: Array.isArray(data.preferredVenues) ? data.preferredVenues : [],
+    suggestedVenues: Array.isArray(data.suggestedVenues) ? data.suggestedVenues : [],
+    detailsAvailable: data.detailsAvailable === true,
+    availabilityChecked: data.availabilityChecked === true,
+  };
 };
 
 // ---------- the organiser's venue step (SPM-76) ----------
@@ -205,13 +236,19 @@ export const fetchSelectableVenuePhotoBlob = async (venueId: number, photoId: st
   return response.blob();
 };
 
-// PUT /api/events/:id/venue-suggestion. version is the suggestion version the
-// coordinator loaded (0 when there was none); a retry reuses the same key.
-export const suggestEventVenue = (eventId: number, venueId: number, version: number, idempotencyKey: string) =>
-  apiRequest<{ message: string; suggestion: VenueSuggestion }>(`/events/${eventId}/venue-suggestion`, {
+// PUT /api/events/:id/venue-suggestions: the whole list the coordinator wants
+// for the organiser, and the list they loaded. Venues outside the organiser's
+// choices are sent to them in a clarification (clarificationRound); a retry
+// reuses the same key.
+export const suggestEventVenues = (
+  eventId: number,
+  body: { venueIds: number[]; expectedVenueIds: number[]; note: string },
+  idempotencyKey: string,
+) =>
+  apiRequest<{ message: string; suggestions: VenueSuggestion[]; clarificationRound: number | null }>(`/events/${eventId}/venue-suggestions`, {
     method: "PUT",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ venueId, version }),
+    body: JSON.stringify(body),
   });
 
 // ---------- venue booking requests (SPM-179) ----------

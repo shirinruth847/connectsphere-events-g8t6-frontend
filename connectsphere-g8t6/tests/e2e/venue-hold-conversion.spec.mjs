@@ -21,7 +21,7 @@ const eventView = {
   isRegistrationEnabled: false, registrationCapacity: null, createdAt: "2026-10-10T09:00:00.000Z", updatedAt: "2026-10-12T09:00:00.000Z", version: 3,
   organisation: { organisationId: 1, name: "Synthetic Org A" }, isAssignedToCoordinator: true, isOwner: false, viewerRelationship: "ASSIGNED_COORDINATOR",
   permissions: { canEdit: true, editableFields: [], canViewDraftHistory: false, canViewStaffHistory: true, canSuggestVenue: true },
-  coordinatorId: 11, coordinatorName: "Synthetic Coordinator", organiser: { userId: 5, name: "Synthetic Organiser" }, venueSuggestion: null,
+  coordinatorId: 11, coordinatorName: "Synthetic Coordinator", organiser: { userId: 5, name: "Synthetic Organiser" }, venueSuggestions: [],
 };
 const hall = venue({
   requirements: [

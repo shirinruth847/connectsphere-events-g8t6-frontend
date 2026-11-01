@@ -6,6 +6,7 @@ import { useSessionUser } from "@/components/auth/auth-gate";
 import { PageContent } from "@/components/layout/page-content";
 import { AlertBanner } from "@/components/shared/primitives";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
+import { BackButton } from "@/components/shared/back-button";
 import { VenueManagementList } from "@/components/venue-staff/venue-management/venue-management-list";
 import { ROLE_LABELS, type UserRole } from "@/lib/auth";
 import { VenueAvailabilityCalendar } from "./venue-availability";
@@ -51,7 +52,14 @@ export function VenuesWorkspace() {
   };
 
   return (
-    <PageContent title={TITLES[view].title} eyebrow={ROLE_LABELS[user.role]} description={TITLES[view].description} action={<NotificationsBell />}>
+    <PageContent
+      title={TITLES[view].title}
+      eyebrow={ROLE_LABELS[user.role]}
+      description={TITLES[view].description} action={<NotificationsBell />}
+      // One venue's calendar was opened from a venue or the venue list; the
+      // whole calendar is a main page reached from the navigation.
+      back={view === "availability" && venueId ? <BackButton fallback={fromVenue ? `/venues/${venueId}` : "/venues"} /> : undefined}
+    >
       {views.length > 1 ? (
         <nav aria-label="Venue views" className="flex flex-wrap gap-2">
           {views.map((item) => (

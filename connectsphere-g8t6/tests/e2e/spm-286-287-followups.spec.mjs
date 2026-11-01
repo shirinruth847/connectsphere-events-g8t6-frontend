@@ -33,7 +33,7 @@ const coordinatorEvent = (overrides = {}) => ({
   version: 3, arrangementVersion: 3, organisation: { organisationId: 1, name: "Synthetic Org A" }, isAssignedToCoordinator: true, isOwner: false,
   viewerRelationship: "ASSIGNED_COORDINATOR",
   permissions: { canEdit: true, editableFields: ["title", "purpose", "description"], canViewDraftHistory: false, canViewStaffHistory: true, canSuggestVenue: false },
-  coordinatorId: 11, coordinatorName: "Synthetic Coordinator", organiser: { userId: 5, name: "Synthetic Organiser" }, venueSuggestion: null,
+  coordinatorId: 11, coordinatorName: "Synthetic Coordinator", organiser: { userId: 5, name: "Synthetic Organiser" }, venueSuggestions: [],
   ...overrides,
 });
 

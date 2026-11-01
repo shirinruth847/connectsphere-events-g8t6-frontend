@@ -134,7 +134,7 @@ test("[SPM-181 AC6] the list says when nothing is pending", async ({ page }) => 
   state.venueBookings = { bookings: [{ ...listItems[2] }], hasMore: false, pendingCount: 0 };
   await page.goto("/dashboard");
 
-  await expect(page.getByText("No pending booking requests.", { exact: true })).toBeVisible();
+  await expect(page.getByText("No pending requests.", { exact: true })).toBeVisible();
   await expect(page.getByRole("article")).toHaveCount(1);
 });
 
@@ -284,7 +284,7 @@ test("[TC-VENUE-181-56] should_offer_no_event_filter_and_a_single_row_filter_bar
   await installConnectSphereMocks(page, { role: "VENUE_STAFF" });
   await routeBookings(page);
   await page.goto("/dashboard");
-  const bar = page.getByRole("region", { name: "Search, sort and filter booking requests" });
+  const bar = page.getByRole("region", { name: "Search, sort and filter requests" });
   await expect(page.getByRole("article")).toHaveCount(3);
 
   await expect(bar.getByLabel("Event", { exact: true })).toHaveCount(0);
